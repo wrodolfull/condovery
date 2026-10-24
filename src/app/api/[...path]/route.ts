@@ -56,18 +56,20 @@ const googleRegister=z.object({
   tower:z.string().trim().min(1).max(60),
   apartment:z.string().trim().min(1).max(24)
 });
-async function savedWhatsApp(order:{
+type SavedOrder={
   id:string;code:number;shop_name:string;whatsapp:string;total_cents:number;
   fulfillment:'delivery'|'pickup';delivery_day?:string|null;delivery_window?:string;
   delivery_instructions?:string[];note?:string
-},u:Viewer){
+};
+async function savedWhatsApp(order:SavedOrder,u:Viewer){
   const items=await query(
     'SELECT name_snapshot AS name,quantity,unit_price_cents,note FROM order_items WHERE order_id=$1 ORDER BY id',
     [order.id]
   );
   const message=orderMessage({
     code:order.code,shop:order.shop_name,buyer:u.name,tower:u.tower,apartment:u.apartment,
-    items:items.rows,total_cents:order.total_cents,fulfillment:order.fulfillment,
+    items:items.rows.map(i=>({name:String(i.name),quantity:Number(i.quantity),unit_price_cents:Number(i.unit_price_cents),note:String(i.note??'')})),
+    total_cents:order.total_cents,fulfillment:order.fulfillment,
     delivery_day:order.delivery_day,delivery_window:order.delivery_window,
     instructions:order.delivery_instructions??[],note:order.note
   });
@@ -632,7 +634,7 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
       [parts[1],u.id,u.condominium_id]
     );
     if(!found.rowCount)bad('Pedido não encontrado ou já encerrado.',404);
-    return out({whatsapp_url:await savedWhatsApp(found.rows[0],u)});
+    return out({whatsapp_url:await savedWhatsApp(found.rows[0] as SavedOrder,u)});
   }
   if(path==='orders'&&method==='POST'){
     const b=orderSchema.parse(await body(req));
@@ -643,7 +645,7 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
         "WHERE o.condominium_id=$1 AND o.buyer_id=$2 AND o.client_order_key=$3",
         [u.condominium_id,u.id,b.client_order_key]
       );
-      if(old.rowCount)return out({order:old.rows[0],whatsapp_url:await savedWhatsApp(old.rows[0],u)});
+      if(old.rowCount)return out({order:old.rows[0],whatsapp_url:await savedWhatsApp(old.rows[0] as SavedOrder,u)});
     }
     const result=await transaction(async tx=>{
       const sh=await tx.query("SELECT * FROM shops WHERE id=$1 AND condominium_id=$2 AND status='approved' FOR UPDATE",[b.shop_id,u.condominium_id]);
@@ -654,7 +656,7 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
           "WHERE o.condominium_id=$1 AND o.buyer_id=$2 AND o.client_order_key=$3",
           [u.condominium_id,u.id,b.client_order_key]
         );
-        if(prev.rowCount)return {order:prev.rows[0],whatsapp_url:await savedWhatsApp(prev.rows[0],u)};
+        if(prev.rowCount)return {order:prev.rows[0],whatsapp_url:await savedWhatsApp(prev.rows[0] as SavedOrder,u)};
       }
       if(!shop||!shop.is_open)bad('Loja não está recebendo pedidos.');
       if(b.fulfillment==='delivery'&&!shop.delivery_enabled||b.fulfillment==='pickup'&&!shop.pickup_enabled)bad('Forma de recebimento indisponível.');
