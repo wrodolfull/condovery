@@ -920,7 +920,7 @@ export default function Page(){
           </div>}
           {!revisedQuote&&<button className="primary-button" disabled={busy} onClick={()=>checkout()}>
             {busy?'Conferindo valores...':'Continuar no WhatsApp'}<ArrowRight size={18}/>
-          </button>
+          </button>}
           <small>O pedido fica registrado mesmo se você fechar o WhatsApp. Apenas a loja poderá confirmá-lo.</small>
         </aside></div>}
       </>}
@@ -1060,7 +1060,7 @@ export default function Page(){
               {item.options?.map((opt,i)=><small key={i}>{opt.group}: {opt.name}{opt.price_cents>0?' (+'+money(opt.price_cents)+')':''}</small>)}
               {item.note&&<small>Obs. do produto: {item.note}</small>}
             </div>)}</div>
-            {o.fulfillment==='delivery'&&<p>Entrega: {o.tower} · Ap. {o.apartment} · Taxa: {money(o.delivery_fee_cents??0)}</p>
+            {o.fulfillment==='delivery'&&<p>Entrega: {o.tower} · Ap. {o.apartment} · Taxa: {money(o.delivery_fee_cents??0)}</p>}
             {o.delivery_day&&<p>Data: {String(o.delivery_day).slice(0,10)}</p>}{o.delivery_window&&<p>Preferência: {o.delivery_window}</p>}
             {o.note&&<p>Observação: {o.note}</p>}{o.delivery_instructions?.length>0&&<p>Instruções: {o.delivery_instructions.join(', ')}</p>}
             <div className="order-bottom"><strong>Subtotal {money(o.subtotal_cents??o.total_cents)} · Total {money(o.total_cents)}</strong><div className="inline-actions">{o.status==='awaiting_confirmation'&&<><button disabled={busy} onClick={()=>updateStatus(o.id,'confirmed')}>Confirmar</button><button className="danger-text" disabled={busy} onClick={()=>updateStatus(o.id,'cancelled')}>Cancelar</button></>}
