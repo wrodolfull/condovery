@@ -26,7 +26,7 @@ async function viewer(req:NextRequest) {const u=await sessionViewer(req);if(!u)b
 function approved(u:Viewer){if(u.status!=='approved')bad('Sua conta está suspensa.',403);}
 function admin(u:Viewer){approved(u);if(u.role!=='admin')bad('Acesso restrito à administração.',403);}
 async function shopOwned(u:Viewer,requireApproved=false){
-  const r=await query('SELECT * FROM shops WHERE condominium_id=$1 AND owner_id=$2 AND status<>'deleted'',[u.condominium_id,u.id]);
+  const r=await query("SELECT * FROM shops WHERE condominium_id=$1 AND owner_id=$2 AND status<>'deleted'",[u.condominium_id,u.id]);
   const shop=r.rows[0];
   if(!shop) bad('Cadastre sua loja primeiro.',404);
   if(shop.status==='suspended')bad('Esta loja está suspensa.',403);
@@ -624,7 +624,7 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
   }
   if(path==='shops/mine'){
     if(method==='GET'){
-      const r=await query('SELECT * FROM shops WHERE condominium_id=$1 AND owner_id=$2 AND status<>'deleted'',[u.condominium_id,u.id]);
+      const r=await query("SELECT * FROM shops WHERE condominium_id=$1 AND owner_id=$2 AND status<>'deleted'",[u.condominium_id,u.id]);
       const shop=r.rows[0]??null;
       const products=shop?(await query('SELECT * FROM products WHERE condominium_id=$1 AND shop_id=$2 ORDER BY created_at DESC',[u.condominium_id,shop.id])).rows:[];
       return out({shop,products});
