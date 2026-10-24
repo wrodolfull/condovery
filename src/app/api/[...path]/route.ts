@@ -94,7 +94,7 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
     const flow=randomToken();
     await query("INSERT INTO google_oauth_flows(token_hash,pkce_storage) VALUES($1,$2::jsonb)",
       [tokenHash(flow),JSON.stringify(Object.fromEntries(pkceValues))]);
-    const response=NextResponse.redirect(data.url);
+    const response=NextResponse.redirect(data.url!);
     response.cookies.set(oauthCookie('condovery_google_flow',flow));
     return response;
   }
@@ -149,7 +149,7 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
     const result=await transaction(async tx=>{
       const waiting=await tx.query(
         'DELETE FROM google_signup_pending WHERE token_hash=$1 AND expires_at>now() RETURNING *',
-        [tokenHash(pending)]
+        [tokenHash(pending!)]
       );
       if(!waiting.rowCount)bad('Cadastro Google expirado. Entre novamente.',401);
       const linked=await tx.query('SELECT id FROM users WHERE email=$1 OR google_auth_user_id=$2',
@@ -314,11 +314,11 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
     if(r.rows[0].storage_key){
       const {data,error:downloadError}=await storageAdmin().storage.from(STORAGE_BUCKET).download(r.rows[0].storage_key);
       if(downloadError||!data)bad('Imagem indisponível.',502);
-      bytes=new Uint8Array(await data.arrayBuffer());
+      bytes=new Uint8Array(await data!.arrayBuffer());
     }else if(r.rows[0].bytes){
       bytes=new Uint8Array(r.rows[0].bytes);
     }else return bad('Imagem indisponível.',404);
-    return new NextResponse(bytes,{headers:{
+    return new NextResponse(new Blob([Buffer.from(bytes)]),{headers:{
       'Content-Type':r.rows[0].mime,'Cache-Control':'private,max-age=3600',
       'X-Content-Type-Options':'nosniff','Vary':'Cookie'
     }});
