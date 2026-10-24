@@ -20,6 +20,8 @@ try {
   await client.query(additions);
   const standardCategories=await readFile(new URL('../db/006_default_categories.sql',import.meta.url),'utf8');
   await client.query(standardCategories);
+  const instant=await readFile(new URL('../db/007_instant_memberships_and_content_reports.sql',import.meta.url),'utf8');
+  await client.query(instant);
   console.log('Condovery database schema applied successfully.');
 } finally {
   await client.end();
