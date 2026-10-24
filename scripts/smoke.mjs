@@ -1,5 +1,12 @@
 import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
+import { readFileSync } from 'node:fs';
+process.on('uncaughtExceptionMonitor',()=>{
+ try {
+  const lines=readFileSync('/tmp/condovery.log','utf8').split('\n').filter(line=>line.includes('condovery_api_error'));
+  for(const line of lines.slice(-3))console.error('Integration diagnostic:',line);
+ } catch {}
+});
 import pg from 'pg';
 
 const origin=process.env.SMOKE_URL||'http://127.0.0.1:3000';
