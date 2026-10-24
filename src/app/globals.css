@@ -1050,3 +1050,5 @@ font-weight:750;padding:12px 20px;cursor:pointer}
   .crop-footer button{flex:1 1 140px}
   .seller-pause-button{font-size:11px}
 }
+
+.seller-activation.paused{background:#fff2d8;border-color:#eddba8;color:#8e631f}
