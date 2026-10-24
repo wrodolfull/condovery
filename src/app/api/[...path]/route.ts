@@ -9,6 +9,7 @@ import { passwordAuthClient,emailConfigured,recoveryConfigured,googleAuthClient,
 import { oauthCookie,randomToken,safeAppOrigin } from '@/lib/security';
 import { violatesCommunityLanguage } from '@/lib/content-policy';
 import {processAccountDeletionJob} from '@/lib/account-deletion';
+import {processShopDeletionJob} from '@/lib/shop-deletion';
 import {IMAGE_MIME_TYPES, imageSizeIsAllowed} from '@/lib/image-limits';
 
 export const runtime='nodejs';
@@ -25,7 +26,7 @@ async function viewer(req:NextRequest) {const u=await sessionViewer(req);if(!u)b
 function approved(u:Viewer){if(u.status!=='approved')bad('Sua conta está suspensa.',403);}
 function admin(u:Viewer){approved(u);if(u.role!=='admin')bad('Acesso restrito à administração.',403);}
 async function shopOwned(u:Viewer,requireApproved=false){
-  const r=await query('SELECT * FROM shops WHERE condominium_id=$1 AND owner_id=$2',[u.condominium_id,u.id]);
+  const r=await query('SELECT * FROM shops WHERE condominium_id=$1 AND owner_id=$2 AND status<>'deleted'',[u.condominium_id,u.id]);
   const shop=r.rows[0];
   if(!shop) bad('Cadastre sua loja primeiro.',404);
   if(shop.status==='suspended')bad('Esta loja está suspensa.',403);
@@ -611,18 +612,79 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
       average:totals.rows[0].average??null,count:totals.rows[0].count
     },reviews:list.rows});
   }
+  if(path==='shops/mine/status'&&method==='PATCH'){
+    const input=z.object({is_open:z.boolean()}).parse(await body(req));
+    const shop=await shopOwned(u,true);
+    const updated=await query(
+      "UPDATE shops SET is_open=$1 WHERE id=$2 AND owner_id=$3 AND condominium_id=$4 AND status='approved' RETURNING *",
+      [input.is_open,shop.id,u.id,u.condominium_id]
+    );
+    if(!updated.rowCount)bad('Loja indisponível para alteração.',403);
+    return out({shop:updated.rows[0]});
+  }
   if(path==='shops/mine'){
     if(method==='GET'){
-      const r=await query('SELECT * FROM shops WHERE condominium_id=$1 AND owner_id=$2',[u.condominium_id,u.id]);
+      const r=await query('SELECT * FROM shops WHERE condominium_id=$1 AND owner_id=$2 AND status<>'deleted'',[u.condominium_id,u.id]);
       const shop=r.rows[0]??null;
       const products=shop?(await query('SELECT * FROM products WHERE condominium_id=$1 AND shop_id=$2 ORDER BY created_at DESC',[u.condominium_id,shop.id])).rows:[];
       return out({shop,products});
+    }
+    if(method==='DELETE'){
+      const input=z.object({confirmation:z.literal('EXCLUIR LOJA')}).parse(await body(req));
+      if(input.confirmation!=='EXCLUIR LOJA')bad('Confirmação inválida.');
+      const cleanupId=await transaction(async tx=>{
+        const found=await tx.query(
+          "SELECT id FROM shops WHERE condominium_id=$1 AND owner_id=$2 AND status<>'deleted' FOR UPDATE",
+          [u.condominium_id,u.id]
+        );
+        if(!found.rowCount)bad('Loja não encontrada.',404);
+        const shopId=found.rows[0].id;
+        const ongoing=await tx.query(
+          "SELECT count(*)::int AS count FROM orders WHERE shop_id=$1 AND status IN ('awaiting_confirmation','confirmed')",
+          [shopId]
+        );
+        if(ongoing.rows[0].count>0)
+          bad('Finalize ou cancele os pedidos aguardando ou confirmados antes de excluir sua loja.',409);
+        const media=await tx.query('SELECT storage_key FROM media_assets WHERE shop_id=$1',[shopId]);
+        const keys=[...new Set(media.rows.map(row=>row.storage_key).filter(
+          (value):value is string=>typeof value==='string'&&value.length>0
+        ))];
+        await tx.query('DELETE FROM media_assets WHERE shop_id=$1',[shopId]);
+        await tx.query(
+          "DELETE FROM favorites WHERE product_id IN (SELECT id FROM products WHERE shop_id=$1)",[shopId]
+        );
+        await tx.query('DELETE FROM shop_reviews WHERE shop_id=$1',[shopId]);
+        await tx.query(
+          "DELETE FROM content_reports WHERE (target_type='shop' AND target_id=$1) OR "+
+          "(target_type='product' AND target_id IN (SELECT id FROM products WHERE shop_id=$1))",
+          [shopId]
+        );
+        await tx.query(
+          "UPDATE products SET name='Produto indisponível',description='',image_url=NULL,"+
+          "option_groups='[]'::jsonb,visibility='hidden',is_available=false WHERE shop_id=$1",
+          [shopId]
+        );
+        await tx.query(
+          "UPDATE shops SET status='deleted',is_open=false,name='Loja encerrada',description='',"+
+          "whatsapp='',logo_image=NULL,cover_image=NULL,pickup_instructions='',lead_time='' WHERE id=$1",
+          [shopId]
+        );
+        const job=await tx.query(
+          'INSERT INTO shop_deletion_jobs(shop_id,storage_keys) VALUES($1,$2::jsonb) RETURNING id',
+          [shopId,JSON.stringify(keys)]
+        );
+        return job.rows[0].id as string;
+      });
+      const cleanup=await processShopDeletionJob(cleanupId);
+      return out({ok:true,status:cleanup,message:cleanup==='completed'?
+        'Loja excluída. Seus pedidos anteriores permanecem no histórico.':
+        'Loja removida. A limpeza dos arquivos de imagem está pendente.'},cleanup==='completed'?200:202);
     }
     if(method==='POST'){
       const b=z.object({name:z.string().trim().min(3).max(75),description:z.string().max(500).optional(),whatsapp:z.string().min(10).max(20),accept_guidelines:z.literal(true)}).parse(await body(req));
       if(violatesCommunityLanguage(b.name,b.description))bad('Revise o texto: linguagem imprópria não é permitida.');
       normalizeWhatsApp(b.whatsapp);
-      const existing=await query('SELECT id FROM shops WHERE owner_id=$1',[u.id]);
+      const existing=await query("SELECT id FROM shops WHERE owner_id=$1 AND status<>'deleted'",[u.id]);
       if(existing.rowCount)bad('Você já possui uma loja.',409);
       const r=await query("INSERT INTO shops(condominium_id,owner_id,name,description,whatsapp,status) VALUES($1,$2,$3,$4,$5,'approved') RETURNING *",[u.condominium_id,u.id,b.name,b.description??'',b.whatsapp]);
       return out({shop:r.rows[0]},201);
