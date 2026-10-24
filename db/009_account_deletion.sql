@@ -14,6 +14,7 @@ CREATE TABLE IF NOT EXISTS public.account_deletion_jobs (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id uuid NOT NULL UNIQUE REFERENCES public.users(id),
   auth_user_id uuid NOT NULL,
+  email_hash text NOT NULL,
   storage_keys jsonb NOT NULL DEFAULT '[]'::jsonb,
   auth_done boolean NOT NULL DEFAULT false,
   storage_done boolean NOT NULL DEFAULT false,
