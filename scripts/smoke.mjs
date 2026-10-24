@@ -79,6 +79,15 @@ const final=(await request('orders',{cookie:buyerCookie})).data.orders.find(o=>o
 assert.equal(final.status,'completed');
 assert.equal(final.total_cents,5000);
 
+
+
+const completedList=(await request('orders?status=completed',{cookie:buyerCookie})).data.orders;
+assert.ok(completedList.some(order=>order.id===orderId));
+const waitingList=(await request('orders?status=awaiting_confirmation',{cookie:buyerCookie})).data.orders;
+assert.ok(!waitingList.some(order=>order.id===orderId));
+await request('orders?status=unknown',{cookie:buyerCookie,expected:400});
+const mine=(await request('shops/mine',{cookie:sellerCookie})).data;
+assert.equal(mine.products.find(p=>p.id===productId).stock,2);
 const reviewEndpoint='orders/'+orderId+'/review';
 const noReviews=(await request('shops/'+shopId+'/reviews',{cookie:buyerCookie})).data;
 assert.deepEqual(noReviews.summary,{average:null,count:0});
@@ -129,6 +138,11 @@ async function buyAndComplete(description,rating) {
     body:{rating,description},expected:201})).data.review;
   return {createdOrder,inserted};
 }
+const unfinished=(await request('orders',{method:'POST',cookie:buyerCookie,
+  body:{shop_id:shopId,items:[{id:productId,quantity:1}],fulfillment:'pickup'},expected:201})).data.order;
+await request('orders/'+unfinished.id+'/review',{method:'POST',cookie:buyerCookie,
+  body:{rating:5,description:'Pedido sem conclusão'},expected:403});
+
 const second=await buyAndComplete('Atendimento excelente!',5);
 await request('shops/mine/reviews/'+second.inserted.id,{method:'PATCH',cookie:sellerCookie,
   body:{status:'approved'}});
@@ -143,19 +157,7 @@ assert.equal(afterReject.summary.average,4.5);
 assert.equal(afterReject.summary.count,2);
 const rejectedOrder=(await request('orders',{cookie:buyerCookie})).data.orders.find(o=>o.id===third.createdOrder.id);
 assert.equal(rejectedOrder.review_status,'rejected');
-const unfinished=(await request('orders',{method:'POST',cookie:buyerCookie,
-  body:{shop_id:shopId,items:[{id:productId,quantity:1}],fulfillment:'pickup'},expected:201})).data.order;
-await request('orders/'+unfinished.id+'/review',{method:'POST',cookie:buyerCookie,
-  body:{rating:5,description:'Pedido sem conclusão'},expected:403});
 console.log('Verified reviews smoke PASS: eligibility, single review, moderation, average and privacy.');
-
-const completedList=(await request('orders?status=completed',{cookie:buyerCookie})).data.orders;
-assert.ok(completedList.some(order=>order.id===orderId));
-const waitingList=(await request('orders?status=awaiting_confirmation',{cookie:buyerCookie})).data.orders;
-assert.ok(!waitingList.some(order=>order.id===orderId));
-await request('orders?status=unknown',{cookie:buyerCookie,expected:400});
-const mine=(await request('shops/mine',{cookie:sellerCookie})).data;
-assert.equal(mine.products.find(p=>p.id===productId).stock,2);
 console.log('Integration smoke PASS: invite -> approval -> shop -> product -> WhatsApp order -> completed.');
 
 
