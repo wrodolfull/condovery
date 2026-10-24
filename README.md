@@ -18,11 +18,11 @@ Importante: o script de bootstrap não altera a senha de um administrador já ex
 - Cadastro com convite e aprovação administrativa; login; sessão segura; recuperação de senha via e-mail disponível após configurar Resend.
 - PostgreSQL no Supabase com conexão privada ao backend (pool otimizado), RLS habilitado nas tabelas de negócio e Google OAuth/PKCE via Supabase Auth.
 - Google novos usuários: convite do condomínio, torre/apartamento e aprovação obrigatória.
-- Fotos em bucket PRIVADO do Supabase Storage (usando credenciais somente no servidor).
+- Fotos otimizadas em WebP (até 960px, metadados EXIF removidos) no bucket PRIVADO do Supabase Storage, com credenciais exclusivas do servidor.
 - Isolamento de dados por condominium_id, inclusive em endpoints de administração e imagens.
 - Pesquisa paginada pelo backend e favoritos persistidos por morador.
 - Marketplace privado, categorias, pesquisa, lojas e catálogo com preços e promoções.
-- Solicitação de loja e aprovação; CRUD de produtos com upload de foto (limite de 1,5 MB por arquivo), horários/prazo orientativos e estoque opcional.
+- Solicitação de loja e aprovação; CRUD de produtos com upload de foto (otimização WebP com entrada de até 8 MB por imagem), horários/prazo orientativos e estoque opcional.
 - Carrinho de uma loja por vez; endereço torre/apartamento do usuário; retirada ou entrega; preferências e observações.
 - Criação de pedido no backend antes de abrir WhatsApp; status aguardando confirmação, confirmado, concluído, cancelado. **Abrir WhatsApp não comprova envio nem venda realizada.**
 - Controle manual de confirmação e estoque no painel do vendedor; painel administrativo para moradores e lojas.
