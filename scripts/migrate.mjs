@@ -24,6 +24,8 @@ try {
   await client.query(instant);
   const checkout=await readFile(new URL('../db/008_checkout_options_and_fees.sql',import.meta.url),'utf8');
   await client.query(checkout);
+  const accountDeletion=await readFile(new URL('../db/009_account_deletion.sql',import.meta.url),'utf8');
+  await client.query(accountDeletion);
   console.log('Condovery database schema applied successfully.');
 } finally {
   await client.end();

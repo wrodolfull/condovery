@@ -8,6 +8,7 @@ import { normalizeWhatsApp, orderMessage, unitPrice, optionGroupsSchema, selecte
 import { passwordAuthClient,emailConfigured,recoveryConfigured,googleAuthClient,googleConfigured,storageAdmin,storageConfigured,STORAGE_BUCKET } from '@/lib/supabase';
 import { oauthCookie,randomToken,safeAppOrigin } from '@/lib/security';
 import { violatesCommunityLanguage } from '@/lib/content-policy';
+import {processAccountDeletionJob} from '@/lib/account-deletion';
 
 export const runtime='nodejs';
 export const dynamic='force-dynamic';
@@ -370,6 +371,117 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
       [b.name,b.phone,b.tower,b.apartment,u.id,u.condominium_id,b.avatar_image??null]
     );
     return out({ok:true});
+  }
+  if(path==='me'&&method==='DELETE'){
+    if(u.role!=='resident')bad('A conta administrativa não pode ser excluída sem transferir a gestão do condomínio.',403);
+    approved(u);
+    const input=z.object({confirmation:z.literal('EXCLUIR'),password:z.string().max(100).optional()})
+      .parse(await body(req));
+    const member=await query(
+      'SELECT id,email,supabase_auth_user_id FROM users WHERE id=$1 AND condominium_id=$2 AND status=\'approved\'',
+      [u.id,u.condominium_id]
+    );
+    if(!member.rowCount||!member.rows[0].supabase_auth_user_id)bad('Identidade não encontrada para exclusão.',409);
+    const email=member.rows[0].email as string;
+    const authId=member.rows[0].supabase_auth_user_id as string;
+    if(!storageConfigured())bad('Serviço de remoção de identidade indisponível.',503);
+    // Password accounts require reauthentication; Google-only sessions must be recent.
+    const identity=await storageAdmin().auth.admin.getUserById(authId);
+    if(identity.error||!identity.data.user)bad('Não foi possível confirmar sua identidade. Tente novamente.',502);
+    if(identity.data.user.identities?.some(item=>item.provider==='email')){
+      if(!input.password)bad('Informe sua senha atual para confirmar a exclusão.',400);
+      const verified=await passwordAuthClient().auth.signInWithPassword({email,password:input.password});
+      if(verified.error||verified.data.user?.id!==authId)bad('Senha incorreta. Conta não excluída.',401);
+    }else{
+      const cookie=req.cookies.get('condovery_session')?.value;
+      const fresh=cookie?await query(
+        "SELECT 1 FROM sessions WHERE token_hash=$1 AND user_id=$2 AND created_at>now()-interval '15 minutes'",
+        [tokenHash(cookie),u.id]
+      ):null;
+      if(!fresh?.rowCount)bad('Por segurança, entre novamente com o Google e repita a exclusão.',403);
+    }
+    const deletion=await transaction(async tx=>{
+      const locked=await tx.query(
+        "SELECT id,email,supabase_auth_user_id FROM users WHERE id=$1 AND condominium_id=$2 AND status='approved' FOR UPDATE",
+        [u.id,u.condominium_id]
+      );
+      if(!locked.rowCount||locked.rows[0].supabase_auth_user_id!==authId)
+        bad('Esta conta já foi encerrada.',409);
+      const ongoing=await tx.query(
+        "SELECT EXISTS(SELECT 1 FROM orders o WHERE "+
+        "(o.buyer_id=$1 OR o.shop_id IN (SELECT id FROM shops WHERE owner_id=$1)) "+
+        "AND o.status IN ('awaiting_confirmation','confirmed')) AS active",
+        [u.id]
+      );
+      if(ongoing.rows[0].active)bad(
+        'Você possui pedidos aguardando ou confirmados. Conclua ou cancele esses pedidos antes de excluir a conta.',409
+      );
+      const stores=await tx.query('SELECT id FROM shops WHERE owner_id=$1 AND condominium_id=$2 FOR UPDATE',
+        [u.id,u.condominium_id]);
+      const shopIds=stores.rows.map(row=>row.id as string);
+      const media=await tx.query(
+        'SELECT storage_key FROM media_assets WHERE user_id=$1 OR shop_id=ANY($2::uuid[])',
+        [u.id,shopIds]
+      );
+      const keys=[...new Set(media.rows.map(row=>row.storage_key).filter(
+        (v):v is string=>typeof v==='string'&&v.length>0
+      ))];
+      const job=await tx.query(
+        'INSERT INTO account_deletion_jobs(user_id,auth_user_id,storage_keys) VALUES($1,$2,$3::jsonb) RETURNING id',
+        [u.id,authId,JSON.stringify(keys)]
+      );
+      // Review texts, favorites, reports and image objects are no longer needed.
+      await tx.query('DELETE FROM shop_reviews WHERE buyer_id=$1 OR shop_id=ANY($2::uuid[])',
+        [u.id,shopIds]);
+      await tx.query('DELETE FROM content_reports WHERE reporter_id=$1 OR '+
+        "(target_type='shop' AND target_id=ANY($2::uuid[])) OR "+
+        "(target_type='product' AND target_id IN (SELECT id FROM products WHERE shop_id=ANY($2::uuid[])))",
+        [u.id,shopIds]);
+      await tx.query('DELETE FROM favorites WHERE user_id=$1 OR product_id IN '+
+        '(SELECT id FROM products WHERE shop_id=ANY($2::uuid[]))',[u.id,shopIds]);
+      await tx.query('DELETE FROM media_assets WHERE user_id=$1 OR shop_id=ANY($2::uuid[])',
+        [u.id,shopIds]);
+      // Historical orders/line-item monetary snapshots are retained without free-text PII.
+      await tx.query(
+        "UPDATE orders SET note='',delivery_instructions='[]'::jsonb,delivery_window='',delivery_day=NULL "+
+        "WHERE buyer_id=$1 OR shop_id=ANY($2::uuid[])",[u.id,shopIds]
+      );
+      await tx.query(
+        "UPDATE order_items SET note='' WHERE order_id IN "+
+        "(SELECT id FROM orders WHERE buyer_id=$1 OR shop_id=ANY($2::uuid[]))",
+        [u.id,shopIds]
+      );
+      await tx.query(
+        "UPDATE products SET name='Produto indisponível',description='',image_url=NULL,"+
+        "option_groups='[]'::jsonb,visibility='hidden',is_available=false "+
+        "WHERE shop_id=ANY($1::uuid[])",[shopIds]
+      );
+      await tx.query(
+        "UPDATE shops SET status='deleted',is_open=false,name='Loja encerrada',"+
+        "description='',whatsapp='',cover_image=NULL,logo_image=NULL,pickup_instructions='' "+
+        "WHERE owner_id=$1 AND condominium_id=$2",[u.id,u.condominium_id]
+      );
+      await tx.query('DELETE FROM sessions WHERE user_id=$1',[u.id]);
+      await tx.query('DELETE FROM password_reset_tokens WHERE user_id=$1',[u.id]);
+      await tx.query('DELETE FROM login_attempts WHERE email=$1',[email]);
+      await tx.query('DELETE FROM password_reset_attempts WHERE email=$1',[email]);
+      await tx.query('DELETE FROM google_signup_pending WHERE email=$1',[email]);
+      await tx.query(
+        "UPDATE users SET name='Conta excluída',email='excluida-'||replace(id::text,'-','')||'@deleted.invalid',"+
+        "phone='',tower='Não disponível',apartment='—',avatar_image=NULL,password_hash=NULL,"+
+        "supabase_auth_user_id=NULL,google_auth_user_id=NULL,status='deleted',deleted_at=now() "+
+        "WHERE id=$1 AND condominium_id=$2",[u.id,u.condominium_id]
+      );
+      return job.rows[0].id as string;
+    });
+    const cleanup=await processAccountDeletionJob(deletion);
+    const response=out({
+      status:cleanup,
+      message:cleanup==='completed'?'Sua conta foi excluída.':
+        'Sua conta foi encerrada. A remoção final da identidade está pendente de processamento técnico.'
+    },cleanup==='completed'?200:202);
+    clearSession(response);
+    return response;
   }
   approved(u);
   if(path==='favorites'&&method==='GET'){
@@ -887,7 +999,7 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
   if(parts[0]==='admin'&&parts[1]==='users'&&parts[2]&&method==='PATCH'){
     admin(u);if(!uuid(parts[2])||parts[2]===u.id)bad('Morador inválido.');
     const b=z.object({status:z.enum(['approved','suspended'])}).parse(await body(req));
-    const r=await query("UPDATE users SET status=$1 WHERE id=$2 AND condominium_id=$3 AND role='resident' RETURNING id",[b.status,parts[2],u.condominium_id]);
+    const r=await query("UPDATE users SET status=$1 WHERE id=$2 AND condominium_id=$3 AND role='resident' AND status<>'deleted' RETURNING id",[b.status,parts[2],u.condominium_id]);
     if(!r.rowCount)bad('Morador não encontrado.',404);
     if(b.status==='suspended')await query('DELETE FROM sessions WHERE user_id=$1',[parts[2]]);
     return out({ok:true});
@@ -895,7 +1007,7 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
   if(parts[0]==='admin'&&parts[1]==='shops'&&parts[2]&&method==='PATCH'){
     admin(u);if(!uuid(parts[2]))bad('Loja inválida.');
     const b=z.object({status:z.enum(['approved','suspended'])}).parse(await body(req));
-    const r=await query('UPDATE shops SET status=$1 WHERE id=$2 AND condominium_id=$3 RETURNING id',[b.status,parts[2],u.condominium_id]);
+    const r=await query('UPDATE shops SET status=$1 WHERE id=$2 AND condominium_id=$3 AND status<>'deleted' RETURNING id',[b.status,parts[2],u.condominium_id]);
     if(!r.rowCount)bad('Loja não encontrada.',404);
     return out({ok:true});
   }
