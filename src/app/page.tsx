@@ -857,9 +857,20 @@ export default function Page(){
             <div className="detail-price">{selectedProduct.promo_price_cents!=null&&<del>{money(selectedProduct.price_cents)}</del>}<strong>{money(price(selectedProduct))}</strong></div>
             <p>{selectedProduct.description||'Produto disponível diretamente com um morador do condomínio.'}</p>
             {selectedProduct.lead_time&&<p className="time-hint"><Clock3 size={16}/> Prazo informado: {selectedProduct.lead_time}</p>}
+            {(selectedProduct.option_groups??[]).map(group=><fieldset className="options-picker" key={group.id}>
+              <legend><strong>{group.name}</strong><small>{group.required?' Obrigatório':' Opcional'} · {group.multiple?'Várias escolhas':'Escolha uma'}</small></legend>
+              {group.options.map(choice=><label className="option-item" key={choice.id}>
+                <input type={group.multiple?'checkbox':'radio'} name={'group-'+group.id}
+                  checked={(productChoices[group.id]??[]).includes(choice.id)} onChange={()=>changeChoice(group,choice.id)}/>
+                <span>{choice.name}</span><small>{choice.price_cents>0?'+'+money(choice.price_cents):'Incluso'}</small>
+              </label>)}
+              {!group.required&&!group.multiple&&(productChoices[group.id]??[]).length>0&&
+                <button type="button" className="quiet-link"
+                  onClick={()=>setProductChoices(c=>({...c,[group.id]:[]}))}>Limpar escolha</button>}
+            </fieldset>)}
             <label className="field-label">Observações sobre este produto<textarea maxLength={200} rows={3} value={itemNote} onChange={e=>setItemNote(e.target.value)} placeholder="Ex.: sem cobertura, embalagem para presente..."/></label>
             <div className="add-row"><div className="quantity"><button onClick={()=>setQty(Math.max(1,qty-1))} aria-label="Diminuir"><Minus size={18}/></button><strong>{qty}</strong><button onClick={()=>setQty(Math.min(Math.max(1,selectedProduct.stock??30),qty+1))} aria-label="Aumentar"><Plus size={18}/></button></div>
-            <button className="primary-button" disabled={!productCanBuy(selectedProduct)} onClick={addToCart}><Plus size={18}/>Adicionar · {money(price(selectedProduct)*qty)}</button></div>
+            <button className="primary-button" disabled={!productCanBuy(selectedProduct)} onClick={addToCart}><Plus size={18}/>Adicionar · {money((price(selectedProduct)+addOns(selectedProduct,productChoices))*qty)}</button></div>
             {!productCanBuy(selectedProduct)&&<p className="helper-note">Este produto continua visível, mas não pode ser comprado agora.</p>}
             <button className="report-trigger" onClick={()=>setReportTarget({type:'product',id:selectedProduct.id,name:selectedProduct.name})}>Denunciar produto</button>
           </div>
@@ -871,30 +882,52 @@ export default function Page(){
         {!cart.length?<Empty title="Seu carrinho está vazio" subtitle="Adicione produtos de uma loja para começar." action="Explorar produtos" onAction={()=>go('categories')}/>:
         <div className="checkout-layout"><section className="checkout-main">
           <div className="white-panel"><h2><Store size={19}/> {cartShop?.name??'Sua loja'}</h2>{cart.map((item,index)=><div className="cart-item" key={item.product.id+'-'+index}>
-            <ProductPicture src={item.product.image_url} name={item.product.name}/><div className="cart-item-details"><strong>{item.product.name}</strong><small>{item.note}</small><b>{money(price(item.product)*item.quantity)}</b>
+            <ProductPicture src={item.product.image_url} name={item.product.name}/><div className="cart-item-details"><strong>{item.product.name}</strong>
+              {(item.product.option_groups??[]).flatMap(g=>(item.selections?.[g.id]??[]).map(id=>{
+                const option=g.options.find(o=>o.id===id);return option?g.name+': '+option.name+(option.price_cents?' (+'+money(option.price_cents)+')':''):null;
+              })).filter(Boolean).map((detail,i)=><small key={i}>{detail}</small>)}
+              {item.note&&<small>Obs.: {item.note}</small>}
+              <b>{money(cartUnitPrice(item)*item.quantity)}</b>
             <div className="cart-controls"><button onClick={()=>setCart(s=>s.map((i,n)=>n===index?{...i,quantity:Math.max(1,i.quantity-1)}:i))} aria-label="Diminuir"><Minus size={15}/></button><span>{item.quantity}</span><button onClick={()=>setCart(s=>s.map((i,n)=>n===index?{...i,quantity:Math.min(30,i.quantity+1)}:i))} aria-label="Aumentar"><Plus size={15}/></button><button className="trash" onClick={()=>setCart(s=>s.filter((_,n)=>n!==index))} aria-label="Remover"><Trash2 size={16}/></button></div>
             </div></div>)}</div>
           <div className="white-panel"><h2><Truck size={19}/> Como prefere receber?</h2><div className="choice-row">
-            <button className={fulfillment==='delivery'?'selected':''} onClick={()=>setFulfillment('delivery')}><Truck size={19}/> Entrega</button>
-            <button className={fulfillment==='pickup'?'selected':''} onClick={()=>setFulfillment('pickup')}><ShoppingBag size={19}/> Retirada</button></div>
-            {fulfillment==='delivery'&&<div className="address-box"><MapPin size={18}/><div><strong>{viewer.tower} · Apartamento {viewer.apartment}</strong><small>Seu endereço cadastrado <button onClick={()=>go('account')}>Alterar</button></small></div></div>}
+            {cartShop?.delivery_enabled!==false&&<button className={actualFulfillment==='delivery'?'selected':''} onClick={()=>setFulfillment('delivery')}><Truck size={19}/> Entrega</button>}
+            {cartShop?.pickup_enabled!==false&&<button className={actualFulfillment==='pickup'?'selected':''} onClick={()=>setFulfillment('pickup')}><ShoppingBag size={19}/> Retirada</button>}</div>
+            {actualFulfillment==='delivery'&&<div className="address-box"><MapPin size={18}/><div><strong>{viewer.tower} · Apartamento {viewer.apartment}</strong><small>Seu endereço cadastrado <button onClick={()=>go('account')}>Alterar</button></small></div></div>}
             <div className="field-grid"><label className="field-label">Data preferida<input type="date" min={new Date().toISOString().slice(0,10)} value={deliveryDay} onChange={e=>setDeliveryDay(e.target.value)}/></label>
             <label className="field-label">Período / horário<input value={deliveryWindow} maxLength={70} onChange={e=>setDeliveryWindow(e.target.value)} placeholder="Ex.: 18h às 20h"/></label></div>
             <p className="helper-note">Horário sujeito à confirmação da loja.</p>
-            {fulfillment==='delivery'&&<><h3>Instruções de entrega</h3><div className="instructions">
+            {actualFulfillment==='delivery'&&<><h3>Instruções de entrega</h3><div className="instructions">
               {['Tocar a campainha','Não tocar a campainha','Deixar na porta','Entregar pessoalmente','Retirar na portaria'].map(t=><label key={t}><input type="checkbox" checked={instructions.includes(t)} onChange={e=>setInstructions(s=>e.target.checked?[...s.filter(x=>!((t==='Tocar a campainha'&&x==='Não tocar a campainha')||(t==='Não tocar a campainha'&&x==='Tocar a campainha'))),t]:s.filter(x=>x!==t))}/>{t}</label>)}
               </div></>}
             <label className="field-label">Observações gerais<textarea rows={3} maxLength={400} value={checkoutNote} onChange={e=>setCheckoutNote(e.target.value)} placeholder="Algo mais que o vendedor precisa saber?"/></label>
           </div>
-        </section><aside className="checkout-total white-panel"><h2>Resumo do pedido</h2><div className="total-line"><span>{cartCount} {cartCount===1?'item':'itens'}</span><strong>{money(cartTotal)}</strong></div><div className="total-line bold"><span>Total dos produtos</span><strong>{money(cartTotal)}</strong></div><p>O pagamento será combinado diretamente com o vendedor.</p>
-          <p className="helper-note">Após abrir o WhatsApp, toque em enviar. Só o vendedor confirma o pedido no Condovery.</p>
-          <button className="primary-button" disabled={busy} onClick={checkout}>{busy?'Registrando pedido...':'Continuar no WhatsApp'}<ArrowRight size={18}/></button>
+        </section><aside className="checkout-total white-panel"><h2>Resumo do pedido</h2><div className="total-line"><span>{cartCount} {cartCount===1?'item':'itens'}</span><strong>{money(cartSubtotal)}</strong></div>
+          {actualFulfillment==='delivery'&&<div className="total-line"><span>Taxa de entrega</span><strong>{fee?money(fee):'Grátis'}</strong></div>}
+          <div className="total-line bold"><span>Total do pedido</span><strong>{money(cartTotal)}</strong></div><p>O pagamento será combinado diretamente com o vendedor.</p>
+          <div className="whatsapp-reminder"><MessageCircle size={19}/>
+            <span>O WhatsApp abrirá com a mensagem pronta. <strong>Você precisa tocar em Enviar.</strong> Apenas o vendedor confirma o pedido.</span>
+          </div>
+          {revisedQuote&&<div className="price-changed" role="alert">
+            <strong>O valor foi atualizado</strong>
+            <p>Anterior: {money(cartTotal)} → <strong>Atual: {money(revisedQuote.total_cents)}</strong></p>
+            {revisedQuote.lines.map((line,n)=><small key={n}>{line.quantity}× {line.name} — {money(line.total_cents)}</small>)}
+            <small>Taxa de entrega: {money(revisedQuote.delivery_fee_cents)}</small>
+            <button type="button" className="primary-button" disabled={busy} onClick={()=>checkout(true)}>
+              Confirmar novo valor e continuar
+            </button>
+            <button type="button" className="outline-button" onClick={()=>setRevisedQuote(null)}>Revisar carrinho</button>
+          </div>}
+          {!revisedQuote&&<button className="primary-button" disabled={busy} onClick={()=>checkout()}>
+            {busy?'Conferindo valores...':'Continuar no WhatsApp'}<ArrowRight size={18}/>
+          </button>
           <small>O pedido fica registrado mesmo se você fechar o WhatsApp. Apenas a loja poderá confirmá-lo.</small>
         </aside></div>}
       </>}
 
       {view==='success'&&lastOrder&&<div className="success-page"><IllustrationSlot className="success-art" src={artwork.orderSuccess} alt="Pedido registrado com sucesso"
   fallback={<Check size={44}/>}/><Pill tone="green">Pedido registrado</Pill><h1>Seu pedido foi registrado!</h1><p>Seu pedido <strong>#{lastOrder.code}</strong> foi criado. Envie a mensagem para o vendedor pelo WhatsApp para combinar disponibilidade, entrega e pagamento.</p>
+        <div className="whatsapp-reminder"><MessageCircle size={18}/> <strong>Importante: toque em Enviar dentro do WhatsApp.</strong> O Condovery não envia a mensagem sozinho.</div>
         <a className="primary-button" href={lastOrder.whatsapp_url} target="_blank" rel="noopener noreferrer">Abrir conversa no WhatsApp <ArrowRight size={18}/></a>
         <button className="outline-button" onClick={()=>{loadOrders();go('orders');}}>Acompanhar meus pedidos</button><small>Abrir o WhatsApp não significa que o vendedor recebeu ou confirmou o pedido.</small></div>}
 
