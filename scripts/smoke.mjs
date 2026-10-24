@@ -321,6 +321,15 @@ assert.equal((await request('public/condominium',{method:'POST',body:{invite:cho
   process.env.BOOTSTRAP_CONDO_NAME);
 console.log('No preapprovals, guidelines, reports, suspension and manual invitation code PASS.');
 
+// Restore approved test listing for Chromium browser acceptance suite.
+await request('products/'+productId+'/visibility',{method:'PATCH',cookie:sellerCookie,body:{visibility:'available'}});
+await request('shops/mine',{method:'PATCH',cookie:sellerCookie,body:{
+  name:'Bolos da Gabi',description:'Bolos feitos aqui no condomínio',whatsapp:'11999991234',
+  is_open:true,delivery_enabled:true,pickup_enabled:true,lead_time:'',pickup_instructions:'',
+  cover_image:null,logo_image:null
+}});
+assert.ok((await request('home',{cookie:buyerCookie})).data.products.some(p=>p.id===productId));
+
 // The Supabase Auth service creates/validates a recovery OTP, never Condovery.
 const resetRequested=await request('auth/password/request',{
   method:'POST',body:{email:buyerEmail}
