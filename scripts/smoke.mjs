@@ -98,3 +98,41 @@ await request('admin/users/'+newResident.id,{method:'PATCH',cookie:adminCookie,b
 const googleHome=(await request('home',{cookie:googleSignup.cookie})).data;
 assert.ok(googleHome.categories.length>0);
 console.log('Google verified identity onboarding PASS (provider callback itself requires Google credentials).');
+
+// Backend catalogue and private per-resident favorites.
+const catalog=(await request('catalog?search=bolo&limit=12&page=0',{cookie:buyerCookie})).data;
+assert.ok(catalog.products.some(p=>p.id===productId));
+await request('favorites',{method:'POST',cookie:buyerCookie,body:{product_id:productId}});
+const favoriteResult=(await request('favorites',{cookie:buyerCookie})).data;
+assert.ok(favoriteResult.ids.includes(productId));
+assert.equal(favoriteResult.products.find(p=>p.id===productId).name,'Bolo de cenoura');
+const sellerFavorites=(await request('favorites',{cookie:sellerCookie})).data;
+assert.equal(sellerFavorites.ids.length,0);
+await request('favorites/'+productId,{method:'DELETE',cookie:buyerCookie});
+assert.equal((await request('favorites',{cookie:buyerCookie})).data.ids.length,0);
+
+// Changing an apartment must invalidate tenant approval until an admin checks.
+await request('me',{method:'PATCH',cookie:googleSignup.cookie,
+  body:{name:'Google Resident',phone:'11911111111',tower:'Torre 2',apartment:'202'}});
+await request('home',{cookie:googleSignup.cookie,expected:403});
+await request('admin/users/'+newResident.id,{method:'PATCH',cookie:adminCookie,body:{status:'approved'}});
+await request('home',{cookie:googleSignup.cookie});
+
+// Email recovery token consumption and invalidation of old browser sessions.
+const resetToken=crypto.randomBytes(32).toString('hex');
+const database=new pg.Client({connectionString:process.env.DATABASE_URL});
+await database.connect();
+try{
+  const buyer=(await database.query('SELECT id FROM users WHERE email=$1',[buyerEmail])).rows[0];
+  await database.query(
+    "INSERT INTO password_reset_tokens(token_hash,user_id,expires_at) VALUES($1,$2,now()+interval '30 minutes')",
+    [crypto.createHash('sha256').update(resetToken).digest('hex'),buyer.id]
+  );
+}finally{await database.end();}
+await request('auth/password/confirm',{method:'POST',body:{token:resetToken,password:'NewPassword123!'}});
+await request('home',{cookie:buyerCookie,expected:401});
+await request('auth/password/confirm',{method:'POST',body:{token:resetToken,password:'NewPassword123!'},expected:400});
+const newLogin=await request('auth/login',{method:'POST',body:{email:buyerEmail,password:'NewPassword123!'}});
+assert.ok(newLogin.cookie);
+console.log('Security tests PASS: favorites, catalog, address reapproval and single-use password reset.');
+
