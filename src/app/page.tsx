@@ -22,6 +22,7 @@ type PublicReview={id:string;rating:number;description:string;created_at:string}
 type ReviewSummary={average:number|null;count:number};
 type PublicReviews={summary:ReviewSummary;reviews:PublicReview[]};
 type SellerReview={id:string;order_id:string;order_code:number;rating:number;description:string;status:ReviewStatus;created_at:string;moderated_at:string|null};
+type ContentReport={id:string;target_type:'shop'|'product';target_id:string;target_name:string;reason:string;details:string;status:'open'|'resolved';created_at:string};
 type CartItem={product:Product;quantity:number;note:string};
 type HomeData={categories:Category[];shops:Shop[];products:Product[]};
 type AdminData={residents:{id:string;name:string;email:string;tower:string;apartment:string;status:string}[];shops:{id:string;name:string;owner_name:string;status:string}[];stats:{residents:number;shops:number;orders:number};categories:Category[]};
@@ -164,6 +165,12 @@ export default function Page(){
   const [editingProduct,setEditingProduct]=useState(false);
   const [profile,setProfile]=useState({name:'',phone:'',tower:'',apartment:'',avatar_image:''});
   const [invite,setInvite]=useState('');
+  const [customCode,setCustomCode]=useState('');
+  const [acceptedGuidelines,setAcceptedGuidelines]=useState(false);
+  const [reports,setReports]=useState<ContentReport[]>([]);
+  const [reportTarget,setReportTarget]=useState<{type:'shop'|'product';id:string;name:string}|null>(null);
+  const [reportReason,setReportReason]=useState<'language'|'image'|'inappropriate'|'other'>('image');
+  const [reportDetails,setReportDetails]=useState('');
   const [newCategory,setNewCategory]=useState('');
   const [categoryIcon,setCategoryIcon]=useState('shopping-bag');
 
@@ -206,7 +213,12 @@ export default function Page(){
     const result=await api<{reviews:SellerReview[]}>('shops/mine/reviews');
     setSellerReviews(result.reviews);
   },[]);
-  const loadAdmin=useCallback(async()=>setAdminData(await api<AdminData>('admin/summary')),[]);
+  const loadAdmin=useCallback(async()=>{
+    const [summary,queue]=await Promise.all([
+      api<AdminData>('admin/summary'),api<{reports:ContentReport[]}>('admin/reports')
+    ]);
+    setAdminData(summary);setReports(queue.reports);
+  },[]);
   const refresh=useCallback(async(u:Viewer)=>{
     await Promise.all([loadHome(),loadMine(),loadOrders(),loadFavorites(),...(u.role==='admin'?[loadAdmin()]:[])]);
   },[loadHome,loadMine,loadOrders,loadFavorites,loadAdmin]);
@@ -345,6 +357,7 @@ export default function Page(){
         const response=await api<{viewer:Viewer}>('me');
         setGoogleSignup(null);setViewer(response.viewer);
         setProfile({name:response.viewer.name,phone:response.viewer.phone,tower:response.viewer.tower,apartment:response.viewer.apartment,avatar_image:response.viewer.avatar_image??''});
+        await refresh(response.viewer);
         go('home');
       } else if(authMode==='register'){
         const result=await api<{message:string}>('auth/register',{method:'POST',body:payload(authForm)});
@@ -483,8 +496,8 @@ export default function Page(){
     e.preventDefault();setBusy(true);
     try{
       if(!myShop){
-        await api('shops/mine',{method:'POST',body:payload({name:shopForm.name,description:shopForm.description,whatsapp:shopForm.whatsapp})});
-        notify('Loja enviada para aprovação.');
+        await api('shops/mine',{method:'POST',body:payload({name:shopForm.name,description:shopForm.description,whatsapp:shopForm.whatsapp,accept_guidelines:acceptedGuidelines})});
+        notify('Sua loja está pronta! Adicione seus produtos.');
       }else{
         await api('shops/mine',{method:'PATCH',body:payload({...shopForm,cover_image:shopForm.cover_image||null})});
         notify('Configurações salvas.');
@@ -539,14 +552,37 @@ export default function Page(){
       setNewCategory('');await Promise.all([loadAdmin(),loadHome()]);notify('Categoria criada.');
     }catch(e){fail(e);}finally{setBusy(false);}
   }
-  async function generateInvite(){
-    if(!window.confirm('Gerar um novo convite? O código anterior deixará de funcionar.'))return;
-    setBusy(true);try{const r=await api<{invite:string}>('admin/invite',{method:'POST'});setInvite(r.invite);notify('Novo código gerado. Copie e compartilhe em privado.');}catch(e){fail(e);}finally{setBusy(false);}
+  async function saveInvite(e:React.FormEvent){
+    e.preventDefault();
+    if(!window.confirm('Atualizar código? O código anterior deixará de funcionar.'))return;
+    setBusy(true);
+    try{
+      const r=await api<{invite:string}>('admin/invite',{method:'POST',body:payload({code:customCode.trim()})});
+      setInvite(r.invite);setCustomCode('');notify('Código atualizado. Compartilhe com os moradores.');
+    }catch(e){fail(e);}finally{setBusy(false);}
+  }
+  async function sendReport(e:React.FormEvent){
+    e.preventDefault();if(!reportTarget)return;
+    setBusy(true);
+    try{
+      const result=await api<{message:string}>('reports',{method:'POST',body:payload({
+        target_type:reportTarget.type,target_id:reportTarget.id,reason:reportReason,details:reportDetails.trim()
+      })});
+      setReportTarget(null);setReportDetails('');notify(result.message);
+    }catch(e){fail(e);}finally{setBusy(false);}
+  }
+  async function resolveReport(id:string,action:'dismiss'|'hide_product'|'suspend_shop'){
+    if(action!=='dismiss'&&!window.confirm('Aplicar esta ação ao conteúdo denunciado?'))return;
+    setBusy(true);
+    try{
+      await api('admin/reports/'+id,{method:'PATCH',body:payload({action})});
+      await Promise.all([loadAdmin(),loadHome()]);notify('Denúncia analisada.');
+    }catch(e){fail(e);}finally{setBusy(false);}
   }
   async function saveProfile(e:React.FormEvent){
     e.preventDefault();setBusy(true);try{
       await api('me',{method:'PATCH',body:payload(profile)});
-      const r=await api<{viewer:Viewer}>('me');setViewer(r.viewer);notify(r.viewer.status==='pending'?'Novo endereço enviado para aprovação.':'Perfil atualizado.');
+      const r=await api<{viewer:Viewer}>('me');setViewer(r.viewer);notify('Perfil atualizado.');
     }catch(e){fail(e);}finally{setBusy(false);}
   }
   const bottomNav:[View,React.ElementType,string][]=[['home',Home,'Início'],['categories',LayoutGrid,'Explorar'],['favorites',Heart,'Salvos'],['orders',Receipt,'Pedidos'],['account',UserRound,'Conta']];
@@ -584,7 +620,7 @@ export default function Page(){
       </div>
       <div className="welcome-emoji"><ShoppingBag size={28}/></div>
       <h2>{googleSignup?'Informações do morador':authMode==='login'?'Bem-vindo(a)!':'Cadastrar conta'}</h2>
-      <p>{googleSignup?'Seu e-mail já está confirmado. Informe onde você mora para solicitar acesso.':authMode==='login'?'Acesse sua conta para continuar.':'Crie sua conta e descubra o que seus vizinhos oferecem.'}</p>
+      <p>{googleSignup?'Seu e-mail já está confirmado. Informe os dados do condomínio para entrar.':authMode==='login'?'Acesse sua conta para continuar.':'Crie sua conta e descubra o que seus vizinhos oferecem.'}</p>
       {error&&<div role="alert" className="alert">{error}</div>}
       {toast&&<div className="success-banner">{toast}</div>}
       <form onSubmit={loginOrRegister} className="form-stack">
@@ -593,11 +629,11 @@ export default function Page(){
           <label>WhatsApp<input required type="tel" autoComplete="tel" value={authForm.phone} onChange={e=>setAuthForm(s=>({...s,phone:e.target.value}))} placeholder="(11) 99999-9999"/></label>
           <label>Código de convite<input required value={authForm.invite} onBlur={lookupCondo} onChange={e=>{setCondoLookup(null);setAuthForm(s=>({...s,invite:e.target.value,tower:'' }));}} placeholder="Código fornecido pelo condomínio"/></label>{condoLookup&&<div className="success-banner"><CheckCircle2 size={15}/> {condoLookup.name}</div>}
           <div className="field-grid"><label>Torre<select required disabled={!condoLookup} value={authForm.tower} onChange={e=>setAuthForm(s=>({...s,tower:e.target.value}))}><option value="">Selecione a torre</option>{condoLookup?.towers.map(t=><option key={t} value={t}>{t}</option>)}</select></label><label>Apartamento<input required value={authForm.apartment} onChange={e=>setAuthForm(s=>({...s,apartment:e.target.value}))} placeholder="Ex.: 83"/></label></div>
-          <p className="form-hint">O código de convite identifica seu condomínio; o cadastro precisa ser aprovado pela administração.</p>
+          <p className="form-hint">Com o código do condomínio, você entra sem aguardar aprovação.</p>
         </>}
         <label>E-mail<input required readOnly={Boolean(googleSignup)} type="email" autoComplete="email" value={authForm.email} onChange={e=>setAuthForm(s=>({...s,email:e.target.value}))} placeholder="seuemail@exemplo.com"/></label>
         {!googleSignup&&<label>Senha<input required type="password" minLength={authMode==='register'?10:1} autoComplete={authMode==='register'?'new-password':'current-password'} value={authForm.password} onChange={e=>setAuthForm(s=>({...s,password:e.target.value}))} placeholder={authMode==='register'?'Mínimo de 10 caracteres':'Sua senha'}/></label>}
-        <button className="primary-button" type="submit" disabled={busy}>{busy?'Processando...':authMode==='login'?'Entrar com e-mail':'Enviar para aprovação'}<ArrowRight size={19}/></button>
+        <button className="primary-button" type="submit" disabled={busy}>{busy?'Processando...':authMode==='login'?'Entrar com e-mail':'Criar minha conta'}<ArrowRight size={19}/></button>
       </form>
       {!googleSignup&&googleEnabled&&<>
         <div className="auth-divider"><span>ou continue com</span></div>
@@ -612,8 +648,10 @@ export default function Page(){
     </section>
   </main>;
 
-  if(viewer.status!=='approved')return <main className="pending-screen"><div className="brand">condovery<span>.</span></div><IllustrationSlot className="pending-art" src={artwork.signupPending} alt="Cadastro enviado para aprovação"
-  fallback={<Clock3 size={42}/>}/><h1>Cadastro enviado!</h1><p>Agora é só aguardar a aprovação da administração do condomínio. Assim que seu acesso for liberado, você poderá comprar de seus vizinhos.</p><div className="pending-detail"><Building2 size={20}/><span>{viewer.condominium_name}<br/><strong>{viewer.tower} · Ap. {viewer.apartment}</strong></span></div><button className="outline-button" onClick={()=>window.location.reload()}>Verificar novamente</button><button className="text-button" onClick={logout}>Sair da conta</button></main>;
+  if(viewer.status!=='approved')return <main className="pending-screen"><div className="brand">condovery<span>.</span></div>
+    <div className="pending-art"><ShieldCheck size={42}/></div>
+    <h1>Conta suspensa</h1><p>Procure a administração do condomínio para mais informações.</p>
+    <button className="text-button" onClick={logout}>Sair da conta</button></main>;
 
   return <div className="app-shell">
     <header className="app-header"><div className="header-inner">
@@ -863,22 +901,26 @@ export default function Page(){
           <div className="field-grid"><label>Torre<select value={profile.tower} onChange={e=>setProfile(s=>({...s,tower:e.target.value}))}>{viewer.towers.map(t=><option key={t} value={t}>{t}</option>)}</select></label><label>Apartamento<input required value={profile.apartment} onChange={e=>setProfile(s=>({...s,apartment:e.target.value}))}/></label></div>
           <button type="submit" className="outline-button" disabled={busy}>Salvar meus dados</button>
         </form></div>
-        <div className="account-shortcuts"><button onClick={()=>{loadMine();go('seller');}}><Store size={23}/><span><strong>{myShop?'Minha loja':'Quero vender'}</strong><small>{myShop?'Gerencie produtos e pedidos':'Abra sua lojinha gratuita'}</small></span><ChevronRight/></button>
+        <div className="account-shortcuts"><button onClick={()=>{loadMine();go('seller');}}><Store size={23}/><span><strong>{myShop?'Minha loja':'Quero vender'}</strong><small>{myShop?'Gerencie produtos e pedidos':'Crie sua loja e comece a vender'}</small></span><ChevronRight/></button>
         <button onClick={()=>{loadOrders();go('orders');}}><Receipt size={23}/><span><strong>Meus pedidos</strong><small>Acompanhe suas compras</small></span><ChevronRight/></button>
-        {viewer.role==='admin'&&<button onClick={()=>{loadAdmin();go('admin');}}><ShieldCheck size={23}/><span><strong>Administração</strong><small>Aprovações e configurações</small></span><ChevronRight/></button>}
+        {viewer.role==='admin'&&<button onClick={()=>{loadAdmin();go('admin');}}><ShieldCheck size={23}/><span><strong>Administração</strong><small>Segurança e configurações</small></span><ChevronRight/></button>}
         <button onClick={logout}><LogOut size={23}/><span><strong>Sair</strong><small>Encerrar sessão neste dispositivo</small></span><ChevronRight/></button></div></div>
       </>}
 
       {view==='seller'&&<><button className="back-link" onClick={()=>go('account')}><ArrowLeft size={18}/> Minha conta</button><div className="page-title"><h1>Painel do vendedor</h1><p>Seu negócio, a poucos passos de seus clientes.</p></div>
         {!myShop?<div className="seller-setup white-panel"><IllustrationSlot className="setup-illustration" src={artwork.sellerWelcome}
-  alt="Ilustração para nova loja" fallback={<Store size={38}/>}/><h2>Vamos abrir sua lojinha?</h2><p>Cadastre os dados básicos e a administração vai analisar sua solicitação.</p><form onSubmit={saveShop} className="form-stack">
+  alt="Ilustração para nova loja" fallback={<Store size={38}/>}/><h2>Vamos abrir sua lojinha?</h2><p>Abra sua loja agora. Informe os dados e siga as regras da comunidade.</p><form onSubmit={saveShop} className="form-stack">
           <label>Nome da loja<input required minLength={3} value={shopForm.name} onChange={e=>setShopForm(s=>({...s,name:e.target.value}))} placeholder="Ex.: Bolos da Gabi"/></label>
           <label>O que você vende?<textarea maxLength={500} value={shopForm.description} onChange={e=>setShopForm(s=>({...s,description:e.target.value}))} rows={3} placeholder="Conte um pouco sobre seus produtos"/></label>
           <label>WhatsApp para pedidos<input required type="tel" value={shopForm.whatsapp} onChange={e=>setShopForm(s=>({...s,whatsapp:e.target.value}))} placeholder="(19) 99999-9999"/></label>
           <button type="button" className="outline-button" onClick={testShopWhatsApp}>
             <MessageCircle size={17}/> Testar WhatsApp</button>
           <p className="form-hint">Confira se a conversa abre no número correto. Não enviamos mensagens automaticamente.</p>
-          <button className="primary-button" disabled={busy} type="submit">Solicitar abertura <ArrowRight size={18}/></button>
+          <label className="community-agreement">
+            <input type="checkbox" required checked={acceptedGuidelines} onChange={e=>setAcceptedGuidelines(e.target.checked)}/>
+            <span>Vou usar palavras respeitosas, imagens adequadas e anunciar somente produtos e serviços permitidos.</span>
+          </label>
+          <button className="primary-button" disabled={busy||!acceptedGuidelines} type="submit">Criar minha loja <ArrowRight size={18}/></button>
         </form></div>:<>
           <div className="seller-overview"><div><strong>{myShop.name}</strong><p>Seu painel de vendas</p></div>
             <div className="seller-overview-actions">
@@ -888,9 +930,9 @@ export default function Page(){
             </div></div>
           <div className={'seller-activation'+(myShop.status==='approved'?' approved':myShop.status==='suspended'?' suspended':'')}>
             <div className="activation-symbol">{myShop.status==='approved'?<CheckCircle2 size={28}/>:<Clock3 size={28}/>}</div>
-            <div><strong>{myShop.status==='approved'?'Loja aprovada!':myShop.status==='suspended'?'Loja suspensa':'Cadastro enviado!'}</strong>
+            <div><strong>{myShop.status==='approved'?'Sua loja está ativa!':myShop.status==='suspended'?'Loja suspensa':'Ativando sua loja'}</strong>
               <p>{myShop.status==='approved'?(myProducts.length?'Sua loja está pronta para receber pedidos.':'Agora adicione seus produtos para começar a vender.'):
-                myShop.status==='suspended'?'Fale com a administração do condomínio.':'Aguardando aprovação do condomínio.'}</p>
+                myShop.status==='suspended'?'Fale com a administração do condomínio.':'Sua loja ficará disponível automaticamente.'}</p>
             </div>
           </div>
           {myShop.status==='pending'&&<div className="seller-activation-help">
@@ -1000,15 +1042,27 @@ export default function Page(){
       </>}
 
       {view==='admin'&&viewer.role==='admin'&&<><button className="back-link" onClick={()=>go('account')}><ArrowLeft size={18}/> Minha conta</button><div className="page-title"><h1>Administração do condomínio</h1><p>Gerencie moradores, lojas e categorias da sua comunidade.</p></div>
-        {adminData?<><div className="admin-stats"><div><strong>{adminData.stats.residents}</strong><span>Moradores aprovados</span></div><div><strong>{adminData.stats.shops}</strong><span>Lojas ativas</span></div><div><strong>{adminData.stats.orders}</strong><span>Pedidos criados</span></div></div>
-        <section className="admin-section"><SectionHeader title="Moradores pendentes e cadastrados"/>
-          {adminData.residents.length?adminData.residents.map(r=><div className="admin-row" key={r.id}><div><strong>{r.name}</strong><p>{r.email} · {r.tower} / {r.apartment}</p><Pill tone={r.status==='approved'?'green':'orange'}>{statusLabel[r.status]}</Pill></div><div className="inline-actions">{r.status!=='approved'&&<button disabled={busy} onClick={()=>adminAction('users',r.id,'approved')}>Aprovar</button>}{r.status!=='suspended'&&<button disabled={busy} className="danger-text" onClick={()=>adminAction('users',r.id,'suspended')}>Suspender</button>}</div></div>):<p className="muted">Nenhum morador cadastrado ainda.</p>}</section>
-        <section className="admin-section"><SectionHeader title="Lojas"/>{adminData.shops.length?adminData.shops.map(s=><div className="admin-row" key={s.id}><div><strong>{s.name}</strong><p>Responsável: {s.owner_name}</p><Pill tone={s.status==='approved'?'green':'orange'}>{statusLabel[s.status]}</Pill></div><div className="inline-actions">{s.status!=='approved'&&<button disabled={busy} onClick={()=>adminAction('shops',s.id,'approved')}>Aprovar</button>}{s.status!=='suspended'&&<button disabled={busy} className="danger-text" onClick={()=>adminAction('shops',s.id,'suspended')}>Suspender</button>}</div></div>):<p className="muted">Nenhuma loja cadastrada.</p>}</section>
+        {adminData?<><div className="admin-stats"><div><strong>{adminData.stats.residents}</strong><span>Moradores ativos</span></div><div><strong>{adminData.stats.shops}</strong><span>Lojas ativas</span></div><div><strong>{adminData.stats.orders}</strong><span>Pedidos criados</span></div></div>
+        <section className="admin-section"><SectionHeader title="Moradores cadastrados"/>
+          {adminData.residents.length?adminData.residents.map(r=><div className="admin-row" key={r.id}><div><strong>{r.name}</strong><p>{r.email} · {r.tower} / {r.apartment}</p><Pill tone={r.status==='approved'?'green':'orange'}>{statusLabel[r.status]}</Pill></div><div className="inline-actions">{r.status==='suspended'&&<button disabled={busy} onClick={()=>adminAction('users',r.id,'approved')}>Reativar</button>}{r.status!=='suspended'&&<button disabled={busy} className="danger-text" onClick={()=>adminAction('users',r.id,'suspended')}>Suspender</button>}</div></div>):<p className="muted">Nenhum morador cadastrado ainda.</p>}</section>
+        <section className="admin-section"><SectionHeader title="Lojas"/>{adminData.shops.length?adminData.shops.map(s=><div className="admin-row" key={s.id}><div><strong>{s.name}</strong><p>Responsável: {s.owner_name}</p><Pill tone={s.status==='approved'?'green':'orange'}>{statusLabel[s.status]}</Pill></div><div className="inline-actions">{s.status==='suspended'&&<button disabled={busy} onClick={()=>adminAction('shops',s.id,'approved')}>Reativar</button>}{s.status!=='suspended'&&<button disabled={busy} className="danger-text" onClick={()=>adminAction('shops',s.id,'suspended')}>Suspender</button>}</div></div>):<p className="muted">Nenhuma loja cadastrada.</p>}</section>
         <section className="admin-section white-panel"><h2><LayoutGrid size={20}/> Categorias</h2><div className="filter-chips">{adminData.categories.map(c=><span className="category-tag" key={c.id}>{c.name}</span>)}</div><form className="admin-category-form" onSubmit={createCategory}><input required minLength={2} maxLength={60} value={newCategory} onChange={e=>setNewCategory(e.target.value)} placeholder="Nova categoria"/><select value={categoryIcon} onChange={e=>setCategoryIcon(e.target.value)} aria-label="Ícone"><option value="shopping-bag">Compras</option><option value="cake-slice">Bolos</option><option value="sandwich">Alimentos</option><option value="coffee">Bebidas</option><option value="shirt">Moda</option><option value="sparkles">Beleza</option><option value="gift">Presentes</option><option value="pizza">Lanches</option>
 <option value="ice-cream-cone">Sobremesas</option><option value="shopping-basket">Mercadinho</option>
 <option value="wrench">Serviços</option><option value="heart-pulse">Saúde</option>
 <option value="house">Casa</option><option value="smartphone">Eletrônicos</option></select><button className="outline-button" disabled={busy} type="submit"><Plus size={16}/>Adicionar</button></form></section>
-        <section className="admin-section white-panel"><h2><ShieldCheck size={20}/> Convite do condomínio</h2><p>Novos moradores precisam de um convite e aprovação manual para acessar o marketplace.</p><button className="outline-button" disabled={busy} onClick={generateInvite}>Gerar novo convite</button>{invite&&<div className="invite-code"><code>{invite}</code><button onClick={()=>{navigator.clipboard.writeText(invite).then(()=>notify('Convite copiado.')).catch(fail);}}>Copiar</button></div>}<small>Ao gerar novo código, o anterior deixa de valer. Compartilhe apenas com moradores.</small></section>
+        <section className="admin-section white-panel">
+  <h2><ShieldCheck size={20}/> Código do condomínio</h2>
+  <p>Você escolhe o código. Quem o informar pode entrar após confirmar o e-mail.</p>
+  <form className="form-stack" onSubmit={saveInvite}>
+    <label>Novo código<input required minLength={10} maxLength={40}
+      pattern="[A-Za-z0-9-]+" value={customCode} placeholder="Ex.: JARDIM-CAJU-2026"
+      onChange={e=>setCustomCode(e.target.value)}/></label>
+    <button className="outline-button" disabled={busy} type="submit">Salvar código</button>
+  </form>
+  {invite&&<div className="invite-code"><code>{invite}</code>
+    <button onClick={()=>navigator.clipboard.writeText(invite).then(()=>notify('Código copiado.')).catch(fail)}>Copiar</button></div>}
+  <small>O código anterior deixa de funcionar quando você salva outro. Compartilhe somente com moradores.</small>
+</section>
         </>:<Empty title="Carregando administração" subtitle="Confira sua conexão e tente novamente." action="Recarregar" onAction={()=>loadAdmin().catch(fail)}/>}
       </>}
     </main>
