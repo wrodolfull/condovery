@@ -182,6 +182,9 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
         [tokenHash(pending!)]
       );
       if(!waiting.rowCount)bad('Cadastro Google expirado. Entre novamente.',401);
+      const deleting=await tx.query('SELECT 1 FROM account_deletion_jobs WHERE email_hash=$1 AND finished_at IS NULL',
+        [crypto.createHash('sha256').update(waiting.rows[0].email).digest('hex')]);
+      if(deleting.rowCount)bad('A exclusão anterior ainda está em processamento.',409);
       const linked=await tx.query('SELECT id FROM users WHERE email=$1 OR google_auth_user_id=$2',
         [waiting.rows[0].email,waiting.rows[0].google_auth_user_id]);
       if(linked.rowCount)bad('E-mail já cadastrado. Entre com o Google novamente.',409);
@@ -270,6 +273,10 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
   if(path==='auth/register'&&method==='POST'){
     if(!emailConfigured())bad('Cadastro por e-mail não configurado.',503);
     const b=signup.parse(await body(req));
+    const reRegHash=crypto.createHash('sha256').update(b.email).digest('hex');
+    const deleting=await query('SELECT 1 FROM account_deletion_jobs WHERE email_hash=$1 AND finished_at IS NULL',
+      [reRegHash]);
+    if(deleting.rowCount)bad('A exclusão anterior deste e-mail ainda está em processamento.',409);
     const condo=await query(
       "SELECT id,towers FROM condominiums WHERE invite_code_hash=$1 AND is_active=true",
       [inviteHash(b.invite)]
