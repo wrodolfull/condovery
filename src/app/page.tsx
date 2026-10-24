@@ -1,6 +1,8 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import {IllustrationSlot} from '@/components/IllustrationSlot';
+import {artwork,getCategoryArtwork} from '@/lib/artwork';
 import {
   ArrowLeft, ArrowRight, Bell, Building2, CakeSlice, Check, CheckCircle2, ChevronDown, ChevronRight,
   CircleHelp, Clock3, Coffee, Gift, Heart, Home, ImagePlus, LayoutGrid, LogOut, MapPin,
@@ -21,6 +23,14 @@ const money=(n:number)=>new Intl.NumberFormat('pt-BR',{style:'currency',currency
 const price=(p:Product)=>p.promo_price_cents??p.price_cents;
 const statusLabel:Record<string,string>={awaiting_confirmation:'Aguardando confirmação',confirmed:'Confirmado',completed:'Concluído',cancelled:'Cancelado',pending:'Em análise',approved:'Aprovado',suspended:'Suspenso'};
 const emptyHome:HomeData={categories:[],shops:[],products:[]};
+type OrderFilter='all'|'awaiting_confirmation'|'confirmed'|'completed'|'cancelled';
+const orderFilters:{key:OrderFilter;label:string}[]=[
+  {key:'all',label:'Todos'},
+  {key:'awaiting_confirmation',label:'Criados'},
+  {key:'confirmed',label:'Confirmados'},
+  {key:'completed',label:'Concluídos'},
+  {key:'cancelled',label:'Cancelados'}
+];
 
 async function api<T>(url:string,opts:RequestInit={}):Promise<T>{
   const res=await fetch('/api/'+url,{credentials:'same-origin',...opts,headers:{...(opts.body instanceof FormData?{}:{'Content-Type':'application/json'}),...opts.headers}});
@@ -50,8 +60,15 @@ function Pill({children,tone='neutral'}:{children:React.ReactNode;tone?:'neutral
 function SectionHeader({title,action,onAction}:{title:string;action?:string;onAction?:()=>void}){
   return <div className="section-heading"><h2>{title}</h2>{action&&<button className="quiet-link" onClick={onAction}>{action}<ChevronRight size={15}/></button>}</div>;
 }
-function Empty({title,subtitle,action,onAction}:{title:string;subtitle:string;action?:string;onAction?:()=>void}){
-  return <div className="empty-state"><div className="empty-icon"><ShoppingBasket size={35}/></div><h3>{title}</h3><p>{subtitle}</p>{action&&<button className="outline-button" onClick={onAction}>{action}</button>}</div>;
+function CategoryArtwork({category}:{category:Category}){
+  return <IllustrationSlot className="category-art" src={getCategoryArtwork(category.name,category.icon)}
+    alt={'Categoria '+category.name} fit="contain"
+    fallback={<CategorySymbol name={category.name} icon={category.icon}/>}/>;
+}
+function Empty({title,subtitle,action,onAction,art='emptyProducts'}:{title:string;subtitle:string;action?:string;onAction?:()=>void;art?:'emptyProducts'|'emptyShops'|'emptyOrders'|'emptyFavorites'}){
+  return <div className="empty-state"><IllustrationSlot className="empty-art" src={artwork[art]} alt={title}
+    fallback={<ShoppingBasket size={35}/>}/><h3>{title}</h3><p>{subtitle}</p>
+    {action&&<button className="outline-button" onClick={onAction}>{action}</button>}</div>;
 }
 function OrderProgress({status}:{status:string}) {
   if(status==='cancelled')return <p className="order-progress-note">Este pedido foi cancelado. Consulte a loja pelo WhatsApp para esclarecer dúvidas.</p>;
@@ -115,6 +132,8 @@ export default function Page(){
   const [checkoutNote,setCheckoutNote]=useState('');
   const [lastOrder,setLastOrder]=useState<{code:number;whatsapp_url:string}|null>(null);
   const [orders,setOrders]=useState<Order[]>([]);
+  const [orderFilter,setOrderFilter]=useState<OrderFilter>('all');
+  const [ordersLoading,setOrdersLoading]=useState(false);
   const [sellerOrders,setSellerOrders]=useState<Order[]>([]);
   const [myShop,setMyShop]=useState<Shop|null>(null);
   const [myProducts,setMyProducts]=useState<Product[]>([]);
@@ -145,8 +164,10 @@ export default function Page(){
       lead_time:data.shop.lead_time??'',pickup_instructions:data.shop.pickup_instructions??'',cover_image:data.shop.cover_image??''
     });
   },[]);
-  const loadOrders=useCallback(async()=>{
-    const result=await api<{orders:Order[]}>('orders');setOrders(result.orders);
+  const loadOrders=useCallback(async(filter:OrderFilter='all')=>{
+    const search=filter==='all'?'':'?status='+encodeURIComponent(filter);
+    const result=await api<{orders:Order[]}>('orders'+search);
+    setOrders(result.orders);
   },[]);
   const loadSellerOrders=useCallback(async()=>{
     const result=await api<{orders:Order[]}>('orders?scope=seller');setSellerOrders(result.orders);
@@ -199,6 +220,14 @@ export default function Page(){
   useEffect(()=>{try{window.localStorage.setItem('condovery_cart',JSON.stringify(cart));}catch{}},[cart]);
   useEffect(()=>{if(!toast)return;const timer=setTimeout(()=>setToast(''),4000);return()=>clearTimeout(timer);},[toast]);
   useEffect(()=>{if(view==='seller'&&myShop?.status==='approved')loadSellerOrders().catch(fail);},[view,myShop?.status,loadSellerOrders]);
+  useEffect(()=>{
+    if(view!=='orders'||viewer?.status!=='approved')return;
+    let active=true;
+    setOrdersLoading(true);
+    loadOrders(orderFilter).catch(e=>{if(active)fail(e);})
+      .finally(()=>{if(active)setOrdersLoading(false);});
+    return()=>{active=false;};
+  },[view,orderFilter,viewer?.status,loadOrders]);
   useEffect(()=>{setCatalogPage(0);setCatalogProducts([]);},[query,category]);
   useEffect(()=>{
     if(!viewer||viewer.status!=='approved'||(view!=='home'&&view!=='categories'))return;
@@ -391,10 +420,12 @@ export default function Page(){
 
   if(loading)return <main className="loading-page"><div className="spinner"/><strong>condovery.</strong><span>Preparando sua vizinhança</span></main>;
   if(!viewer&&(authMode==='recover'||authMode==='reset'))return <main className="auth-layout">
-    <div className="auth-aside"><div className="auth-logo">condovery<span>.</span></div><div className="auth-art"><img src="/hero.svg" alt="Lojinha de condomínio"/></div><h1>Seu condomínio mais perto de você!</h1><p>Produtos, comida e serviços dos seus vizinhos, com tudo organizado em um só lugar.</p></div>
+    <div className="auth-aside"><div className="auth-logo">condovery<span>.</span></div><IllustrationSlot className="auth-art" src={artwork.recoverPassword} alt="Ilustração de recuperação de acesso" eager fallback={<img src="/hero.svg" alt=""/>}/><h1>Seu condomínio mais perto de você!</h1><p>Produtos, comida e serviços dos seus vizinhos, com tudo organizado em um só lugar.</p></div>
     <section className="auth-card">
       <div className="auth-mobile-logo">condovery<span>.</span></div>
-      <div className="welcome-emoji"><ShieldCheck size={28}/></div>
+      <IllustrationSlot className="auth-state-art" src={authMode==='recover'?artwork.recoverPassword:artwork.resetPassword}
+  alt={authMode==='recover'?'Recuperar senha':'Criar uma nova senha'}
+  fallback={<ShieldCheck size={34}/>}/>
       <h2>{authMode==='recover'?'Recuperar senha':'Criar nova senha'}</h2>
       <p>{authMode==='recover'?'Informe seu e-mail para receber o link de recuperação.':'Escolha uma nova senha para continuar no Condovery.'}</p>
       {error&&<div className="alert" role="alert">{error}</div>}
@@ -408,7 +439,7 @@ export default function Page(){
     </section>
   </main>;
   if(!viewer)return <main className="auth-layout">
-    <div className="auth-aside"><div className="auth-logo">condovery<span>.</span></div><div className="auth-art"><img src="/hero.svg" alt="Ilustração de uma lojinha de bairro"/></div><h1>Seu condomínio mais perto de você!</h1><p>Compre dos seus vizinhos. Apoie comércios locais. Receba no seu condomínio.</p></div>
+    <div className="auth-aside"><div className="auth-logo">condovery<span>.</span></div><IllustrationSlot className="auth-art" src={artwork.login} alt="Ilustração de boas-vindas do Condovery" eager fallback={<img src="/hero.svg" alt=""/>}/><h1>Seu condomínio mais perto de você!</h1><p>Compre dos seus vizinhos. Apoie comércios locais. Receba no seu condomínio.</p></div>
     <section className="auth-card">
       <div className="auth-mobile-logo">condovery<span>.</span></div>
       <div className="auth-mobile-intro" aria-label="O seu condomínio em um só lugar">
@@ -416,7 +447,7 @@ export default function Page(){
           <strong>Seu condomínio mais perto de você!</strong>
           <small>Compre dos seus vizinhos, apoie comércios locais e receba no condomínio.</small>
         </div>
-        <img src="/hero.svg" alt="" aria-hidden="true"/>
+        <IllustrationSlot className="auth-mobile-art" src={artwork.login} alt="Ilustração de boas-vindas" eager fallback={<img src="/hero.svg" alt=""/>}/>
       </div>
       <div className="welcome-emoji"><ShoppingBag size={28}/></div>
       <h2>{googleSignup?'Informações do morador':authMode==='login'?'Bem-vindo(a)!':'Cadastrar conta'}</h2>
@@ -448,7 +479,8 @@ export default function Page(){
     </section>
   </main>;
 
-  if(viewer.status!=='approved')return <main className="pending-screen"><div className="brand">condovery<span>.</span></div><div className="pending-icon"><Clock3 size={42}/></div><h1>Cadastro enviado!</h1><p>Agora é só aguardar a aprovação da administração do condomínio. Assim que seu acesso for liberado, você poderá comprar de seus vizinhos.</p><div className="pending-detail"><Building2 size={20}/><span>{viewer.condominium_name}<br/><strong>{viewer.tower} · Ap. {viewer.apartment}</strong></span></div><button className="outline-button" onClick={()=>window.location.reload()}>Verificar novamente</button><button className="text-button" onClick={logout}>Sair da conta</button></main>;
+  if(viewer.status!=='approved')return <main className="pending-screen"><div className="brand">condovery<span>.</span></div><IllustrationSlot className="pending-art" src={artwork.signupPending} alt="Cadastro enviado para aprovação"
+  fallback={<Clock3 size={42}/>}/><h1>Cadastro enviado!</h1><p>Agora é só aguardar a aprovação da administração do condomínio. Assim que seu acesso for liberado, você poderá comprar de seus vizinhos.</p><div className="pending-detail"><Building2 size={20}/><span>{viewer.condominium_name}<br/><strong>{viewer.tower} · Ap. {viewer.apartment}</strong></span></div><button className="outline-button" onClick={()=>window.location.reload()}>Verificar novamente</button><button className="text-button" onClick={logout}>Sair da conta</button></main>;
 
   return <div className="app-shell">
     <header className="app-header"><div className="header-inner">
@@ -468,12 +500,34 @@ export default function Page(){
       {view==='home'&&<>
         <div className="hello-row"><div><p>Olá, {viewer.name.split(' ')[0]}! <span className="wave">✳</span></p><h1>Seu condomínio mais perto de você!</h1></div><div className="hello-bag"><ShoppingBasket size={27}/></div></div>
         <div className="search-container"><Search size={20}/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Busque produtos ou lojas..." aria-label="Buscar produtos ou lojas"/>{query&&<button onClick={()=>setQuery('')} aria-label="Limpar busca"><X size={16}/></button>}</div>
-        {!query&&<section className="hero-banner"><div className="hero-copy"><span className="eyebrow">TUDO DE BOM MORA AQUI</span><h2>Descubra o melhor <em>da sua vizinhança.</em></h2><p>Produtos, comida e serviços de quem mora pertinho de você.</p><button onClick={()=>go('categories')}>Começar a explorar <ArrowRight size={17}/></button></div><img src="/hero.svg" alt="Ilustração de uma lojinha" /></section>}
+        {!query&&<section className="hero-banner"><div className="hero-copy">
+  <span className="eyebrow">TUDO DE BOM MORA AQUI</span>
+  <h2>Descubra o melhor <em>da sua vizinhança.</em></h2>
+  <p>Produtos, comida e serviços de quem mora pertinho de você.</p>
+  <IllustrationSlot className="hero-art" src={artwork.homeHero} alt="Produtos e serviços do condomínio" eager
+    fallback={<img src="/hero.svg" alt=""/>}/>
+  <button onClick={()=>{setCategory('');go('categories');}}>Começar a explorar <ArrowRight size={17}/></button>
+  </div></section>}
         <SectionHeader title="Descubra o que tem por aqui" action="Ver categorias" onAction={()=>go('categories')}/>
-        <div className="category-track">
-          {home.categories.map(c=><button key={c.id} className="category-card" onClick={()=>{setCategory(c.id);go('categories');}}><div><CategorySymbol name={c.name} icon={c.icon}/></div><span>{c.name}</span></button>)}
+        <div className="category-track" aria-label="Categorias">
+          {home.categories.map(c=><button key={c.id} className="category-card" onClick={()=>{setCategory(c.id);go('categories');}}>
+            <CategoryArtwork category={c}/><span>{c.name}</span></button>)}
         </div>
-        {!query&&featured.length>0&&<><SectionHeader title="Ofertas da semana" action="Ver tudo" onAction={()=>go('categories')}/><div className="product-track">{featured.map(p=><ProductCard key={p.id} p={p} onClick={()=>openProduct(p)} favorite={favoriteIds.includes(p.id)} onFavorite={toggleFavorite}/>)}</div></>}
+        {!query&&<>
+          <section className="weekly-offer-banner">
+            <div className="weekly-offer-copy">
+              <span className="eyebrow">ACHADINHOS DA VIZINHANÇA</span>
+              <h2>Ofertas da semana</h2>
+              <p>Confira o que seus vizinhos prepararam por aqui.</p>
+              <button onClick={()=>{setCategory('');go('categories');}}>Conferir agora <ArrowRight size={17}/></button>
+            </div>
+            <IllustrationSlot className="weekly-offer-art" src={artwork.weeklyOffers}
+              alt="Arte promocional das ofertas da semana"
+              fallback={<Tag size={54} strokeWidth={1.2}/>}/>
+          </section>
+          {featured.length>0&&<><SectionHeader title="Produtos em destaque" action="Explorar" onAction={()=>go('categories')}/>
+            <div className="product-track">{featured.map(p=><ProductCard key={p.id} p={p} onClick={()=>openProduct(p)} favorite={favoriteIds.includes(p.id)} onFavorite={toggleFavorite}/>)}</div></>}
+        </>}
         <SectionHeader title={query?'Resultados da busca':'Feito pelos seus vizinhos'} action={!query?'Ver produtos':undefined} onAction={()=>go('categories')}/>
         {filtered.length?<div className="product-grid">{(query?filtered:newest).map(p=><ProductCard key={p.id} p={p} onClick={()=>openProduct(p)} favorite={favoriteIds.includes(p.id)} onFavorite={toggleFavorite}/>)}</div>
           :<Empty title={query?'Nada por aqui ainda':'A vitrine está começando!'} subtitle={query?'Tente outro termo ou explore as categorias.':'As primeiras lojas e produtos vão aparecer aqui assim que forem aprovados.'} action={!query?'Quero vender':undefined} onAction={()=>go('seller')}/>}
@@ -484,13 +538,23 @@ export default function Page(){
           <div className="shops-list">{home.shops.length?home.shops.slice(0,8).map(s=><button className="shop-row" key={s.id} onClick={()=>openShop(s.id)}>
             <div className="shop-logo">{s.cover_image?<img src={s.cover_image} alt=""/>:<Store size={27}/>}</div>
             <div><strong>{s.name}</strong><p>{s.description||'Conheça os produtos dessa loja'}</p><span className={'open-hint'+(!s.is_open?' closed':'')}><span/> {s.is_open?'Aceitando pedidos':'Pausada'}</span></div><ChevronRight size={20}/></button>):
-            <Empty title="Nenhuma loja publicada" subtitle="Seja a primeira pessoa a abrir uma loja no condomínio." action="Criar minha loja" onAction={()=>go('seller')}/>}</div>
+            <Empty art="emptyShops" title="Nenhuma loja publicada" subtitle="Seja a primeira pessoa a abrir uma loja no condomínio." action="Criar minha loja" onAction={()=>go('seller')}/>}</div>
         </>}
       </>}
 
       {view==='categories'&&<>
         <div className="page-title"><h1>Explorar</h1><p>Descubra produtos, comida e serviços oferecidos por seus vizinhos.</p></div>
         <div className="search-container"><Search size={20}/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Buscar por produto ou loja" aria-label="Buscar"/>{query&&<button onClick={()=>setQuery('')}><X size={16}/></button>}</div>
+        <div className="category-track explore-category-track" aria-label="Explorar por categoria">
+          <button className={'category-card'+(!category?' selected':'')} onClick={()=>setCategory('')} aria-pressed={!category}>
+            <IllustrationSlot className="category-art" src={artwork.categoryAll} alt="Todas as categorias"
+              fallback={<LayoutGrid size={25}/>}/><span>Todos</span>
+          </button>
+          {home.categories.map(c=><button key={c.id} className={'category-card'+(category===c.id?' selected':'')}
+            onClick={()=>setCategory(c.id)} aria-pressed={category===c.id}>
+              <CategoryArtwork category={c}/><span>{c.name}</span>
+            </button>)}
+        </div>
         <div className="filter-chips"><button className={!category?'chosen':''} onClick={()=>setCategory('')}>Todos</button>{home.categories.map(c=><button key={c.id} className={category===c.id?'chosen':''} onClick={()=>setCategory(c.id)}>{c.name}</button>)}</div>
         <SectionHeader title={categoryName??'Produtos dos vizinhos'}/>
         {filtered.length?<div className="product-grid">{filtered.map(p=><ProductCard key={p.id} p={p} onClick={()=>openProduct(p)} favorite={favoriteIds.includes(p.id)} onFavorite={toggleFavorite}/>)}</div>:
@@ -555,7 +619,8 @@ export default function Page(){
         </aside></div>}
       </>}
 
-      {view==='success'&&lastOrder&&<div className="success-page"><div className="success-icon"><Check size={44}/></div><Pill tone="green">Pedido registrado</Pill><h1>Seu pedido foi registrado!</h1><p>Seu pedido <strong>#{lastOrder.code}</strong> foi criado. Envie a mensagem para o vendedor pelo WhatsApp para combinar disponibilidade, entrega e pagamento.</p>
+      {view==='success'&&lastOrder&&<div className="success-page"><IllustrationSlot className="success-art" src={artwork.orderSuccess} alt="Pedido registrado com sucesso"
+  fallback={<Check size={44}/>}/><Pill tone="green">Pedido registrado</Pill><h1>Seu pedido foi registrado!</h1><p>Seu pedido <strong>#{lastOrder.code}</strong> foi criado. Envie a mensagem para o vendedor pelo WhatsApp para combinar disponibilidade, entrega e pagamento.</p>
         <a className="primary-button" href={lastOrder.whatsapp_url} target="_blank" rel="noopener noreferrer">Abrir conversa no WhatsApp <ArrowRight size={18}/></a>
         <button className="outline-button" onClick={()=>{loadOrders();go('orders');}}>Acompanhar meus pedidos</button><small>Abrir o WhatsApp não significa que o vendedor recebeu ou confirmou o pedido.</small></div>}
 
@@ -563,14 +628,33 @@ export default function Page(){
         <div className="page-title"><h1>Meus favoritos</h1><p>Seus produtos preferidos, sempre à mão.</p></div>
         {favoriteProducts.length?<div className="product-grid">{favoriteProducts.map(p=>
           <ProductCard key={p.id} p={p} onClick={()=>openProduct(p)} favorite={favoriteIds.includes(p.id)} onFavorite={toggleFavorite}/>
-        )}</div>:<Empty title="Nenhum favorito por enquanto" subtitle="Toque no coração de um produto para encontrá-lo facilmente depois." action="Explorar produtos" onAction={()=>go('categories')}/>}
+        )}</div>:<Empty art="emptyFavorites" title="Nenhum favorito por enquanto" subtitle="Toque no coração de um produto para encontrá-lo facilmente depois." action="Explorar produtos" onAction={()=>go('categories')}/>}
       </>}
-            {view==='orders'&&<><div className="page-title"><h1>Meus pedidos</h1><p>Seu histórico de compras com os vizinhos.</p></div>
-        {!orders.length?<Empty title="Ainda não fez pedidos?" subtitle="Encontre algo gostoso ou útil vendido pertinho de você." action="Começar a comprar" onAction={()=>go('home')}/>:
-        <div className="order-list">{orders.map(o=><article className="order-card" key={o.id}><div className="order-top"><strong>#{o.code} · {o.shop_name}</strong><Pill tone={o.status==='completed'?'green':o.status==='cancelled'?'neutral':'orange'}>{statusLabel[o.status]??o.status}</Pill></div><p>{o.items.map(i=>i.quantity+'× '+i.name).join(' · ')}</p><OrderProgress status={o.status}/><div className="order-bottom"><small>{new Date(o.created_at).toLocaleDateString('pt-BR')} · {o.fulfillment==='delivery'?'Entrega':'Retirada'}</small><strong>{money(o.total_cents)}</strong></div></article>)}</div>}</>}
+            {view==='orders'&&<>
+        <div className="page-title"><h1>Meus pedidos</h1><p>Acompanhe seus pedidos com os vizinhos.</p></div>
+        <div className="order-filters" role="group" aria-label="Filtrar pedidos por situação">
+          {orderFilters.map(option=><button key={option.key} type="button"
+            aria-pressed={orderFilter===option.key}
+            className={orderFilter===option.key?'selected':''}
+            onClick={()=>setOrderFilter(option.key)}>{option.label}</button>)}
+        </div>
+        {ordersLoading?<div className="loading-inline"><div className="spinner"/> Consultando pedidos...</div>:
+        orders.length?<div className="order-list">{orders.map(o=><article className="order-card" key={o.id}>
+          <div className="order-top"><strong>#{o.code} · {o.shop_name}</strong>
+            <Pill tone={o.status==='completed'?'green':o.status==='cancelled'?'neutral':'orange'}>{statusLabel[o.status]??o.status}</Pill></div>
+          <p>{o.items.map(i=>i.quantity+'× '+i.name).join(' · ')}</p><OrderProgress status={o.status}/>
+          <div className="order-bottom"><small>{new Date(o.created_at).toLocaleDateString('pt-BR')} · {o.fulfillment==='delivery'?'Entrega':'Retirada'}</small><strong>{money(o.total_cents)}</strong></div>
+        </article>)}</div>:
+        <Empty art="emptyOrders" title={orderFilter==='all'?'Ainda não fez pedidos?':'Nenhum pedido neste filtro'}
+          subtitle={orderFilter==='all'?'Encontre algo gostoso ou útil vendido pertinho de você.':'Experimente outra situação para consultar seus pedidos.'}
+          action={orderFilter==='all'?'Começar a comprar':'Ver todos'}
+          onAction={()=>{if(orderFilter!=='all')setOrderFilter('all');else go('home');}}/>}
+      </>}
 
       {view==='account'&&<><div className="page-title"><h1>Meu perfil</h1><p>Seu endereço, seus pedidos e tudo sobre sua conta.</p></div>
-        <div className="account-grid"><div className="white-panel"><div className="account-welcome"><div className="avatar">{viewer.name[0]}</div><div><strong>{viewer.name}</strong><p>{viewer.email}</p></div></div><form onSubmit={saveProfile} className="form-stack">
+        <div className="account-grid"><div className="white-panel"><div className="account-welcome"><IllustrationSlot className="account-approved-art"
+  src={artwork.accountApproved} alt="Conta de morador aprovada"
+  fallback={<CheckCircle2 size={23}/>}/><div className="avatar">{viewer.name[0]}</div><div><strong>{viewer.name}</strong><p>{viewer.email}</p></div></div><form onSubmit={saveProfile} className="form-stack">
           <label>Nome<input required value={profile.name} onChange={e=>setProfile(s=>({...s,name:e.target.value}))}/></label>
           <label>WhatsApp<input required type="tel" value={profile.phone} onChange={e=>setProfile(s=>({...s,phone:e.target.value}))}/></label>
           <div className="field-grid"><label>Torre<select value={profile.tower} onChange={e=>setProfile(s=>({...s,tower:e.target.value}))}>{viewer.towers.map(t=><option key={t} value={t}>{t}</option>)}</select></label><label>Apartamento<input required value={profile.apartment} onChange={e=>setProfile(s=>({...s,apartment:e.target.value}))}/></label></div>
@@ -583,7 +667,8 @@ export default function Page(){
       </>}
 
       {view==='seller'&&<><button className="back-link" onClick={()=>go('account')}><ArrowLeft size={18}/> Minha conta</button><div className="page-title"><h1>Painel do vendedor</h1><p>Seu negócio, a poucos passos de seus clientes.</p></div>
-        {!myShop?<div className="seller-setup white-panel"><div className="setup-illustration"><Store size={38}/></div><h2>Vamos abrir sua lojinha?</h2><p>Cadastre os dados básicos e a administração vai analisar sua solicitação.</p><form onSubmit={saveShop} className="form-stack">
+        {!myShop?<div className="seller-setup white-panel"><IllustrationSlot className="setup-illustration" src={artwork.sellerWelcome}
+  alt="Ilustração para nova loja" fallback={<Store size={38}/>}/><h2>Vamos abrir sua lojinha?</h2><p>Cadastre os dados básicos e a administração vai analisar sua solicitação.</p><form onSubmit={saveShop} className="form-stack">
           <label>Nome da loja<input required minLength={3} value={shopForm.name} onChange={e=>setShopForm(s=>({...s,name:e.target.value}))} placeholder="Ex.: Bolos da Gabi"/></label>
           <label>O que você vende?<textarea maxLength={500} value={shopForm.description} onChange={e=>setShopForm(s=>({...s,description:e.target.value}))} rows={3} placeholder="Conte um pouco sobre seus produtos"/></label>
           <label>WhatsApp para pedidos<input required type="tel" value={shopForm.whatsapp} onChange={e=>setShopForm(s=>({...s,whatsapp:e.target.value}))} placeholder="(19) 99999-9999"/></label>
