@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { BRL, normalizeWhatsApp, orderMessage, unitPrice } from '../src/lib/orders';
+import { BRL, normalizeWhatsApp, orderMessage, unitPrice, optionGroupsSchema, selectedOptions, extrasTotal } from '../src/lib/orders';
 
 test('formats BRL cents without rounding mistakes',()=>assert.equal(BRL(3990),'R$ 39,90'));
 test('normalizes Brazilian WhatsApp numbers',()=>{
@@ -28,7 +28,6 @@ test('customization validates choices and prices per unit',()=>{
   const config=[{id:g,name:'Cobertura',required:true,multiple:false,options:[
     {id:c,name:'Chocolate',price_cents:175}
   ]}];
-  const {optionGroupsSchema,selectedOptions,extrasTotal}=require('../src/lib/orders');
   assert.equal(extrasTotal(selectedOptions(optionGroupsSchema.parse(config),{[g]:[c]})),175);
   assert.throws(()=>selectedOptions(config,{}),/Selecione/);
   assert.throws(()=>selectedOptions(config,{[g]:['00000000-0000-4000-8000-000000000000']}),/não está mais disponível/);
@@ -44,7 +43,7 @@ test('WhatsApp message has line notes, selections, fee and Brazilian date',()=>{
   assert.match(msg,/2x Bolo/);
   assert.match(msg,/Sabor: Chocolate/);
   assert.match(msg,/Obs.: Sem lactose/);
-  assert.match(msg,/Data preferida: 26\\/10\\/2026/);
+  assert.match(msg,/Data preferida: 26\/10\/2026/);
   assert.match(msg,/Taxa de entrega/);
-  assert.match(msg,/Total: R\\$ 57,00/);
+  assert.match(msg,/Total: R\$ 57,00/);
 });
