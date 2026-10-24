@@ -78,6 +78,10 @@ export default function Page(){
   const [home,setHome]=useState<HomeData>(emptyHome);
   const [query,setQuery]=useState('');
   const [category,setCategory]=useState('');
+  const [catalogProducts,setCatalogProducts]=useState<Product[]>([]);
+  const [catalogPage,setCatalogPage]=useState(0);
+  const [catalogHasMore,setCatalogHasMore]=useState(false);
+  const [catalogLoading,setCatalogLoading]=useState(false);
   const [selectedShop,setSelectedShop]=useState<{shop:Shop;products:Product[]}|null>(null);
   const [selectedProduct,setSelectedProduct]=useState<Product|null>(null);
   const [qty,setQty]=useState(1);
@@ -158,11 +162,27 @@ export default function Page(){
   useEffect(()=>{try{window.localStorage.setItem('condovery_cart',JSON.stringify(cart));}catch{}},[cart]);
   useEffect(()=>{if(!toast)return;const timer=setTimeout(()=>setToast(''),4000);return()=>clearTimeout(timer);},[toast]);
   useEffect(()=>{if(view==='seller'&&myShop?.status==='approved')loadSellerOrders().catch(fail);},[view,myShop?.status,loadSellerOrders]);
+  useEffect(()=>{setCatalogPage(0);setCatalogProducts([]);},[query,category]);
+  useEffect(()=>{
+    if(!viewer||viewer.status!=='approved'||(view!=='home'&&view!=='categories'))return;
+    if(view==='home'&&!query.trim())return;
+    let active=true;
+    const timer=window.setTimeout(()=>{
+      setCatalogLoading(true);
+      const params=new URLSearchParams({page:String(catalogPage),limit:'24'});
+      if(query.trim())params.set('search',query.trim());
+      if(category)params.set('category',category);
+      api<{products:Product[];hasMore:boolean}>('catalog?'+params.toString()).then(r=>{
+        if(!active)return;
+        setCatalogProducts(old=>catalogPage===0?r.products:[...old,...r.products]);
+        setCatalogHasMore(r.hasMore);
+      }).catch(e=>{if(active)fail(e);}).finally(()=>{if(active)setCatalogLoading(false);});
+    },query.trim()?300:100);
+    return()=>{active=false;window.clearTimeout(timer);};
+  },[viewer?.id,viewer?.status,view,category,query,catalogPage]);
   const categoryName=home.categories.find(c=>c.id===category)?.name;
-  const filtered=useMemo(()=>{
-    const normalized=query.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
-    return home.products.filter(p=>(!category||p.category_id===category)&&(!normalized||(p.name+' '+(p.shop_name??'')+' '+p.description).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').includes(normalized)));
-  },[home.products,category,query]);
+  const filtered=useMemo(()=>view==='categories'||query.trim()?catalogProducts:home.products,
+    [view,query,catalogProducts,home.products]);
   const cartTotal=cart.reduce((n,i)=>n+price(i.product)*i.quantity,0);
   const cartCount=cart.reduce((n,i)=>n+i.quantity,0);
   const cartShop=home.shops.find(s=>s.id===cart[0]?.product.shop_id)||selectedShop?.shop;
@@ -371,6 +391,9 @@ export default function Page(){
         <SectionHeader title={query?'Resultados da busca':'Feito e vendido por vizinhos'} action={!query?'Ver produtos':undefined} onAction={()=>go('categories')}/>
         {filtered.length?<div className="product-grid">{(query?filtered:newest).map(p=><ProductCard key={p.id} p={p} onClick={()=>openProduct(p)}/>)}</div>
           :<Empty title={query?'Nada por aqui ainda':'A vitrine está começando!'} subtitle={query?'Tente outro termo ou explore as categorias.':'As primeiras lojas e produtos vão aparecer aqui assim que forem aprovados.'} action={!query?'Quero vender':undefined} onAction={()=>go('seller')}/>}
+        {query&&catalogHasMore&&<button className="outline-button load-more" disabled={catalogLoading} onClick={()=>setCatalogPage(p=>p+1)}>
+          {catalogLoading?'Carregando...':'Mostrar mais produtos'} <ArrowRight size={17}/>
+        </button>}
         {!query&&<><SectionHeader title="Lojas da vizinhança" action="Todas as lojas" onAction={()=>{setCategory('');go('categories');}}/>
           <div className="shops-list">{home.shops.length?home.shops.slice(0,8).map(s=><button className="shop-row" key={s.id} onClick={()=>openShop(s.id)}>
             <div className="shop-logo">{s.cover_image?<img src={s.cover_image} alt=""/>:<Store size={27}/>}</div>
@@ -384,7 +407,12 @@ export default function Page(){
         <div className="search-container"><Search size={20}/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Buscar por produto ou loja" aria-label="Buscar"/>{query&&<button onClick={()=>setQuery('')}><X size={16}/></button>}</div>
         <div className="filter-chips"><button className={!category?'chosen':''} onClick={()=>setCategory('')}>Todos</button>{home.categories.map(c=><button key={c.id} className={category===c.id?'chosen':''} onClick={()=>setCategory(c.id)}>{c.name}</button>)}</div>
         <SectionHeader title={categoryName??'Produtos dos vizinhos'}/>
-        {filtered.length?<div className="product-grid">{filtered.map(p=><ProductCard key={p.id} p={p} onClick={()=>openProduct(p)}/>)}</div>:<Empty title="Nenhum produto encontrado" subtitle="Tente outra categoria ou volte mais tarde."/>}
+        {filtered.length?<div className="product-grid">{filtered.map(p=><ProductCard key={p.id} p={p} onClick={()=>openProduct(p)}/>)}</div>:
+          catalogLoading?<div className="loading-inline"><div className="spinner"/> Buscando produtos...</div>:
+          <Empty title="Nenhum produto encontrado" subtitle="Tente outra categoria ou volte mais tarde."/>}
+        {catalogHasMore&&<button className="outline-button load-more" disabled={catalogLoading} onClick={()=>setCatalogPage(p=>p+1)}>
+          {catalogLoading?'Carregando...':'Mostrar mais produtos'} <ArrowRight size={17}/>
+        </button>}
         <SectionHeader title="Todas as lojas"/>
         <div className="shops-list">{home.shops.map(s=><button key={s.id} className="shop-row" onClick={()=>openShop(s.id)}><div className="shop-logo">{s.cover_image?<img src={s.cover_image} alt=""/>:<Store size={27}/>}</div><div><strong>{s.name}</strong><p>{s.description}</p></div><ChevronRight size={18}/></button>)}</div>
       </>}
