@@ -1,14 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z, ZodError } from 'zod';
-import bcrypt from 'bcryptjs';
 import crypto from 'node:crypto';
 import sharp from 'sharp';
 import { query, transaction } from '@/lib/db';
 import { clearSession, inviteHash, issueSession, sessionViewer, tokenHash, type Viewer } from '@/lib/auth';
 import { normalizeWhatsApp, orderMessage, unitPrice } from '@/lib/orders';
-import { googleAuthClient,googleConfigured,storageAdmin,storageConfigured,STORAGE_BUCKET } from '@/lib/supabase';
+import { passwordAuthClient,emailConfigured,recoveryConfigured,googleAuthClient,googleConfigured,storageAdmin,storageConfigured,STORAGE_BUCKET } from '@/lib/supabase';
 import { oauthCookie,randomToken,safeAppOrigin } from '@/lib/security';
-import { passwordRecoveryConfigured,sendPasswordResetEmail } from '@/lib/mail';
 
 export const runtime='nodejs';
 export const dynamic='force-dynamic';
@@ -84,7 +82,7 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
     if(!result.rowCount)bad('Código de convite inválido.',404);
     return out({name:result.rows[0].name,towers:result.rows[0].towers});
   }
-  if(path==='auth/providers'&&method==='GET')return out({google:googleConfigured(),passwordRecovery:passwordRecoveryConfigured()});
+  if(path==='auth/providers'&&method==='GET')return out({google:googleConfigured(),email:emailConfigured(),passwordRecovery:recoveryConfigured()});
   if(path==='auth/google'&&method==='GET'){
     if(!googleConfigured())bad('Login Google não configurado.',503);
     const {client,pkceValues}=googleAuthClient();
@@ -118,14 +116,14 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
     const email=identity.email.trim().toLowerCase();
     // Existing email/password residents may also use a verified Google identity.
     const matched=await query(
-      'SELECT id,google_auth_user_id FROM users WHERE google_auth_user_id=$1 OR email=$2 LIMIT 1',
+      'SELECT id,supabase_auth_user_id FROM users WHERE supabase_auth_user_id=$1 OR email=$2 LIMIT 1',
       [identity.id,email]
     );
     if(matched.rowCount){
-      if(matched.rows[0].google_auth_user_id&&matched.rows[0].google_auth_user_id!==identity.id){
+      if(matched.rows[0].supabase_auth_user_id&&matched.rows[0].supabase_auth_user_id!==identity.id){
         return oauthRedirect(req,'google_account_conflict');
       }
-      await query('UPDATE users SET google_auth_user_id=$1 WHERE id=$2 AND (google_auth_user_id IS NULL OR google_auth_user_id=$1)',
+      await query('UPDATE users SET supabase_auth_user_id=$1,google_auth_user_id=$1 WHERE id=$2 AND (supabase_auth_user_id IS NULL OR supabase_auth_user_id=$1)',
         [identity.id,matched.rows[0].id]);
       const token=randomToken();
       await query("INSERT INTO sessions(token_hash,user_id,expires_at) VALUES($1,$2,now()+interval '14 days')",
@@ -164,7 +162,7 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
       if(!condo.rowCount)bad('Convite inválido.');
       if(!Array.isArray(condo.rows[0].towers)||!condo.rows[0].towers.includes(b.tower))bad('Torre inválida.');
       const created=await tx.query(
-        "INSERT INTO users(condominium_id,name,email,phone,password_hash,google_auth_user_id,tower,apartment) VALUES($1,$2,$3,$4,NULL,$5,$6,$7) RETURNING id",
+        "INSERT INTO users(condominium_id,name,email,phone,password_hash,google_auth_user_id,supabase_auth_user_id,tower,apartment) VALUES($1,$2,$3,$4,NULL,$5,$5,$6,$7) RETURNING id",
         [condo.rows[0].id,b.name,waiting.rows[0].email,b.phone,waiting.rows[0].google_auth_user_id,b.tower,b.apartment]
       );
       const token=randomToken();
@@ -178,84 +176,136 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
     return response;
   }
   if(path==='auth/password/request'&&method==='POST'){
-    if(!passwordRecoveryConfigured())bad('Recuperação por e-mail ainda não configurada.',503);
+    if(!recoveryConfigured())bad('Recuperação do Supabase Auth não configurada.',503);
     const b=z.object({email:z.string().email().max(250).transform(v=>v.trim().toLowerCase())}).parse(await body(req));
     const ip=clean(req.headers.get('x-real-ip')||req.headers.get('cf-connecting-ip')||'unknown',80);
     const hits=await query(
       "SELECT (SELECT count(*)::int FROM password_reset_attempts WHERE email=$1 AND created_at>now()-interval '1 hour') AS email_count,(SELECT count(*)::int FROM password_reset_attempts WHERE ip=$2 AND created_at>now()-interval '1 hour') AS ip_count",
       [b.email,ip]
     );
-    const generic='Se houver uma conta elegível, você receberá um link para redefinir sua senha.';
+    const generic='Se houver uma conta cadastrada, você receberá um e-mail de recuperação do Supabase Auth.';
     if(hits.rows[0].email_count>=3||hits.rows[0].ip_count>=15)return out({message:generic});
     await query('INSERT INTO password_reset_attempts(email,ip) VALUES($1,$2)',[b.email,ip]);
-    const user=await query("SELECT id FROM users WHERE email=$1 AND password_hash IS NOT NULL AND status<>'suspended'",[b.email]);
-    if(user.rowCount){
-      const token=randomToken();
-      await transaction(async tx=>{
-        await tx.query('DELETE FROM password_reset_tokens WHERE user_id=$1',[user.rows[0].id]);
-        await tx.query(
-          "INSERT INTO password_reset_tokens(token_hash,user_id,expires_at) VALUES($1,$2,now()+interval '30 minutes')",
-          [tokenHash(token),user.rows[0].id]
-        );
-      });
-      try{
-        await sendPasswordResetEmail(b.email,token);
-      }catch(e){
-        await query('DELETE FROM password_reset_tokens WHERE token_hash=$1',[tokenHash(token)]);
-        console.error('password_reset_delivery_failed',e instanceof Error?e.message:'unknown');
-      }
-    }
+    const {error}=await passwordAuthClient().auth.resetPasswordForEmail(b.email,{
+      redirectTo:safeAppOrigin(req)+'/api/auth/recovery/verify'
+    });
+    if(error)console.error('supabase_recovery_request_failed',error.status||'unknown');
     return out({message:generic});
   }
-  if(path==='auth/password/confirm'&&method==='POST'){
-    const b=z.object({
-      token:z.string().regex(/^[0-9a-f]{64}$/),
-      password:z.string().min(10).max(100)
-    }).parse(await body(req));
-    const hash=await bcrypt.hash(b.password,12);
+  if(path==='auth/recovery/verify'&&method==='GET'){
+    const hash=req.nextUrl.searchParams.get('token_hash');
+    const type=req.nextUrl.searchParams.get('type');
+    if(!hash||type!=='recovery')return oauthRedirect(req,'recovery_invalid');
+    const {data,error}=await passwordAuthClient().auth.verifyOtp({token_hash:hash,type:'recovery'});
+    if(error||!data.user?.id||!data.user.email_confirmed_at)return oauthRedirect(req,'recovery_expired');
+    const found=await query('SELECT id FROM users WHERE supabase_auth_user_id=$1',
+      [data.user.id]);
+    if(!found.rowCount)return oauthRedirect(req,'recovery_unavailable');
+    const ticket=randomToken();
     await transaction(async tx=>{
-      const r=await tx.query(
-        'DELETE FROM password_reset_tokens WHERE token_hash=$1 AND expires_at>now() RETURNING user_id',
-        [tokenHash(b.token)]
+      await tx.query('DELETE FROM password_reset_tokens WHERE user_id=$1',[found.rows[0].id]);
+      await tx.query(
+        "INSERT INTO password_reset_tokens(token_hash,user_id,expires_at) VALUES($1,$2,now()+interval '15 minutes')",
+        [tokenHash(ticket),found.rows[0].id]
       );
-      if(!r.rowCount)bad('Link expirado ou já utilizado.',400);
-      const updated=await tx.query('UPDATE users SET password_hash=$1 WHERE id=$2 AND password_hash IS NOT NULL RETURNING id',
-        [hash,r.rows[0].user_id]);
-      if(!updated.rowCount)bad('Esta conta utiliza o login Google.',400);
-      await tx.query('DELETE FROM sessions WHERE user_id=$1',[r.rows[0].user_id]);
     });
-    return out({message:'Senha redefinida. Faça login novamente.'});
+    const res=NextResponse.redirect(new URL('/?reset=1',safeAppOrigin(req)));
+    res.cookies.set(oauthCookie('condovery_recovery',ticket,900));
+    return res;
+  }
+  if(path==='auth/password/confirm'&&method==='POST'){
+    if(!recoveryConfigured())bad('Recuperação não configurada.',503);
+    const cookie=req.cookies.get('condovery_recovery')?.value;
+    if(!cookie||!/^[0-9a-f]{64}$/.test(cookie))bad('Abra primeiro o link enviado por e-mail.',401);
+    const b=z.object({password:z.string().min(10).max(100)}).parse(await body(req));
+    const result=await query(
+      'DELETE FROM password_reset_tokens WHERE token_hash=$1 AND expires_at>now() RETURNING user_id',
+      [tokenHash(cookie)]
+    );
+    if(!result.rowCount)bad('Link expirado ou já utilizado.',400);
+    const found=await query('SELECT supabase_auth_user_id FROM users WHERE id=$1',[result.rows[0].user_id]);
+    if(!found.rows[0]?.supabase_auth_user_id)bad('Identidade Supabase não vinculada.',409);
+    const {error}=await storageAdmin().auth.admin.updateUserById(found.rows[0].supabase_auth_user_id,{
+      password:b.password
+    });
+    if(error){
+      console.error('supabase_password_update_failed',error.status||'unknown');
+      bad('Não foi possível alterar a senha. Solicite um novo link.',502);
+    }
+    await query('DELETE FROM sessions WHERE user_id=$1',[result.rows[0].user_id]);
+    const res=out({message:'Senha atualizada pelo Supabase Auth. Faça login novamente.'});
+    res.cookies.set(oauthCookie('condovery_recovery','',0));
+    return res;
   }
   if(path==='auth/register'&&method==='POST'){
+    if(!emailConfigured())bad('Cadastro por e-mail não configurado.',503);
     const b=signup.parse(await body(req));
-    const condo=await query("SELECT id,towers FROM condominiums WHERE invite_code_hash=$1 AND is_active=true",[inviteHash(b.invite)]);
+    const condo=await query(
+      "SELECT id,towers FROM condominiums WHERE invite_code_hash=$1 AND is_active=true",
+      [inviteHash(b.invite)]
+    );
     if(!condo.rowCount)bad('Código de convite inválido.');
     if(!Array.isArray(condo.rows[0].towers)||!condo.rows[0].towers.includes(b.tower))bad('Torre inválida.');
     const exists=await query('SELECT id FROM users WHERE email=$1',[b.email]);
-    if(exists.rowCount)bad('E-mail já cadastrado.',409);
-    const hash=await bcrypt.hash(b.password,12);
-    try{
-      await query("INSERT INTO users(condominium_id,name,email,phone,password_hash,tower,apartment) VALUES($1,$2,$3,$4,$5,$6,$7)",
-        [condo.rows[0].id,b.name,b.email,b.phone,hash,b.tower,b.apartment]);
-    } catch(e:unknown){
-      if((e as {code?:string}).code==='23505')bad('E-mail já cadastrado.',409);throw e;
+    if(exists.rowCount)bad('E-mail já cadastrado. Faça login ou recupere a senha.',409);
+    const {data,error}=await passwordAuthClient().auth.signUp({
+      email:b.email,password:b.password,
+      options:{
+        emailRedirectTo:safeAppOrigin(req)+'/?email_confirmed=1',
+        data:{name:b.name}
+      }
+    });
+    if(error){
+      if(error.status===429)bad('Muitas tentativas de cadastro. Tente novamente mais tarde.',429);
+      bad('Não foi possível cadastrar este e-mail no Supabase Auth.',400);
     }
-    return out({message:'Cadastro enviado. Aguarde a aprovação da administração.'},201);
+    const authUser=data.user;
+    if(!authUser?.id||!authUser.identities?.some(i=>i.provider==='email')){
+      bad('Conta já existente. Faça login ou utilize a recuperação de senha.',409);
+    }
+    try{
+      await query(
+        "INSERT INTO users(condominium_id,name,email,phone,password_hash,supabase_auth_user_id,tower,apartment) VALUES($1,$2,$3,$4,NULL,$5,$6,$7)",
+        [condo.rows[0].id,b.name,b.email,b.phone,authUser!.id,b.tower,b.apartment]
+      );
+    }catch(e:unknown){
+      if((e as {code?:string}).code==='23505')bad('E-mail já cadastrado.',409);
+      throw e;
+    }
+    return out({
+      message:'Cadastro enviado! Confirme seu e-mail pelo Supabase Auth e aguarde a aprovação do condomínio.',
+      verificationRequired:!authUser!.email_confirmed_at
+    },201);
   }
   if(path==='auth/login'&&method==='POST'){
+    if(!emailConfigured())bad('Login por e-mail não configurado.',503);
     const b=credentials.parse(await body(req));
-    // A limit per e-mail cannot be bypassed just by changing IP.
-    const failures=await query('SELECT count(*)::int AS count FROM login_attempts WHERE email=$1 AND occurred_at>now()-interval \'15 minutes\'',[b.email]);
+    const failures=await query(
+      "SELECT count(*)::int AS count FROM login_attempts WHERE email=$1 AND occurred_at>now()-interval '15 minutes'",
+      [b.email]
+    );
     if(failures.rows[0].count>=8)bad('Muitas tentativas. Tente novamente em 15 minutos.',429);
-    const result=await query('SELECT * FROM users WHERE email=$1',[b.email]);
-    const user=result.rows[0];
-    const ok=user?.password_hash ? await bcrypt.compare(b.password,user.password_hash) : false;
-    if(!ok || user.status==='suspended'){
-      await query('INSERT INTO login_attempts(email,ip) VALUES($1,$2)',[b.email,clean(req.headers.get('x-real-ip')||req.headers.get('x-forwarded-for')||'unknown',80)]);
-      bad('E-mail ou senha incorretos.',401);
+    const {data,error}=await passwordAuthClient().auth.signInWithPassword({email:b.email,password:b.password});
+    if(error||!data.user?.id||!data.user.email_confirmed_at){
+      await query('INSERT INTO login_attempts(email,ip) VALUES($1,$2)',
+        [b.email,clean(req.headers.get('x-real-ip')||'unknown',80)]);
+      bad('Credenciais inválidas ou e-mail ainda não confirmado.',401);
+    }
+    const member=await query(
+      'SELECT id,status,supabase_auth_user_id FROM users WHERE supabase_auth_user_id=$1 OR email=$2 LIMIT 1',
+      [data.user.id,b.email]
+    );
+    if(!member.rowCount)bad('Conta sem vínculo com um condomínio. Solicite um convite.',403);
+    if(member.rows[0].supabase_auth_user_id&&member.rows[0].supabase_auth_user_id!==data.user.id){
+      bad('Esta conta está vinculada a outra identidade. Entre em contato com a administração.',403);
+    }
+    if(member.rows[0].status==='suspended')bad('Conta suspensa.',403);
+    if(!member.rows[0].supabase_auth_user_id){
+      await query('UPDATE users SET supabase_auth_user_id=$1 WHERE id=$2 AND supabase_auth_user_id IS NULL',
+        [data.user.id,member.rows[0].id]);
     }
     await query('DELETE FROM login_attempts WHERE email=$1',[b.email]);
-    return (await issueAppLogin(user.id)).response;
+    return (await issueAppLogin(member.rows[0].id)).response;
   }
   if(path==='auth/logout'&&method==='POST'){
     const token=req.cookies.get('condovery_session')?.value;
