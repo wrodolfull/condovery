@@ -487,7 +487,7 @@ export default function Page(){
         <div className="shop-head"><div><h1>{selectedShop.shop.name}</h1><p>{selectedShop.shop.description}</p></div><Pill tone={selectedShop.shop.is_open?'green':'neutral'}>{selectedShop.shop.is_open?'Aceitando pedidos':'Pausada'}</Pill></div>
         <div className="shop-benefits"><span><Truck size={17}/> {selectedShop.shop.delivery_enabled?'Entrega disponível':'Sem entrega'}</span>{selectedShop.shop.pickup_enabled&&<span><ShoppingBag size={17}/> Retirada</span>}{selectedShop.shop.lead_time&&<span><Clock3 size={17}/>{selectedShop.shop.lead_time}</span>}</div>
         <SectionHeader title="Produtos da loja"/>
-        <div className="product-grid">{selectedShop.products.map(p=><ProductCard key={p.id} p={{...p,shop_name:selectedShop.shop.name}} onClick={()=>openProduct({...p,shop_name:selectedShop.shop.name})}/>)}</div>
+        <div className="product-grid">{selectedShop.products.map(p=><ProductCard key={p.id} p={{...p,shop_name:selectedShop.shop.name}} onClick={()=>openProduct({...p,shop_name:selectedShop.shop.name})} favorite={favoriteIds.includes(p.id)} onFavorite={toggleFavorite}/>)}</div>
         {!selectedShop.products.length&&<Empty title="Loja sem produtos no momento" subtitle="Em breve, novidades por aqui."/>}
       </>}
 
