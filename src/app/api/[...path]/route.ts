@@ -1,0 +1,338 @@
+import { NextRequest, NextResponse } from 'next/server';
+import { z, ZodError } from 'zod';
+import bcrypt from 'bcryptjs';
+import crypto from 'node:crypto';
+import { query, transaction } from '@/lib/db';
+import { clearSession, inviteHash, issueSession, sessionViewer, tokenHash, type Viewer } from '@/lib/auth';
+import { normalizeWhatsApp, orderMessage, unitPrice } from '@/lib/orders';
+
+export const runtime='nodejs';
+export const dynamic='force-dynamic';
+type Verb='GET'|'POST'|'PATCH'|'DELETE';
+type Args={req:NextRequest;method:Verb;parts:string[]};
+class ApiError extends Error { constructor(public status:number, message:string){super(message);} }
+const bad=(text:string,status=400):never=>{throw new ApiError(status,text);};
+const out=(value:unknown,status=200)=>NextResponse.json(value,{status,headers:{'Cache-Control':'no-store'}});
+const clean=(value:unknown,max=500)=>String(value??'').trim().slice(0,max);
+const uuid=(value:string)=>/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
+async function body(req:NextRequest) {return await req.json().catch(()=>bad('JSON inválido.'));}
+async function viewer(req:NextRequest) {const u=await sessionViewer(req);if(!u)bad('Faça login para continuar.',401);return u!;}
+function approved(u:Viewer){if(u.status!=='approved')bad('Seu cadastro ainda não está aprovado.',403);}
+function admin(u:Viewer){approved(u);if(u.role!=='admin')bad('Acesso restrito à administração.',403);}
+async function shopOwned(u:Viewer,requireApproved=false){
+  const r=await query('SELECT * FROM shops WHERE condominium_id=$1 AND owner_id=$2',[u.condominium_id,u.id]);
+  const shop=r.rows[0];
+  if(!shop) bad('Cadastre sua loja primeiro.',404);
+  if(requireApproved && shop.status!=='approved')bad('Sua loja aguarda aprovação.',403);
+  return shop;
+}
+function imagePath(input:unknown) {
+  const url=clean(input,400);
+  if(!url)return null;
+  if(!/^\/api\/media\/[0-9a-f-]{36}$/.test(url))bad('Utilize uma imagem enviada pela plataforma.');
+  return url;
+}
+const credentials=z.object({email:z.string().email().max(250).transform(v=>v.trim().toLowerCase()),password:z.string().min(1).max(100)});
+const signup=credentials.extend({
+  name:z.string().trim().min(2).max(90),phone:z.string().trim().min(10).max(20),
+  password:z.string().min(10).max(100),invite:z.string().trim().min(10).max(150),
+  tower:z.string().trim().min(1).max(60),apartment:z.string().trim().min(1).max(24)
+});
+const instructionsAllowed=['Tocar a campainha','Não tocar a campainha','Deixar na porta','Entregar pessoalmente','Retirar na portaria'];
+const orderSchema=z.object({
+  shop_id:z.string().uuid(),
+  items:z.array(z.object({id:z.string().uuid(),quantity:z.number().int().min(1).max(30),note:z.string().max(200).optional()})).min(1).max(25),
+  fulfillment:z.enum(['delivery','pickup']),delivery_day:z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
+  delivery_window:z.string().max(70).optional(),instructions:z.array(z.enum(['Tocar a campainha','Não tocar a campainha','Deixar na porta','Entregar pessoalmente','Retirar na portaria'])).max(4).optional(),
+  note:z.string().max(400).optional()
+});
+async function processApi({req,method,parts}:Args):Promise<NextResponse> {
+  const path=parts.join('/');
+  if(path==='auth/register'&&method==='POST'){
+    const b=signup.parse(await body(req));
+    const condo=await query("SELECT id,towers FROM condominiums WHERE invite_code_hash=$1 AND is_active=true",[inviteHash(b.invite)]);
+    if(!condo.rowCount)bad('Código de convite inválido.');
+    if(!Array.isArray(condo.rows[0].towers)||!condo.rows[0].towers.includes(b.tower))bad('Torre inválida.');
+    const exists=await query('SELECT id FROM users WHERE email=$1',[b.email]);
+    if(exists.rowCount)bad('E-mail já cadastrado.',409);
+    const hash=await bcrypt.hash(b.password,12);
+    try{
+      await query("INSERT INTO users(condominium_id,name,email,phone,password_hash,tower,apartment) VALUES($1,$2,$3,$4,$5,$6,$7)",
+        [condo.rows[0].id,b.name,b.email,b.phone,hash,b.tower,b.apartment]);
+    } catch(e:unknown){
+      if((e as {code?:string}).code==='23505')bad('E-mail já cadastrado.',409);throw e;
+    }
+    return out({message:'Cadastro enviado. Aguarde a aprovação da administração.'},201);
+  }
+  if(path==='auth/login'&&method==='POST'){
+    const b=credentials.parse(await body(req));
+    // A limit per e-mail cannot be bypassed just by changing IP.
+    const failures=await query('SELECT count(*)::int AS count FROM login_attempts WHERE email=$1 AND occurred_at>now()-interval \'15 minutes\'',[b.email]);
+    if(failures.rows[0].count>=8)bad('Muitas tentativas. Tente novamente em 15 minutos.',429);
+    const result=await query('SELECT * FROM users WHERE email=$1',[b.email]);
+    const user=result.rows[0];
+    const ok=user ? await bcrypt.compare(b.password,user.password_hash) : false;
+    if(!ok || user.status==='suspended'){
+      await query('INSERT INTO login_attempts(email,ip) VALUES($1,$2)',[b.email,clean(req.headers.get('x-real-ip')||req.headers.get('x-forwarded-for')||'unknown',80)]);
+      bad('E-mail ou senha incorretos.',401);
+    }
+    await query('DELETE FROM login_attempts WHERE email=$1',[b.email]);
+    const token=crypto.randomBytes(32).toString('hex');
+    await query("INSERT INTO sessions(token_hash,user_id,expires_at) VALUES($1,$2,now()+interval '14 days')",[tokenHash(token),user.id]);
+    const response=out({ok:true});
+    issueSession(response,token);
+    return response;
+  }
+  if(path==='auth/logout'&&method==='POST'){
+    const token=req.cookies.get('condovery_session')?.value;
+    if(token)await query('DELETE FROM sessions WHERE token_hash=$1',[tokenHash(token)]);
+    const response=out({ok:true});clearSession(response);return response;
+  }
+  if(path==='me'&&method==='GET'){
+    const u=await sessionViewer(req);return out({viewer:u});
+  }
+  const u=await viewer(req);
+  if(path==='me'&&method==='PATCH'){
+    approved(u);
+    const b=z.object({name:z.string().trim().min(2).max(90),phone:z.string().trim().min(10).max(20),tower:z.string().min(1).max(60),apartment:z.string().min(1).max(24)}).parse(await body(req));
+    if(!u.towers.includes(b.tower))bad('Torre inválida.');
+    await query('UPDATE users SET name=$1,phone=$2,tower=$3,apartment=$4 WHERE id=$5 AND condominium_id=$6',[b.name,b.phone,b.tower,b.apartment,u.id,u.condominium_id]);
+    return out({ok:true});
+  }
+  approved(u);
+  if(path==='home'&&method==='GET'){
+    const [categories,shops,products]=await Promise.all([
+      query('SELECT id,name,icon FROM categories WHERE condominium_id=$1 ORDER BY sort_order,name',[u.condominium_id]),
+      query("SELECT id,name,description,cover_image,is_open,delivery_enabled,pickup_enabled,lead_time FROM shops WHERE condominium_id=$1 AND status='approved' ORDER BY is_open DESC,created_at DESC LIMIT 100",[u.condominium_id]),
+      query("SELECT p.id,p.shop_id,p.category_id,p.name,p.description,p.price_cents,p.promo_price_cents,p.image_url,p.stock,p.lead_time,p.is_featured,s.name AS shop_name,s.is_open FROM products p JOIN shops s ON s.id=p.shop_id WHERE p.condominium_id=$1 AND s.condominium_id=$1 AND p.is_available=true AND s.status='approved' ORDER BY p.is_featured DESC,p.created_at DESC LIMIT 240",[u.condominium_id])
+    ]);
+    return out({categories:categories.rows,shops:shops.rows,products:products.rows});
+  }
+  if(path==='shops/mine'){
+    if(method==='GET'){
+      const r=await query('SELECT * FROM shops WHERE condominium_id=$1 AND owner_id=$2',[u.condominium_id,u.id]);
+      const shop=r.rows[0]??null;
+      const products=shop?(await query('SELECT * FROM products WHERE condominium_id=$1 AND shop_id=$2 ORDER BY created_at DESC',[u.condominium_id,shop.id])).rows:[];
+      return out({shop,products});
+    }
+    if(method==='POST'){
+      const b=z.object({name:z.string().trim().min(3).max(75),description:z.string().max(500).optional(),whatsapp:z.string().min(10).max(20)}).parse(await body(req));
+      normalizeWhatsApp(b.whatsapp);
+      const existing=await query('SELECT id FROM shops WHERE owner_id=$1',[u.id]);
+      if(existing.rowCount)bad('Você já possui uma loja.',409);
+      const r=await query('INSERT INTO shops(condominium_id,owner_id,name,description,whatsapp) VALUES($1,$2,$3,$4,$5) RETURNING *',[u.condominium_id,u.id,b.name,b.description??'',b.whatsapp]);
+      return out({shop:r.rows[0]},201);
+    }
+    if(method==='PATCH'){
+      const shop=await shopOwned(u);
+      const b=z.object({name:z.string().trim().min(3).max(75),description:z.string().max(500),
+        whatsapp:z.string().min(10).max(20),is_open:z.boolean(),delivery_enabled:z.boolean(),
+        pickup_enabled:z.boolean(),lead_time:z.string().max(100),pickup_instructions:z.string().max(250),
+        cover_image:z.string().nullable().optional()}).parse(await body(req));
+      normalizeWhatsApp(b.whatsapp);
+      if(!b.delivery_enabled&&!b.pickup_enabled)bad('Habilite entrega ou retirada.');
+      const r=await query(
+        'UPDATE shops SET name=$1,description=$2,whatsapp=$3,is_open=$4,delivery_enabled=$5,pickup_enabled=$6,lead_time=$7,pickup_instructions=$8,cover_image=$9 WHERE id=$10 AND condominium_id=$11 RETURNING *',
+        [b.name,b.description,b.whatsapp,b.is_open,b.delivery_enabled,b.pickup_enabled,b.lead_time,b.pickup_instructions,imagePath(b.cover_image),shop.id,u.condominium_id]);
+      return out({shop:r.rows[0]});
+    }
+  }
+  if(parts[0]==='shops'&&parts[1]&&parts[1]!=='mine'&&method==='GET'){
+    if(!uuid(parts[1]))bad('Loja inválida.');
+    const s=await query("SELECT id,name,description,cover_image,is_open,delivery_enabled,pickup_enabled,lead_time,pickup_instructions FROM shops WHERE id=$1 AND condominium_id=$2 AND status='approved'",[parts[1],u.condominium_id]);
+    if(!s.rowCount)bad('Loja não encontrada.',404);
+    const p=await query("SELECT id,shop_id,category_id,name,description,price_cents,promo_price_cents,image_url,stock,lead_time FROM products WHERE shop_id=$1 AND condominium_id=$2 AND is_available=true ORDER BY created_at DESC",[parts[1],u.condominium_id]);
+    return out({shop:s.rows[0],products:p.rows});
+  }
+  if(path==='media'&&method==='POST'){
+    const shop=await shopOwned(u);
+    const form=await req.formData();
+    const file=form.get('file');
+    if(!(file instanceof File))bad('Selecione uma imagem.');
+    if(!['image/jpeg','image/png','image/webp'].includes(file.type))bad('Imagem deve ser JPG, PNG ou WebP.');
+    if(file.size<1||file.size>1_500_000)bad('A imagem deve ter no máximo 1,5 MB.');
+    const buffer=Buffer.from(await file.arrayBuffer());
+    const jpg=buffer[0]===255&&buffer[1]===216&&buffer[2]===255;
+    const png=buffer.subarray(0,8).equals(Buffer.from([137,80,78,71,13,10,26,10]));
+    const webp=buffer.toString('ascii',0,4)==='RIFF'&&buffer.toString('ascii',8,12)==='WEBP';
+    if(!(file.type==='image/jpeg'&&jpg||file.type==='image/png'&&png||file.type==='image/webp'&&webp))bad('O arquivo não corresponde ao formato declarado.');
+    const r=await query('INSERT INTO media_assets(condominium_id,shop_id,mime,bytes) VALUES($1,$2,$3,$4) RETURNING id',[u.condominium_id,shop.id,file.type,buffer]);
+    return out({url:'/api/media/'+r.rows[0].id},201);
+  }
+  if(parts[0]==='media'&&parts[1]&&method==='GET'){
+    if(!uuid(parts[1]))bad('Arquivo inválido.');
+    const r=await query('SELECT mime,bytes FROM media_assets WHERE condominium_id=$1 AND id=$2',[u.condominium_id,parts[1]]);
+    if(!r.rowCount)bad('Imagem não encontrada.',404);
+    return new NextResponse(new Uint8Array(r.rows[0].bytes),{headers:{'Content-Type':r.rows[0].mime,'Cache-Control':'private,max-age=86400','X-Content-Type-Options':'nosniff'}});
+  }
+  if(path==='products'&&method==='POST'){
+    const shop=await shopOwned(u,true);
+    const b=z.object({name:z.string().trim().min(2).max(100),description:z.string().max(600).optional(),
+      category_id:z.string().uuid(),price_cents:z.number().int().min(1).max(10_000_000),
+      promo_price_cents:z.number().int().min(1).max(10_000_000).nullable().optional(),
+      stock:z.number().int().min(0).max(100000).nullable().optional(),image_url:z.string().nullable().optional(),
+      is_available:z.boolean().optional(),lead_time:z.string().max(100).optional()}).parse(await body(req));
+    if(b.promo_price_cents!=null&&b.promo_price_cents>=b.price_cents)bad('O preço promocional deve ser menor que o original.');
+    const category=await query('SELECT id FROM categories WHERE id=$1 AND condominium_id=$2',[b.category_id,u.condominium_id]);
+    if(!category.rowCount)bad('Categoria inválida.');
+    const r=await query(
+      'INSERT INTO products(condominium_id,shop_id,category_id,name,description,price_cents,promo_price_cents,stock,image_url,is_available,lead_time) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *',
+      [u.condominium_id,shop.id,b.category_id,b.name,b.description??'',b.price_cents,b.promo_price_cents??null,b.stock??null,imagePath(b.image_url),b.is_available??true,b.lead_time??'']
+    );
+    return out({product:r.rows[0]},201);
+  }
+  if(parts[0]==='products'&&parts[1]&&['PATCH','DELETE'].includes(method)){
+    if(!uuid(parts[1]))bad('Produto inválido.');
+    const shop=await shopOwned(u,true);
+    const owned=await query('SELECT id FROM products WHERE id=$1 AND shop_id=$2 AND condominium_id=$3',[parts[1],shop.id,u.condominium_id]);
+    if(!owned.rowCount)bad('Produto não encontrado.',404);
+    if(method==='DELETE'){
+      await query('UPDATE products SET is_available=false WHERE id=$1 AND shop_id=$2',[parts[1],shop.id]);
+      return out({ok:true});
+    }
+    const b=z.object({name:z.string().trim().min(2).max(100),description:z.string().max(600),
+      category_id:z.string().uuid(),price_cents:z.number().int().min(1).max(10_000_000),
+      promo_price_cents:z.number().int().min(1).max(10_000_000).nullable(),
+      stock:z.number().int().min(0).max(100000).nullable(),image_url:z.string().nullable(),
+      is_available:z.boolean(),lead_time:z.string().max(100)}).parse(await body(req));
+    if(b.promo_price_cents!=null&&b.promo_price_cents>=b.price_cents)bad('Preço promocional inválido.');
+    const cat=await query('SELECT id FROM categories WHERE id=$1 AND condominium_id=$2',[b.category_id,u.condominium_id]);
+    if(!cat.rowCount)bad('Categoria inválida.');
+    const r=await query(
+      'UPDATE products SET name=$1,description=$2,category_id=$3,price_cents=$4,promo_price_cents=$5,stock=$6,image_url=$7,is_available=$8,lead_time=$9 WHERE id=$10 AND shop_id=$11 AND condominium_id=$12 RETURNING *',
+      [b.name,b.description,b.category_id,b.price_cents,b.promo_price_cents,b.stock,imagePath(b.image_url),b.is_available,b.lead_time,parts[1],shop.id,u.condominium_id]
+    );
+    return out({product:r.rows[0]});
+  }
+  if(path==='orders'&&method==='POST'){
+    const b=orderSchema.parse(await body(req));
+    if(new Set(b.items.map(i=>i.id)).size!==b.items.length)bad('Itens duplicados.');
+    const result=await transaction(async tx=>{
+      const sh=await tx.query("SELECT * FROM shops WHERE id=$1 AND condominium_id=$2 AND status='approved' FOR UPDATE",[b.shop_id,u.condominium_id]);
+      const shop=sh.rows[0];
+      if(!shop||!shop.is_open)bad('Loja não está recebendo pedidos.');
+      if(b.fulfillment==='delivery'&&!shop.delivery_enabled||b.fulfillment==='pickup'&&!shop.pickup_enabled)bad('Forma de recebimento indisponível.');
+      const ids=b.items.map(i=>i.id);
+      const p=await tx.query(
+        "SELECT * FROM products WHERE id=ANY($1::uuid[]) AND condominium_id=$2 AND shop_id=$3 AND is_available=true ORDER BY id FOR UPDATE",
+        [ids,u.condominium_id,shop.id]
+      );
+      if(p.rows.length!==b.items.length)bad('Um ou mais produtos estão indisponíveis.');
+      const products=new Map(p.rows.map(x=>[x.id,x]));
+      let total=0;
+      const items=b.items.map(i=>{
+        const item=products.get(i.id)!;
+        if(item.stock!==null&&item.stock<i.quantity)bad('Estoque insuficiente para '+item.name+'.');
+        const cents=unitPrice(item);total+=cents*i.quantity;
+        return {product_id:item.id,name:item.name,quantity:i.quantity,unit_price_cents:cents,note:i.note??''};
+      });
+      const created=await tx.query(
+        'INSERT INTO orders(condominium_id,buyer_id,shop_id,fulfillment,delivery_day,delivery_window,delivery_instructions,note,total_cents) VALUES($1,$2,$3,$4,$5,$6,$7::jsonb,$8,$9) RETURNING *',
+        [u.condominium_id,u.id,shop.id,b.fulfillment,b.delivery_day??null,b.delivery_window??'',JSON.stringify(b.instructions??[]),b.note??'',total]
+      );
+      for(const item of items){
+        await tx.query('INSERT INTO order_items(order_id,product_id,name_snapshot,quantity,unit_price_cents,note) VALUES($1,$2,$3,$4,$5,$6)',
+          [created.rows[0].id,item.product_id,item.name,item.quantity,item.unit_price_cents,item.note]);
+      }
+      const message=orderMessage({code:created.rows[0].code,shop:shop.name,buyer:u.name,tower:u.tower,apartment:u.apartment,
+        items:items.map(x=>({name:x.name,quantity:x.quantity,unit_price_cents:x.unit_price_cents,note:x.note})),
+        total_cents:total,fulfillment:b.fulfillment,delivery_day:b.delivery_day,delivery_window:b.delivery_window,
+        instructions:b.instructions,note:b.note});
+      return {order:created.rows[0],whatsapp_url:'https://wa.me/'+normalizeWhatsApp(shop.whatsapp)+'?text='+encodeURIComponent(message)};
+    });
+    return out(result,201);
+  }
+  if(path==='orders'&&method==='GET'){
+    const scope=req.nextUrl.searchParams.get('scope');
+    const seller=scope==='seller';
+    let shopId:string|undefined;
+    if(seller){const sh=await shopOwned(u);shopId=sh.id;}
+    const r=await query(
+      "SELECT o.*,s.name AS shop_name,bu.name AS buyer_name,bu.tower,bu.apartment,bu.phone AS buyer_phone,COALESCE(json_agg(json_build_object('name',i.name_snapshot,'quantity',i.quantity,'unit_price_cents',i.unit_price_cents,'note',i.note)) FILTER (WHERE i.id IS NOT NULL),'[]'::json) AS items FROM orders o JOIN shops s ON s.id=o.shop_id JOIN users bu ON bu.id=o.buyer_id LEFT JOIN order_items i ON i.order_id=o.id WHERE o.condominium_id=$1 AND "+(seller?'o.shop_id=$2':'o.buyer_id=$2')+" GROUP BY o.id,s.name,bu.id ORDER BY o.created_at DESC LIMIT 100",
+      [u.condominium_id,seller?shopId:u.id]
+    );
+    // Buyers do not need to see delivery address of someone else; shop owner sees only data for their own orders.
+    return out({orders:r.rows});
+  }
+  if(parts[0]==='orders'&&parts[1]&&method==='PATCH'){
+    if(!uuid(parts[1]))bad('Pedido inválido.');
+    const b=z.object({status:z.enum(['confirmed','completed','cancelled'])}).parse(await body(req));
+    const sh=await shopOwned(u,true);
+    const updated=await transaction(async tx=>{
+      const r=await tx.query('SELECT * FROM orders WHERE id=$1 AND condominium_id=$2 AND shop_id=$3 FOR UPDATE',[parts[1],u.condominium_id,sh.id]);
+      if(!r.rowCount)bad('Pedido não encontrado.',404);
+      const order=r.rows[0];
+      const valid=(order.status==='awaiting_confirmation'&&['confirmed','cancelled'].includes(b.status))||(order.status==='confirmed'&&['completed','cancelled'].includes(b.status));
+      if(!valid)bad('Transição de status não permitida.');
+      const items=await tx.query('SELECT * FROM order_items WHERE order_id=$1 ORDER BY product_id',[order.id]);
+      if(b.status==='confirmed'){
+        for(const item of items.rows){
+          const p=await tx.query(
+            'UPDATE products SET stock=CASE WHEN stock IS NULL THEN NULL ELSE stock-$1 END WHERE id=$2 AND condominium_id=$3 AND (stock IS NULL OR stock >= $1) RETURNING id',
+            [item.quantity,item.product_id,u.condominium_id]
+          );
+          if(!p.rowCount)bad('Estoque insuficiente para confirmar o pedido.');
+        }
+      } else if(b.status==='cancelled'&&order.status==='confirmed'){
+        for(const item of items.rows)await tx.query('UPDATE products SET stock=CASE WHEN stock IS NULL THEN NULL ELSE stock+$1 END WHERE id=$2 AND condominium_id=$3',[item.quantity,item.product_id,u.condominium_id]);
+      }
+      const next=await tx.query('UPDATE orders SET status=$1,updated_at=now() WHERE id=$2 RETURNING *',[b.status,order.id]);
+      return next.rows[0];
+    });
+    return out({order:updated});
+  }
+  if(path==='admin/summary'&&method==='GET'){
+    admin(u);
+    const [residents,shops,stats,categories]=await Promise.all([
+      query('SELECT id,name,email,phone,tower,apartment,status,created_at FROM users WHERE condominium_id=$1 AND role=\'resident\' ORDER BY CASE WHEN status=\'pending\' THEN 0 ELSE 1 END,created_at DESC LIMIT 200',[u.condominium_id]),
+      query('SELECT s.id,s.name,s.description,s.status,s.is_open,u.name AS owner_name FROM shops s JOIN users u ON u.id=s.owner_id WHERE s.condominium_id=$1 ORDER BY CASE WHEN s.status=\'pending\' THEN 0 ELSE 1 END,s.created_at DESC LIMIT 200',[u.condominium_id]),
+      query("SELECT (SELECT count(*)::int FROM users WHERE condominium_id=$1 AND status='approved') AS residents, (SELECT count(*)::int FROM shops WHERE condominium_id=$1 AND status='approved') AS shops,(SELECT count(*)::int FROM orders WHERE condominium_id=$1) AS orders",[u.condominium_id]),
+      query('SELECT id,name,icon FROM categories WHERE condominium_id=$1 ORDER BY sort_order,name',[u.condominium_id])
+    ]);
+    return out({residents:residents.rows,shops:shops.rows,stats:stats.rows[0],categories:categories.rows});
+  }
+  if(parts[0]==='admin'&&parts[1]==='users'&&parts[2]&&method==='PATCH'){
+    admin(u);if(!uuid(parts[2])||parts[2]===u.id)bad('Morador inválido.');
+    const b=z.object({status:z.enum(['approved','suspended'])}).parse(await body(req));
+    const r=await query("UPDATE users SET status=$1 WHERE id=$2 AND condominium_id=$3 AND role='resident' RETURNING id",[b.status,parts[2],u.condominium_id]);
+    if(!r.rowCount)bad('Morador não encontrado.',404);
+    if(b.status==='suspended')await query('DELETE FROM sessions WHERE user_id=$1',[parts[2]]);
+    return out({ok:true});
+  }
+  if(parts[0]==='admin'&&parts[1]==='shops'&&parts[2]&&method==='PATCH'){
+    admin(u);if(!uuid(parts[2]))bad('Loja inválida.');
+    const b=z.object({status:z.enum(['approved','suspended'])}).parse(await body(req));
+    const r=await query('UPDATE shops SET status=$1 WHERE id=$2 AND condominium_id=$3 RETURNING id',[b.status,parts[2],u.condominium_id]);
+    if(!r.rowCount)bad('Loja não encontrada.',404);
+    return out({ok:true});
+  }
+  if(path==='admin/categories'&&method==='POST'){
+    admin(u);
+    const b=z.object({name:z.string().trim().min(2).max(60),icon:z.string().regex(/^[a-z0-9-]{2,40}$/)}).parse(await body(req));
+    try{
+      const r=await query('INSERT INTO categories(condominium_id,name,icon) VALUES($1,$2,$3) RETURNING *',[u.condominium_id,b.name,b.icon]);
+      return out({category:r.rows[0]},201);
+    }catch(e:unknown){if((e as {code?:string}).code==='23505')bad('Categoria já existente.',409);throw e;}
+  }
+  if(path==='admin/invite'&&method==='POST'){
+    admin(u);
+    const code=crypto.randomBytes(12).toString('base64url');
+    await query('UPDATE condominiums SET invite_code_hash=$1 WHERE id=$2',[inviteHash(code),u.condominium_id]);
+    return out({invite:code,message:'Compartilhe o convite em canal privado. O convite anterior deixou de funcionar.'});
+  }
+  bad('Rota não encontrada.',404);
+}
+async function endpoint(req:NextRequest,method:Verb) {
+  const parts=req.nextUrl.pathname.replace(/^\/api\/?/,'').split('/').filter(Boolean);
+  try{return await processApi({req,method,parts});}
+  catch(error){
+    if(error instanceof ApiError)return out({error:error.message},error.status);
+    if(error instanceof ZodError)return out({error:'Confira os campos preenchidos.',details:error.issues.map(i=>i.path.join('.'))},400);
+    console.error('condovery_api_error',error instanceof Error?error.message:error);
+    return out({error:'Não foi possível concluir a operação.'},500);
+  }
+}
+export const GET=(req:NextRequest)=>endpoint(req,'GET');
+export const POST=(req:NextRequest)=>endpoint(req,'POST');
+export const PATCH=(req:NextRequest)=>endpoint(req,'PATCH');
+export const DELETE=(req:NextRequest)=>endpoint(req,'DELETE');
