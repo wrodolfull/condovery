@@ -67,3 +67,15 @@ jobs:
           exit 1
       - name: API integration test
         run: node scripts/smoke.mjs
+      - name: Install Chromium for responsive QA
+        run: npx playwright install --with-deps chromium
+      - name: Check mobile and desktop overflow
+        run: node scripts/visual-smoke.mjs
+      - name: Save visual QA screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: condovery-responsive-screenshots
+          path: artifacts/visual/
+          if-no-files-found: ignore
+          retention-days: 5
