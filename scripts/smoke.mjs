@@ -295,6 +295,12 @@ await request('admin/reports/'+complaintRow.id,{method:'PATCH',cookie:buyerCooki
 await request('admin/reports/'+complaintRow.id,{method:'PATCH',cookie:adminCookie,body:{action:'hide_product'}});
 assert.ok(!(await request('home',{cookie:buyerCookie})).data.products.some(p=>p.id===productId));
 assert.equal((await request('shops/mine',{cookie:sellerCookie})).data.products.find(p=>p.id===productId).visibility,'hidden');
+await request('products/'+productId+'/visibility',{method:'PATCH',cookie:sellerCookie,
+  expected:403,body:{visibility:'available'}});
+await request('admin/products/'+productId+'/unblock',{method:'PATCH',cookie:buyerCookie,expected:403});
+await request('admin/products/'+productId+'/unblock',{method:'PATCH',cookie:adminCookie});
+await request('admin/products/'+productId+'/unblock',{method:'PATCH',cookie:adminCookie,expected:404});
+
 await request('admin/reports/'+complaintRow.id,{method:'PATCH',cookie:adminCookie,expected:404,
   body:{action:'dismiss'}});
 const shopComplaint=(await request('reports',{method:'POST',cookie:buyerCookie,expected:201,body:{
