@@ -12,6 +12,8 @@ try {
   await client.query(schema);
   const migration=await readFile(new URL('../db/002_supabase_google_storage.sql',import.meta.url),'utf8');
   await client.query(migration);
+  const unified=await readFile(new URL('../db/003_unified_supabase_auth.sql',import.meta.url),'utf8');
+  await client.query(unified);
   console.log('Condovery database schema applied successfully.');
 } finally {
   await client.end();

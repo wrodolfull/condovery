@@ -1,13 +1,27 @@
+import 'server-only';
 import { createClient } from '@supabase/supabase-js';
 
 /**
- * Auth/Storage client restricted to server code. Never use Supabase data APIs
- * from a browser. Anon key is used solely for Supabase Auth's verified OAuth.
+ * No Supabase Auth tokens or database access credentials are exposed to the UI.
+ * Only server routes invoke these clients. The browser authenticates with the
+ * Condovery HttpOnly session cookie after Supabase Auth validates the identity.
  */
-export function googleAuthClient(saved?:Record<string,string>) {
+function environment() {
   const url=process.env.SUPABASE_URL;
   const anon=process.env.SUPABASE_ANON_KEY;
-  if(!url||!anon)throw new Error('Google authentication is not configured.');
+  if(!url||!anon)throw new Error('Supabase Auth is not configured.');
+  return {url,anon};
+}
+
+export function passwordAuthClient(){
+  const {url,anon}=environment();
+  return createClient(url,anon,{
+    auth:{flowType:'implicit',persistSession:false,autoRefreshToken:false,detectSessionInUrl:false}
+  });
+}
+
+export function googleAuthClient(saved?:Record<string,string>) {
+  const {url,anon}=environment();
   const pkceValues=new Map<string,string>(Object.entries(saved??{}));
   const client=createClient(url,anon,{
     auth:{
@@ -26,16 +40,14 @@ export function googleAuthClient(saved?:Record<string,string>) {
 export function storageAdmin(){
   const url=process.env.SUPABASE_URL;
   const key=process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if(!url||!key)throw new Error('Supabase Storage service credentials are missing.');
+  if(!url||!key)throw new Error('Supabase service credentials are missing.');
   return createClient(url,key,{
     auth:{persistSession:false,autoRefreshToken:false,detectSessionInUrl:false}
   });
 }
 
-export function googleConfigured(){
-  return Boolean(process.env.SUPABASE_URL&&process.env.SUPABASE_ANON_KEY&&process.env.APP_URL);
-}
-export function storageConfigured(){
-  return Boolean(process.env.SUPABASE_URL&&process.env.SUPABASE_SERVICE_ROLE_KEY);
-}
+export const emailConfigured=()=>Boolean(process.env.SUPABASE_URL&&process.env.SUPABASE_ANON_KEY&&process.env.APP_URL);
+export const recoveryConfigured=()=>emailConfigured()&&Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY);
+export const googleConfigured=emailConfigured;
+export const storageConfigured=()=>Boolean(process.env.SUPABASE_URL&&process.env.SUPABASE_SERVICE_ROLE_KEY);
 export const STORAGE_BUCKET='condovery-media';
