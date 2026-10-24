@@ -61,14 +61,13 @@ const shopCreated=await request('shops/mine',{method:'POST',cookie:sellerCookie,
 const shopId=shopCreated.data.shop.id;
 assert.equal(shopCreated.data.shop.status,'approved');
 const sellerHome=(await request('home',{cookie:sellerCookie})).data;
-assert.equal(sellerHome.categories.length,15);
+assert.equal(sellerHome.categories.length,7);
 const standardNames=[
   'Bolos e doces','Pães e salgados','Refeições','Bebidas','Lanches',
-  'Sobremesas e sorvetes','Mercadinho','Serviços','Beleza','Saúde e bem-estar',
-  'Moda','Casa e decoração','Eletrônicos','Presentes','Outros'
+  'Sobremesas e sorvetes','Mercadinho'
 ];
 assert.deepEqual(sellerHome.categories.map(c=>c.name),standardNames);
-assert.equal(new Set(sellerHome.categories.map(c=>c.id)).size,15);
+assert.equal(new Set(sellerHome.categories.map(c=>c.id)).size,7);
 await request('products',{method:'POST',cookie:sellerCookie,expected:400,body:{
   name:'Porra',description:'Teste de ofensa',price_cents:2500,stock:4,
   category_id:sellerHome.categories[0].id,lead_time:'Disponível hoje',is_available:true
