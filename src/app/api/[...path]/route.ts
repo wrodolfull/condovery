@@ -233,6 +233,30 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
     return out({ok:true});
   }
   approved(u);
+  if(path==='favorites'&&method==='GET'){
+    const r=await query(
+      "SELECT f.product_id FROM favorites f JOIN products p ON p.id=f.product_id AND p.condominium_id=f.condominium_id JOIN shops s ON s.id=p.shop_id WHERE f.condominium_id=$1 AND f.user_id=$2 AND p.is_available=true AND s.status='approved' ORDER BY f.created_at DESC",
+      [u.condominium_id,u.id]
+    );
+    return out({ids:r.rows.map(row=>row.product_id)});
+  }
+  if(path==='favorites'&&method==='POST'){
+    const b=z.object({product_id:z.string().uuid()}).parse(await body(req));
+    const valid=await query(
+      "SELECT p.id FROM products p JOIN shops s ON s.id=p.shop_id AND s.condominium_id=p.condominium_id WHERE p.id=$1 AND p.condominium_id=$2 AND p.is_available=true AND s.status='approved'",
+      [b.product_id,u.condominium_id]
+    );
+    if(!valid.rowCount)bad('Produto indisponível.',404);
+    await query('INSERT INTO favorites(condominium_id,user_id,product_id) VALUES($1,$2,$3) ON CONFLICT DO NOTHING',
+      [u.condominium_id,u.id,b.product_id]);
+    return out({ok:true});
+  }
+  if(parts[0]==='favorites'&&parts[1]&&method==='DELETE'){
+    if(!uuid(parts[1]))bad('Produto inválido.');
+    await query('DELETE FROM favorites WHERE condominium_id=$1 AND user_id=$2 AND product_id=$3',
+      [u.condominium_id,u.id,parts[1]]);
+    return out({ok:true});
+  }
   if(path==='catalog'&&method==='GET'){
     const pageText=req.nextUrl.searchParams.get('page')??'0';
     const limitText=req.nextUrl.searchParams.get('limit')??'24';
