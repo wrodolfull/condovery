@@ -542,14 +542,14 @@ await request('orders/quote',{method:'POST',cookie:lifecycleBuyer,expected:400,b
   shop_id:lifecycleShop.id,items:[{id:lifecycleProduct.id,quantity:1}],fulfillment:'pickup'
 }});
 await request('shops/mine/status',{method:'PATCH',cookie:lifecycleSeller,body:{is_open:true}});
-const unfinished=(await request('orders',{method:'POST',cookie:lifecycleBuyer,expected:201,body:{
+const lifecycleUnfinished=(await request('orders',{method:'POST',cookie:lifecycleBuyer,expected:201,body:{
   shop_id:lifecycleShop.id,items:[{id:lifecycleProduct.id,quantity:1}],fulfillment:'pickup'
 }})).data.order;
 await request('shops/mine',{method:'DELETE',cookie:lifecycleSeller,expected:400,body:{confirmation:'NÃO'}});
 await request('shops/mine',{method:'DELETE',cookie:lifecycleBuyer,expected:404,body:{confirmation:'EXCLUIR LOJA'}});
 await request('shops/mine',{method:'DELETE',cookie:lifecycleSeller,expected:409,body:{confirmation:'EXCLUIR LOJA'}});
-await request('orders/'+unfinished.id,{method:'PATCH',cookie:lifecycleSeller,body:{status:'confirmed'}});
-await request('orders/'+unfinished.id,{method:'PATCH',cookie:lifecycleSeller,body:{status:'completed'}});
+await request('orders/'+lifecycleUnfinished.id,{method:'PATCH',cookie:lifecycleSeller,body:{status:'confirmed'}});
+await request('orders/'+lifecycleUnfinished.id,{method:'PATCH',cookie:lifecycleSeller,body:{status:'completed'}});
 const lifecycleDeleted=await request('shops/mine',{method:'DELETE',cookie:lifecycleSeller,body:{confirmation:'EXCLUIR LOJA'}});
 assert.equal(lifecycleDeleted.data.status,'completed');
 assert.equal((await request('shops/mine',{cookie:lifecycleSeller})).data.shop,null);
@@ -565,7 +565,7 @@ try{
   const previous=await historyDB.query('SELECT status,is_open,whatsapp FROM shops WHERE id=$1',[lifecycleShop.id]);
   assert.equal(previous.rows[0].status,'deleted');
   assert.equal(previous.rows[0].whatsapp,'');
-  const oldOrder=await historyDB.query('SELECT id,total_cents,status FROM orders WHERE id=$1',[unfinished.id]);
+  const oldOrder=await historyDB.query('SELECT id,total_cents,status FROM orders WHERE id=$1',[lifecycleUnfinished.id]);
   assert.equal(oldOrder.rows[0].status,'completed');
   assert.equal(oldOrder.rows[0].total_cents,1050);
   const cleanup=await historyDB.query('SELECT finished_at FROM shop_deletion_jobs WHERE shop_id=$1',[lifecycleShop.id]);
