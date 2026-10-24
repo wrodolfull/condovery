@@ -753,6 +753,7 @@ export default function Page(){
             <button className="shop-share-button" onClick={()=>shareShop(selectedShop.shop.id,selectedShop.shop.name)}>
               <Share2 size={17}/> Compartilhar loja
             </button>
+            <button className="report-trigger" onClick={()=>setReportTarget({type:'shop',id:selectedShop.shop.id,name:selectedShop.shop.name})}>Denunciar loja</button>
           </div>
         </div>
         <div className="shop-rating" aria-label="Avaliação da loja">
@@ -795,6 +796,7 @@ export default function Page(){
             <div className="add-row"><div className="quantity"><button onClick={()=>setQty(Math.max(1,qty-1))} aria-label="Diminuir"><Minus size={18}/></button><strong>{qty}</strong><button onClick={()=>setQty(Math.min(Math.max(1,selectedProduct.stock??30),qty+1))} aria-label="Aumentar"><Plus size={18}/></button></div>
             <button className="primary-button" disabled={!productCanBuy(selectedProduct)} onClick={addToCart}><Plus size={18}/>Adicionar · {money(price(selectedProduct)*qty)}</button></div>
             {!productCanBuy(selectedProduct)&&<p className="helper-note">Este produto continua visível, mas não pode ser comprado agora.</p>}
+            <button className="report-trigger" onClick={()=>setReportTarget({type:'product',id:selectedProduct.id,name:selectedProduct.name})}>Denunciar produto</button>
           </div>
         </div>
       </>}
@@ -1050,7 +1052,25 @@ export default function Page(){
 <option value="ice-cream-cone">Sobremesas</option><option value="shopping-basket">Mercadinho</option>
 <option value="wrench">Serviços</option><option value="heart-pulse">Saúde</option>
 <option value="house">Casa</option><option value="smartphone">Eletrônicos</option></select><button className="outline-button" disabled={busy} type="submit"><Plus size={16}/>Adicionar</button></form></section>
-        <section className="admin-section white-panel">
+                <section className="admin-section white-panel">
+          <h2><ShieldCheck size={20}/> Denúncias de conteúdo
+            {reports.filter(r=>r.status==='open').length>0&&<span className="review-pending-counter">
+              {reports.filter(r=>r.status==='open').length}</span>}</h2>
+          {reports.filter(r=>r.status==='open').length===0?<p className="muted">Nenhuma denúncia pendente.</p>:
+            <div className="content-report-list">
+              {reports.filter(r=>r.status==='open').map(r=><article className="content-report" key={r.id}>
+                <strong>{r.target_type==='shop'?'Loja':'Produto'}: {r.target_name??'Indisponível'}</strong>
+                <small>{r.reason==='image'?'Imagem imprópria':r.reason==='language'?'Linguagem ofensiva':r.reason==='inappropriate'?'Conteúdo inadequado':'Outro motivo'}</small>
+                {r.details&&<p>{r.details}</p>}
+                <div className="moderation-actions">
+                  <button className="outline-button" disabled={busy} onClick={()=>resolveReport(r.id,'dismiss')}>Dispensar</button>
+                  {r.target_type==='product'&&<button className="outline-button" disabled={busy} onClick={()=>resolveReport(r.id,'hide_product')}>Ocultar produto</button>}
+                  <button className="danger-text" disabled={busy} onClick={()=>resolveReport(r.id,'suspend_shop')}>Suspender loja</button>
+                </div>
+              </article>)}
+            </div>}
+        </section>
+<section className="admin-section white-panel">
   <h2><ShieldCheck size={20}/> Código do condomínio</h2>
   <p>Você escolhe o código. Quem o informar pode entrar após confirmar o e-mail.</p>
   <form className="form-stack" onSubmit={saveInvite}>
@@ -1065,6 +1085,23 @@ export default function Page(){
 </section>
         </>:<Empty title="Carregando administração" subtitle="Confira sua conexão e tente novamente." action="Recarregar" onAction={()=>loadAdmin().catch(fail)}/>}
       </>}
+      {reportTarget&&<div className="report-overlay" role="presentation" onClick={()=>setReportTarget(null)}>
+        <section className="report-dialog" role="dialog" aria-modal="true" aria-label="Denunciar conteúdo" onClick={e=>e.stopPropagation()}>
+          <button className="report-close" aria-label="Fechar denúncia" onClick={()=>setReportTarget(null)}><X size={21}/></button>
+          <h2>Denunciar conteúdo</h2><p>{reportTarget.name}</p>
+          <form className="form-stack" onSubmit={sendReport}>
+            <label>Motivo<select value={reportReason} onChange={e=>setReportReason(e.target.value as typeof reportReason)}>
+              <option value="image">Imagem imprópria</option>
+              <option value="language">Palavras ofensivas</option>
+              <option value="inappropriate">Conteúdo inadequado</option>
+              <option value="other">Outro motivo</option>
+            </select></label>
+            <label>Detalhes (opcional)<textarea rows={3} maxLength={250} value={reportDetails}
+              onChange={e=>setReportDetails(e.target.value)} placeholder="O que está errado?"/></label>
+            <button className="primary-button" type="submit" disabled={busy}>Enviar denúncia</button>
+          </form>
+        </section>
+      </div>}
     </main>
 
     {cartCount>0&&view!=='cart'&&view!=='success'&&<button className="floating-cart" onClick={()=>go('cart')}><ShoppingBag size={19}/><span>{cartCount} {cartCount===1?'item':'itens'}</span><strong>{money(cartTotal)}</strong><ArrowRight size={18}/></button>}
