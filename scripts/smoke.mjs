@@ -57,7 +57,14 @@ const shopCreated=await request('shops/mine',{method:'POST',cookie:sellerCookie,
 const shopId=shopCreated.data.shop.id;
 await request('admin/shops/'+shopId,{method:'PATCH',cookie:adminCookie,body:{status:'approved'}});
 const sellerHome=(await request('home',{cookie:sellerCookie})).data;
-assert.ok(sellerHome.categories.length>0);
+assert.equal(sellerHome.categories.length,15);
+const standardNames=[
+  'Bolos e doces','Pães e salgados','Refeições','Bebidas','Lanches',
+  'Sobremesas e sorvetes','Mercadinho','Serviços','Beleza','Saúde e bem-estar',
+  'Moda','Casa e decoração','Eletrônicos','Presentes','Outros'
+];
+assert.deepEqual(sellerHome.categories.map(c=>c.name),standardNames);
+assert.equal(new Set(sellerHome.categories.map(c=>c.id)).size,15);
 const product=await request('products',{method:'POST',cookie:sellerCookie,body:{
   name:'Bolo de cenoura',description:'Com chocolate',price_cents:2500,stock:4,
   category_id:sellerHome.categories[0].id,lead_time:'Disponível hoje',is_available:true

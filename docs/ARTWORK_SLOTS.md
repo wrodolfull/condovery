@@ -37,6 +37,12 @@ Quando você fornecer o arquivo, substitua o valor \`null\` pelo caminho relativ
 | \`categoryOutros\` | Outras categorias não mapeadas | WebP/PNG transparente, 256×256 |
 | \`categoryRestaurantes\` | Restaurantes/lanchonetes | WebP/PNG transparente, 256×256 |
 | \`categorySobremesas\` | Sorvetes/sobremesas/açaí | WebP/PNG transparente, 256×256 |
+| `categoryLanches` | Lanches | WebP/PNG transparente, 256×256 |
+| `categoryMercadinho` | Mercadinho | WebP/PNG transparente, 256×256 |
+| `categoryServicos` | Serviços | WebP/PNG transparente, 256×256 |
+| `categorySaude` | Saúde e bem-estar | WebP/PNG transparente, 256×256 |
+| `categoryCasa` | Casa e decoração | WebP/PNG transparente, 256×256 |
+| `categoryEletronicos` | Eletrônicos | WebP/PNG transparente, 256×256 |
 
 As imagens circulares não substituem os **produtos** cadastrados pelos vendedores:
 somente ilustram categorias. O nome real da categoria, sua disponibilidade e o
@@ -63,3 +69,9 @@ Validar em larguras 320/360/390/430 px: sem rolagem lateral do documento,
 com rolagem *dentro* das categorias/filtros e sem sobreposição da barra
 inferior com o botão do carrinho. Conferir login, recuperação, Home,
 Explorar, Pedidos, Perfil, carrinho e telas administrativas.
+
+## Categorias padrão
+
+Agora são 15 categorias por condomínio, além do filtro Todos. A migração `db/006_default_categories.sql` inclui as novas opções também em condomínios existentes, sem excluir produtos ou categorias personalizadas.
+
+Na Home e no Explorar, cada categoria tem sua imagem circular, nome abaixo e rolagem horizontal. Configure seus arquivos depois em `src/lib/artwork.ts`; até lá, os ícones permanecem visíveis como fallback.

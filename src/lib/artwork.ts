@@ -26,13 +26,25 @@ export const artwork = {
   categoryPresentes: null,
   categoryOutros: null,
   categoryRestaurantes: null,
-  categorySobremesas: null
+  categorySobremesas: null,
+  categoryLanches: null,
+  categoryMercadinho: null,
+  categoryServicos: null,
+  categorySaude: null,
+  categoryCasa: null,
+  categoryEletronicos: null
 } as Record<string, string | null>;
 export type ArtworkKey = keyof typeof artwork;
 
 export function getCategoryArtwork(name:string,icon?:string):string|null {
   const normalized=name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
-  if(/restaurante|lanchonete|delivery/.test(normalized))return artwork.categoryRestaurantes;
+  if(/restaurante|delivery/.test(normalized))return artwork.categoryRestaurantes;
+  if(/lanch|hamburg|pizza/.test(normalized))return artwork.categoryLanches;
+  if(/mercad|conveniencia|supermerc/.test(normalized))return artwork.categoryMercadinho;
+  if(/servic|reparo|manutenc/.test(normalized))return artwork.categoryServicos;
+  if(/saude|bem[ -]?estar/.test(normalized))return artwork.categorySaude;
+  if(/casa|decorac/.test(normalized))return artwork.categoryCasa;
+  if(/eletronic|informatica|celular/.test(normalized))return artwork.categoryEletronicos;
   if(/sobremesa|sorvete|acai/.test(normalized))return artwork.categorySobremesas;
   if(/bolo|doce/.test(normalized))return artwork.categoryBolos;
   if(/pao|salgado/.test(normalized))return artwork.categoryPaes;
@@ -45,7 +57,11 @@ export function getCategoryArtwork(name:string,icon?:string):string|null {
     'cake-slice':artwork.categoryBolos,'sandwich':artwork.categoryPaes,
     'utensils':artwork.categoryRefeicoes,'coffee':artwork.categoryBebidas,
     'sparkles':artwork.categoryBeleza,'shirt':artwork.categoryModa,
-    'gift':artwork.categoryPresentes,'shopping-bag':artwork.categoryOutros
+    'gift':artwork.categoryPresentes,'shopping-bag':artwork.categoryOutros,
+    'pizza':artwork.categoryLanches,'ice-cream-cone':artwork.categorySobremesas,
+    'shopping-basket':artwork.categoryMercadinho,'wrench':artwork.categoryServicos,
+    'heart-pulse':artwork.categorySaude,'house':artwork.categoryCasa,
+    'smartphone':artwork.categoryEletronicos
   };
   return icon?categoryByIcon[icon]??artwork.categoryOutros:artwork.categoryOutros;
 }

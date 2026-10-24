@@ -16,3 +16,20 @@ test('category art routes independently of the product catalog',()=>{
   assert.equal(getCategoryArtwork('Restaurantes','utensils'),'/illustrations/restaurante.webp');
   assert.equal(getCategoryArtwork('Sobremesas','cake-slice'),'/illustrations/sobremesa.webp');
 });
+
+test('seven additional categories each have their own replaceable image',()=>{
+  const fixtures=[
+    ['Lanches','pizza','categoryLanches'],
+    ['Sobremesas e sorvetes','ice-cream-cone','categorySobremesas'],
+    ['Mercadinho','shopping-basket','categoryMercadinho'],
+    ['Serviços','wrench','categoryServicos'],
+    ['Saúde e bem-estar','heart-pulse','categorySaude'],
+    ['Casa e decoração','house','categoryCasa'],
+    ['Eletrônicos','smartphone','categoryEletronicos']
+  ] as const;
+  for(const [name,icon,key] of fixtures){
+    const src='/illustrations/'+key+'.webp';
+    artwork[key]=src;
+    assert.equal(getCategoryArtwork(name,icon),src,name);
+  }
+});

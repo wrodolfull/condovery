@@ -58,7 +58,7 @@ try{
   if(identity.rows[0]?.supabase_auth_user_id!==authId||identity.rows[0].role!=='admin'){
     throw new Error('Administrator identity conflict; manual resolution required.');
   }
-  const categories=[['Bolos e doces','cake-slice'],['Pães e salgados','sandwich'],['Refeições','utensils'],['Bebidas','coffee'],['Beleza','sparkles'],['Moda','shirt'],['Presentes','gift'],['Outros','shopping-bag']];
+  const categories=[['Bolos e doces','cake-slice'],['Pães e salgados','sandwich'],['Refeições','utensils'],['Bebidas','coffee'],['Lanches','pizza'],['Sobremesas e sorvetes','ice-cream-cone'],['Mercadinho','shopping-basket'],['Serviços','wrench'],['Beleza','sparkles'],['Saúde e bem-estar','heart-pulse'],['Moda','shirt'],['Casa e decoração','house'],['Eletrônicos','smartphone'],['Presentes','gift'],['Outros','shopping-bag']];
   for(let i=0;i<categories.length;i++)await db.query(
     'INSERT INTO categories(condominium_id,name,icon,sort_order) VALUES($1,$2,$3,$4) ON CONFLICT(condominium_id,name) DO NOTHING',
     [condoId,categories[i][0],categories[i][1],i]
