@@ -572,6 +572,19 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
       rating:z.number().int().min(1).max(5),
       description:z.string().trim().min(1).max(200)
     }).parse(await body(req));
+    // Check why a review is ineligible before attempting the INSERT, so a
+    // buyer never sees a generic message for their own completed test order.
+    const match=await query(
+      "SELECT o.buyer_id,o.status,s.owner_id,s.status AS shop_status FROM orders o "+
+      "JOIN shops s ON s.id=o.shop_id AND s.condominium_id=o.condominium_id "+
+      "WHERE o.id=$1 AND o.condominium_id=$2",
+      [parts[1],u.condominium_id]
+    );
+    const order=match.rows[0];
+    if(!order||order.buyer_id!==u.id)bad('Somente o comprador deste pedido pode avaliar.',403);
+    if(order.status!=='completed')bad('Este pedido ainda não foi concluído.',403);
+    if(order.owner_id===u.id)bad('Você não pode avaliar uma compra na sua própria loja.',403);
+    if(order.shop_status!=='approved')bad('A loja não está disponível para avaliações.',403);
     const inserted=await query(
       "INSERT INTO shop_reviews(condominium_id,shop_id,order_id,buyer_id,rating,description) "+
       "SELECT o.condominium_id,o.shop_id,o.id,o.buyer_id,$3,$4 FROM orders o "+
@@ -940,7 +953,10 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
     let shopId:string|undefined;
     if(seller){const sh=await shopOwned(u);shopId=sh.id;}
     const r=await query(
-      "SELECT o.*,(SELECT rv.status FROM shop_reviews rv WHERE rv.order_id=o.id AND rv.condominium_id=o.condominium_id) AS review_status,s.name AS shop_name,bu.name AS buyer_name,bu.tower,bu.apartment,bu.phone AS buyer_phone,COALESCE(json_agg(json_build_object('name',i.name_snapshot,'quantity',i.quantity,'unit_price_cents',i.unit_price_cents,'note',i.note,'options',i.options)) FILTER (WHERE i.id IS NOT NULL),'[]'::json) AS items FROM orders o JOIN shops s ON s.id=o.shop_id JOIN users bu ON bu.id=o.buyer_id LEFT JOIN order_items i ON i.order_id=o.id WHERE o.condominium_id=$1 AND "+(seller?'o.shop_id=$2':'o.buyer_id=$2')+(status?' AND o.status=$3':'')+" GROUP BY o.id,s.name,bu.id ORDER BY o.created_at DESC LIMIT 100",
+      "SELECT o.*,(SELECT rv.status FROM shop_reviews rv WHERE rv.order_id=o.id AND rv.condominium_id=o.condominium_id) AS review_status,"+
+      " (s.owner_id=o.buyer_id) AS is_own_shop,"+
+      " (o.status='completed' AND o.buyer_id<>s.owner_id AND s.status='approved' AND NOT EXISTS (SELECT 1 FROM shop_reviews r WHERE r.order_id=o.id AND r.condominium_id=o.condominium_id)) AS can_review,"+
+      " s.name AS shop_name,bu.name AS buyer_name,bu.tower,bu.apartment,bu.phone AS buyer_phone,COALESCE(json_agg(json_build_object('name',i.name_snapshot,'quantity',i.quantity,'unit_price_cents',i.unit_price_cents,'note',i.note,'options',i.options)) FILTER (WHERE i.id IS NOT NULL),'[]'::json) AS items FROM orders o JOIN shops s ON s.id=o.shop_id JOIN users bu ON bu.id=o.buyer_id LEFT JOIN order_items i ON i.order_id=o.id WHERE o.condominium_id=$1 AND "+(seller?'o.shop_id=$2':'o.buyer_id=$2')+(status?' AND o.status=$3':'')+" GROUP BY o.id,s.name,bu.id ORDER BY o.created_at DESC LIMIT 100",
       [...[u.condominium_id,seller?shopId:u.id],...(status?[status]:[])]
     );
     // Buyers do not need to see delivery address of someone else; shop owner sees only data for their own orders.
