@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { BRL, normalizeWhatsApp, orderMessage, unitPrice, optionGroupsSchema, selectedOptions, extrasTotal } from '../src/lib/orders';
+import { BRL, normalizeWhatsApp, orderMessage, unitPrice, optionGroupsSchema, selectedOptions, extrasTotal, arrivalInstructionOptions, toggleArrivalInstruction, validArrivalInstructions } from '../src/lib/orders';
 
 test('formats BRL cents without rounding mistakes',()=>assert.equal(BRL(3990),'R$ 39,90'));
 test('normalizes Brazilian WhatsApp numbers',()=>{
@@ -46,4 +46,23 @@ test('WhatsApp message has line notes, selections, fee and Brazilian date',()=>{
   assert.match(msg,/Data preferida: 26\/10\/2026/);
   assert.match(msg,/Taxa de entrega/);
   assert.match(msg.replaceAll('\u00a0',' '),/Total: R\$ 57,00/);
+});
+
+test('arrival preferences support knocking, ringing and not ringing without contradiction',()=>{
+  assert.ok(arrivalInstructionOptions.includes('Bater na porta'));
+  assert.deepEqual(toggleArrivalInstruction([], 'Bater na porta',true),['Bater na porta']);
+  assert.deepEqual(toggleArrivalInstruction(['Bater na porta','Não tocar a campainha'],'Tocar a campainha',true),['Tocar a campainha']);
+  assert.deepEqual(toggleArrivalInstruction(['Tocar a campainha'],'Não tocar a campainha',true),['Não tocar a campainha']);
+  assert.deepEqual(toggleArrivalInstruction(['Tocar a campainha'],'Bater na porta',true),['Bater na porta']);
+  assert.deepEqual(toggleArrivalInstruction(['Bater na porta','Não tocar a campainha'],'Bater na porta',false),['Não tocar a campainha']);
+  assert.equal(validArrivalInstructions(['Bater na porta','Não tocar a campainha','Deixar na porta']),true);
+  assert.equal(validArrivalInstructions(['Bater na porta','Tocar a campainha']),false);
+  assert.equal(validArrivalInstructions(['Não tocar a campainha','Tocar a campainha']),false);
+  assert.equal(validArrivalInstructions(['Bater na porta','Bater na porta']),false);
+});
+test('knocking is included in the WhatsApp order message',()=>{
+  const msg=orderMessage({code:100,shop:'Loja Teste',buyer:'Maria',tower:'Torre 3',apartment:'42',
+    items:[{name:'Bolo',quantity:1,unit_price_cents:2500}],total_cents:2500,fulfillment:'delivery',
+    instructions:['Bater na porta','Não tocar a campainha']});
+  assert.match(msg,/Instruções: Bater na porta; Não tocar a campainha/);
 });

@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import {IllustrationSlot} from '@/components/IllustrationSlot';
 import {RoundedStars} from '@/components/RoundedStars';
 import {artwork,getCategoryArtwork} from '@/lib/artwork';
-import {selectedOptions, extrasTotal, type OptionGroup, type Selection} from '@/lib/orders';
+import {selectedOptions, extrasTotal, arrivalInstructionOptions, toggleArrivalInstruction, type OptionGroup, type Selection} from '@/lib/orders';
 import {
   ArrowLeft, ArrowRight, Bell, Building2, CakeSlice, Check, CheckCircle2, ChevronDown, ChevronRight,
   CircleHelp, Clock3, Coffee, Gift, Heart, Home, ImagePlus, LayoutGrid, LogOut, MapPin,
@@ -912,7 +912,9 @@ export default function Page(){
             <label className="field-label">Período / horário<input value={deliveryWindow} maxLength={70} onChange={e=>setDeliveryWindow(e.target.value)} placeholder="Ex.: 18h às 20h"/></label></div>
             <p className="helper-note">Horário sujeito à confirmação da loja.</p>
             {actualFulfillment==='delivery'&&<><h3>Instruções de entrega</h3><div className="instructions">
-              {['Tocar a campainha','Não tocar a campainha','Deixar na porta','Entregar pessoalmente','Retirar na portaria'].map(t=><label key={t}><input type="checkbox" checked={instructions.includes(t)} onChange={e=>setInstructions(s=>e.target.checked?[...s.filter(x=>!((t==='Tocar a campainha'&&x==='Não tocar a campainha')||(t==='Não tocar a campainha'&&x==='Tocar a campainha'))),t]:s.filter(x=>x!==t))}/>{t}</label>)}
+              {arrivalInstructionOptions.map(t=><label key={t}><input type="checkbox"
+                checked={instructions.includes(t)}
+                onChange={e=>setInstructions(s=>toggleArrivalInstruction(s,t,e.target.checked))}/>{t}</label>)}
               </div></>}
             <label className="field-label">Observações gerais<textarea rows={3} maxLength={400} value={checkoutNote} onChange={e=>setCheckoutNote(e.target.value)} placeholder="Algo mais que o vendedor precisa saber?"/></label>
           </div>

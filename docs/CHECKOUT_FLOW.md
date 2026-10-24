@@ -20,6 +20,8 @@ O vendedor configura até oito grupos, como **Sabor**, **Tamanho**, **Cobertura*
 - Se escolher Entrega, pode definir taxa fixa opcional por pedido de R$ 0,00 a R$ 10.000,00.
 - O checkout só apresenta formas de recebimento habilitadas; o servidor também valida essas permissões.
 - A taxa aparece somente na modalidade Entrega e entra na totalização **uma vez por pedido**, não por produto.
+- Para entregas, o morador pode escolher **Bater na porta**, **Tocar a campainha** ou **Não tocar a campainha**, além de deixar na porta, entregar pessoalmente ou retirar na portaria. A tela evita combinar bater e tocar a campainha, ou tocar e não tocar. O backend também rejeita combinações contraditórias.
+- As instruções escolhidas são salvas no pedido e enviadas na mensagem do WhatsApp do vendedor.
 - Data/horário são preferências, não garantia de disponibilidade. Não há pagamento online.
 
 ## Revisão de valores
