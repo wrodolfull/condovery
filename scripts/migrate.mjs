@@ -16,6 +16,8 @@ try {
   await client.query(unified);
   const reviews=await readFile(new URL('../db/004_shop_reviews.sql',import.meta.url),'utf8');
   await client.query(reviews);
+  const additions=await readFile(new URL('../db/005_seller_profile_product_visibility.sql',import.meta.url),'utf8');
+  await client.query(additions);
   console.log('Condovery database schema applied successfully.');
 } finally {
   await client.end();
