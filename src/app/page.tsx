@@ -29,7 +29,7 @@ type AdminData={residents:{id:string;name:string;email:string;tower:string;apart
 type View='home'|'categories'|'favorites'|'orders'|'account'|'shop'|'product'|'cart'|'success'|'seller'|'admin';
 const money=(n:number)=>new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(n/100);
 const price=(p:Product)=>p.promo_price_cents??p.price_cents;
-const statusLabel:Record<string,string>={awaiting_confirmation:'Aguardando confirmação',confirmed:'Confirmado',completed:'Concluído',cancelled:'Cancelado',pending:'Em análise',approved:'Aprovado',suspended:'Suspenso'};
+const statusLabel:Record<string,string>={awaiting_confirmation:'Aguardando confirmação',confirmed:'Confirmado',completed:'Concluído',cancelled:'Cancelado',pending:'Em análise',approved:'Ativo',suspended:'Suspenso'};
 const emptyHome:HomeData={categories:[],shops:[],products:[]};
 type OrderFilter='all'|'awaiting_confirmation'|'confirmed'|'completed'|'cancelled';
 const orderFilters:{key:OrderFilter;label:string}[]=[
@@ -937,11 +937,9 @@ export default function Page(){
                 myShop.status==='suspended'?'Fale com a administração do condomínio.':'Sua loja ficará disponível automaticamente.'}</p>
             </div>
           </div>
-          {myShop.status==='pending'&&<div className="seller-activation-help">
-            <div className="activation-steps"><span className="done"><Check size={14}/> Loja cadastrada</span>
-              <span className="current"><Clock3 size={14}/> Em análise</span><span><Package size={14}/> Vender</span></div>
+          {myShop.status==='approved'&&!myShop.logo_image&&<div className="seller-activation-help">
             <label className="simple-photo-uploader"><ImagePlus size={17}/>
-              {myShop.logo_image?'Trocar foto da loja':'Adicionar foto da loja'}
+              Adicionar foto da loja
               <input type="file" accept="image/jpeg,image/png,image/webp" disabled={busy}
                 onChange={e=>{const file=e.target.files?.[0];if(file)upload(file,'logo');}}/>
             </label>
