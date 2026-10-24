@@ -53,6 +53,17 @@ function SectionHeader({title,action,onAction}:{title:string;action?:string;onAc
 function Empty({title,subtitle,action,onAction}:{title:string;subtitle:string;action?:string;onAction?:()=>void}){
   return <div className="empty-state"><div className="empty-icon"><ShoppingBasket size={35}/></div><h3>{title}</h3><p>{subtitle}</p>{action&&<button className="outline-button" onClick={onAction}>{action}</button>}</div>;
 }
+function OrderProgress({status}:{status:string}) {
+  if(status==='cancelled')return <p className="order-progress-note">Este pedido foi cancelado. Consulte a loja pelo WhatsApp para esclarecer dúvidas.</p>;
+  const current=status==='completed'?3:status==='confirmed'?2:1;
+  const steps=['Pedido criado','Confirmado','Concluído'];
+  return <div className="order-progress" aria-label={'Andamento do pedido: '+(statusLabel[status]??status)}>
+    {steps.map((label,index)=><div className={'order-progress-step'+(index<current?' completed':'')} key={label}>
+      <span className="order-step-dot">{index<current?<Check size={12} strokeWidth={3}/>:index+1}</span>
+      <span>{label}</span>
+    </div>)}
+  </div>;
+}
 function ProductCard({p,onClick,favorite,onFavorite}:{p:Product;onClick:()=>void;favorite:boolean;onFavorite:(id:string)=>void}){
   return <article className="product-card">
     <button className="product-open" onClick={onClick} aria-label={'Ver '+p.name}>
@@ -556,7 +567,7 @@ export default function Page(){
       </>}
             {view==='orders'&&<><div className="page-title"><h1>Meus pedidos</h1><p>Seu histórico de compras com os vizinhos.</p></div>
         {!orders.length?<Empty title="Ainda não fez pedidos?" subtitle="Encontre algo gostoso ou útil vendido pertinho de você." action="Começar a comprar" onAction={()=>go('home')}/>:
-        <div className="order-list">{orders.map(o=><article className="order-card" key={o.id}><div className="order-top"><strong>#{o.code} · {o.shop_name}</strong><Pill tone={o.status==='completed'?'green':o.status==='cancelled'?'neutral':'orange'}>{statusLabel[o.status]??o.status}</Pill></div><p>{o.items.map(i=>i.quantity+'× '+i.name).join(' · ')}</p><div className="order-bottom"><small>{new Date(o.created_at).toLocaleDateString('pt-BR')} · {o.fulfillment==='delivery'?'Entrega':'Retirada'}</small><strong>{money(o.total_cents)}</strong></div></article>)}</div>}</>}
+        <div className="order-list">{orders.map(o=><article className="order-card" key={o.id}><div className="order-top"><strong>#{o.code} · {o.shop_name}</strong><Pill tone={o.status==='completed'?'green':o.status==='cancelled'?'neutral':'orange'}>{statusLabel[o.status]??o.status}</Pill></div><p>{o.items.map(i=>i.quantity+'× '+i.name).join(' · ')}</p><OrderProgress status={o.status}/><div className="order-bottom"><small>{new Date(o.created_at).toLocaleDateString('pt-BR')} · {o.fulfillment==='delivery'?'Entrega':'Retirada'}</small><strong>{money(o.total_cents)}</strong></div></article>)}</div>}</>}
 
       {view==='account'&&<><div className="page-title"><h1>Meu perfil</h1><p>Seu endereço, seus pedidos e tudo sobre sua conta.</p></div>
         <div className="account-grid"><div className="white-panel"><div className="account-welcome"><div className="avatar">{viewer.name[0]}</div><div><strong>{viewer.name}</strong><p>{viewer.email}</p></div></div><form onSubmit={saveProfile} className="form-stack">
