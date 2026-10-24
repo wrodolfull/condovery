@@ -105,6 +105,8 @@ await request('orders/'+orderId+'/whatsapp',{cookie:buyerCookie,expected:404});
 const final=(await request('orders',{cookie:buyerCookie})).data.orders.find(o=>o.id===orderId);
 assert.equal(final.status,'completed');
 assert.equal(final.total_cents,5000);
+assert.equal(final.can_review,true,'A different resident who completed an order can rate it.');
+assert.equal(final.is_own_shop,false);
 
 
 
@@ -135,6 +137,7 @@ await request(reviewEndpoint,{method:'POST',cookie:buyerCookie,
   body:{rating:5,description:'Repetida'},expected:409});
 const awaitingReview=(await request('orders?status=completed',{cookie:buyerCookie})).data.orders.find(o=>o.id===orderId);
 assert.equal(awaitingReview.review_status,'pending');
+assert.equal(awaitingReview.can_review,false);
 assert.equal((await request('shops/'+shopId+'/reviews',{cookie:buyerCookie})).data.summary.count,0);
 const moderationList=(await request('shops/mine/reviews',{cookie:sellerCookie})).data;
 assert.equal(moderationList.pending,1);
@@ -559,6 +562,27 @@ const replacement=(await request('shops/mine',{method:'POST',expected:201,cookie
   name:'Nova Loja de Teste',description:'Sobremesas',whatsapp:'11999998888',accept_guidelines:true
 }})).data.shop;
 assert.notEqual(replacement.id,lifecycleShop.id);
+// A seller can buy from their own store for testing, but that order must NOT
+// create a public verified review. The UI uses these response flags to hide
+// the action and the API explains the refusal.
+const selfProduct=(await request('products',{method:'POST',cookie:lifecycleSeller,expected:201,body:{
+  name:'Sobremesa da própria loja',category_id:sellerHome.categories[0].id,price_cents:1200,stock:5
+}})).data.product;
+const selfOrder=(await request('orders',{method:'POST',cookie:lifecycleSeller,expected:201,body:{
+  shop_id:replacement.id,items:[{id:selfProduct.id,quantity:1}],fulfillment:'pickup'
+}})).data.order;
+await request('orders/'+selfOrder.id,{method:'PATCH',cookie:lifecycleSeller,body:{status:'confirmed'}});
+await request('orders/'+selfOrder.id,{method:'PATCH',cookie:lifecycleSeller,body:{status:'completed'}});
+const selfSummary=(await request('orders',{cookie:lifecycleSeller})).data.orders.find(o=>o.id===selfOrder.id);
+assert.equal(selfSummary.status,'completed');
+assert.equal(selfSummary.is_own_shop,true);
+assert.equal(selfSummary.can_review,false);
+const deniedSelf=await request('orders/'+selfOrder.id+'/review',{
+  method:'POST',cookie:lifecycleSeller,expected:403,
+  body:{rating:5,description:'Não devo avaliar a própria loja'}
+});
+assert.match(deniedSelf.data.error,/própria loja/i);
+
 const historyDB=new pg.Client({connectionString:process.env.DATABASE_URL});
 await historyDB.connect();
 try{
