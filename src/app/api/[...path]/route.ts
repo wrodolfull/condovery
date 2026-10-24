@@ -748,6 +748,80 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
     ]);
     return out({residents:residents.rows,shops:shops.rows,stats:stats.rows[0],categories:categories.rows});
   }
+  if(path==='reports'&&method==='POST'){
+    const b=z.object({
+      target_type:z.enum(['shop','product']),target_id:z.string().uuid(),
+      reason:z.enum(['language','image','inappropriate','other']),
+      details:z.string().trim().max(250).default('')
+    }).parse(await body(req));
+    const target=b.target_type==='shop'
+      ?await query("SELECT id,owner_id FROM shops WHERE id=$1 AND condominium_id=$2 AND status='approved'",
+        [b.target_id,u.condominium_id])
+      :await query("SELECT p.id,s.owner_id FROM products p JOIN shops s ON s.id=p.shop_id AND s.condominium_id=p.condominium_id "+
+        "WHERE p.id=$1 AND p.condominium_id=$2 AND p.visibility<>'hidden' AND s.status='approved'",
+        [b.target_id,u.condominium_id]);
+    if(!target.rowCount)bad('Conteúdo não encontrado.',404);
+    if(target.rows[0].owner_id===u.id)bad('Não é possível denunciar sua própria loja.',400);
+    const count=await query("SELECT count(*)::int AS total FROM content_reports "+
+      "WHERE reporter_id=$1 AND created_at>now()-interval '24 hours'",[u.id]);
+    if(count.rows[0].total>=10)bad('Limite de denúncias atingido hoje.',429);
+    const saved=await query(
+      "INSERT INTO content_reports(condominium_id,reporter_id,target_type,target_id,reason,details) "+
+      "VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT(condominium_id,reporter_id,target_type,target_id) DO NOTHING RETURNING id",
+      [u.condominium_id,u.id,b.target_type,b.target_id,b.reason,b.details]
+    );
+    if(!saved.rowCount)bad('Você já denunciou este conteúdo.',409);
+    return out({message:'Denúncia recebida. A administração irá analisar.'},201);
+  }
+  if(path==='admin/reports'&&method==='GET'){
+    admin(u);
+    const items=await query(
+      "SELECT r.id,r.target_type,r.target_id,r.reason,r.details,r.status,r.created_at, "+
+      "COALESCE(s.name,p.name) AS target_name FROM content_reports r "+
+      "LEFT JOIN shops s ON r.target_type='shop' AND s.id=r.target_id AND s.condominium_id=r.condominium_id "+
+      "LEFT JOIN products p ON r.target_type='product' AND p.id=r.target_id AND p.condominium_id=r.condominium_id "+
+      "WHERE r.condominium_id=$1 ORDER BY CASE WHEN r.status='open' THEN 0 ELSE 1 END,r.created_at DESC LIMIT 150",
+      [u.condominium_id]
+    );
+    return out({reports:items.rows});
+  }
+  if(parts[0]==='admin'&&parts[1]==='reports'&&parts[2]&&method==='PATCH'){
+    admin(u);
+    if(!uuid(parts[2]))bad('Denúncia inválida.');
+    const b=z.object({action:z.enum(['dismiss','hide_product','suspend_shop'])}).parse(await body(req));
+    await transaction(async tx=>{
+      const found=await tx.query(
+        "SELECT * FROM content_reports WHERE id=$1 AND condominium_id=$2 AND status='open' FOR UPDATE",
+        [parts[2],u.condominium_id]
+      );
+      if(!found.rowCount)bad('Denúncia não encontrada ou já analisada.',404);
+      const r=found.rows[0];
+      if(b.action==='hide_product'){
+        if(r.target_type!=='product')bad('Esta denúncia não é de um produto.');
+        await tx.query(
+          "UPDATE products SET visibility='hidden',is_available=false WHERE id=$1 AND condominium_id=$2",
+          [r.target_id,u.condominium_id]
+        );
+      }
+      if(b.action==='suspend_shop'){
+        let shopId=r.target_id;
+        if(r.target_type==='product'){
+          const q=await tx.query('SELECT shop_id FROM products WHERE id=$1 AND condominium_id=$2',
+            [r.target_id,u.condominium_id]);
+          if(!q.rowCount)bad('Produto não encontrado.',404);
+          shopId=q.rows[0].shop_id;
+        }
+        await tx.query("UPDATE shops SET status='suspended',is_open=false WHERE id=$1 AND condominium_id=$2",
+          [shopId,u.condominium_id]
+        );
+      }
+      await tx.query(
+        "UPDATE content_reports SET status='resolved',resolved_by=$1,resolved_at=now() WHERE id=$2",
+        [u.id,r.id]
+      );
+    });
+    return out({ok:true});
+  }
   if(parts[0]==='admin'&&parts[1]==='users'&&parts[2]&&method==='PATCH'){
     admin(u);if(!uuid(parts[2])||parts[2]===u.id)bad('Morador inválido.');
     const b=z.object({status:z.enum(['approved','suspended'])}).parse(await body(req));
