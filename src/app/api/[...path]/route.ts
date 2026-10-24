@@ -46,7 +46,8 @@ const orderSchema=z.object({
   items:z.array(z.object({id:z.string().uuid(),quantity:z.number().int().min(1).max(30),note:z.string().max(200).optional()})).min(1).max(25),
   fulfillment:z.enum(['delivery','pickup']),delivery_day:z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
   delivery_window:z.string().max(70).optional(),instructions:z.array(z.enum(['Tocar a campainha','Não tocar a campainha','Deixar na porta','Entregar pessoalmente','Retirar na portaria'])).max(4).optional(),
-  note:z.string().max(400).optional()
+  note:z.string().max(400).optional(),
+  client_order_key:z.string().uuid().optional()
 });
 const googleRegister=z.object({
   invite:z.string().trim().min(10).max(150),
@@ -55,6 +56,23 @@ const googleRegister=z.object({
   tower:z.string().trim().min(1).max(60),
   apartment:z.string().trim().min(1).max(24)
 });
+async function savedWhatsApp(order:{
+  id:string;code:number;shop_name:string;whatsapp:string;total_cents:number;
+  fulfillment:'delivery'|'pickup';delivery_day?:string|null;delivery_window?:string;
+  delivery_instructions?:string[];note?:string
+},u:Viewer){
+  const items=await query(
+    'SELECT name_snapshot AS name,quantity,unit_price_cents,note FROM order_items WHERE order_id=$1 ORDER BY id',
+    [order.id]
+  );
+  const message=orderMessage({
+    code:order.code,shop:order.shop_name,buyer:u.name,tower:u.tower,apartment:u.apartment,
+    items:items.rows,total_cents:order.total_cents,fulfillment:order.fulfillment,
+    delivery_day:order.delivery_day,delivery_window:order.delivery_window,
+    instructions:order.delivery_instructions??[],note:order.note
+  });
+  return 'https://wa.me/'+normalizeWhatsApp(order.whatsapp)+'?text='+encodeURIComponent(message);
+}
 async function issueAppLogin(userId:string):Promise<{token:string;response:NextResponse}> {
   const token=randomToken();
   await query("INSERT INTO sessions(token_hash,user_id,expires_at) VALUES($1,$2,now()+interval '14 days')",[tokenHash(token),userId]);
@@ -606,12 +624,38 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
     );
     return out({product:r.rows[0]});
   }
+  if(parts[0]==='orders'&&parts[1]&&parts[2]==='whatsapp'&&method==='GET'){
+    if(!uuid(parts[1]))bad('Pedido inválido.');
+    const found=await query(
+      "SELECT o.*,s.name AS shop_name,s.whatsapp FROM orders o JOIN shops s ON s.id=o.shop_id "+
+      "WHERE o.id=$1 AND o.buyer_id=$2 AND o.condominium_id=$3 AND o.status IN ('awaiting_confirmation','confirmed')",
+      [parts[1],u.id,u.condominium_id]
+    );
+    if(!found.rowCount)bad('Pedido não encontrado ou já encerrado.',404);
+    return out({whatsapp_url:await savedWhatsApp(found.rows[0],u)});
+  }
   if(path==='orders'&&method==='POST'){
     const b=orderSchema.parse(await body(req));
     if(new Set(b.items.map(i=>i.id)).size!==b.items.length)bad('Itens duplicados.');
+    if(b.client_order_key){
+      const old=await query(
+        "SELECT o.*,s.name AS shop_name,s.whatsapp FROM orders o JOIN shops s ON s.id=o.shop_id "+
+        "WHERE o.condominium_id=$1 AND o.buyer_id=$2 AND o.client_order_key=$3",
+        [u.condominium_id,u.id,b.client_order_key]
+      );
+      if(old.rowCount)return out({order:old.rows[0],whatsapp_url:await savedWhatsApp(old.rows[0],u)});
+    }
     const result=await transaction(async tx=>{
       const sh=await tx.query("SELECT * FROM shops WHERE id=$1 AND condominium_id=$2 AND status='approved' FOR UPDATE",[b.shop_id,u.condominium_id]);
       const shop=sh.rows[0];
+      if(b.client_order_key&&shop){
+        const prev=await tx.query(
+          "SELECT o.*,s.name AS shop_name,s.whatsapp FROM orders o JOIN shops s ON s.id=o.shop_id "+
+          "WHERE o.condominium_id=$1 AND o.buyer_id=$2 AND o.client_order_key=$3",
+          [u.condominium_id,u.id,b.client_order_key]
+        );
+        if(prev.rowCount)return {order:prev.rows[0],whatsapp_url:await savedWhatsApp(prev.rows[0],u)};
+      }
       if(!shop||!shop.is_open)bad('Loja não está recebendo pedidos.');
       if(b.fulfillment==='delivery'&&!shop.delivery_enabled||b.fulfillment==='pickup'&&!shop.pickup_enabled)bad('Forma de recebimento indisponível.');
       const ids=b.items.map(i=>i.id);
@@ -629,8 +673,8 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
         return {product_id:item.id,name:item.name,quantity:i.quantity,unit_price_cents:cents,note:i.note??''};
       });
       const created=await tx.query(
-        'INSERT INTO orders(condominium_id,buyer_id,shop_id,fulfillment,delivery_day,delivery_window,delivery_instructions,note,total_cents) VALUES($1,$2,$3,$4,$5,$6,$7::jsonb,$8,$9) RETURNING *',
-        [u.condominium_id,u.id,shop.id,b.fulfillment,b.delivery_day??null,b.delivery_window??'',JSON.stringify(b.instructions??[]),b.note??'',total]
+        'INSERT INTO orders(condominium_id,buyer_id,shop_id,fulfillment,delivery_day,delivery_window,delivery_instructions,note,total_cents,client_order_key) VALUES($1,$2,$3,$4,$5,$6,$7::jsonb,$8,$9,$10) RETURNING *',
+        [u.condominium_id,u.id,shop.id,b.fulfillment,b.delivery_day??null,b.delivery_window??'',JSON.stringify(b.instructions??[]),b.note??'',total,b.client_order_key??null]
       );
       for(const item of items){
         await tx.query('INSERT INTO order_items(order_id,product_id,name_snapshot,quantity,unit_price_cents,note) VALUES($1,$2,$3,$4,$5,$6)',
