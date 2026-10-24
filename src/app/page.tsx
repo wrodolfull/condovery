@@ -1047,6 +1047,39 @@ export default function Page(){
         </button>}</div></div>
       </>}
 
+      {showDeleteAccount&&view==='account'&&viewer.role==='resident'&&
+        <div className="account-delete-overlay" onClick={()=>!busy&&setShowDeleteAccount(false)}>
+          <section className="account-delete-dialog" role="dialog" aria-modal="true"
+            aria-labelledby="delete-account-title" onClick={e=>e.stopPropagation()}>
+            <button className="account-delete-close" type="button" disabled={busy}
+              aria-label="Fechar" onClick={()=>setShowDeleteAccount(false)}><X size={20}/></button>
+            <h2 id="delete-account-title">Excluir minha conta</h2>
+            <p>Esta ação é irreversível. Seus dados de perfil e fotos serão removidos,
+              sua loja será encerrada e você perderá o acesso ao condomínio.</p>
+            <p>Pedidos concluídos poderão permanecer no histórico, de forma anonimizada.
+              Conclua ou cancele os pedidos em andamento antes da exclusão.</p>
+            <form className="form-stack" onSubmit={deleteAccount}>
+              <label>Digite <strong>EXCLUIR</strong> para confirmar
+                <input required autoComplete="off" value={deleteConfirmation}
+                  onChange={e=>setDeleteConfirmation(e.target.value)} placeholder="EXCLUIR"/>
+              </label>
+              <label>Senha atual (necessária para contas com senha)
+                <input type="password" autoComplete="current-password"
+                  value={deletePassword} onChange={e=>setDeletePassword(e.target.value)}
+                  placeholder="Confirme sua senha"/>
+              </label>
+              <p className="account-delete-note">Se você usa somente Google, pode ser necessário
+                entrar novamente antes de confirmar.</p>
+              {error&&<p className="account-delete-error" role="alert">{error}</p>}
+              <button className="account-delete-submit" type="submit"
+                disabled={busy||deleteConfirmation!=='EXCLUIR'}>
+                {busy?'Excluindo conta...':'Confirmar exclusão definitiva'}
+              </button>
+              <button type="button" className="outline-button"
+                onClick={()=>setShowDeleteAccount(false)} disabled={busy}>Cancelar</button>
+            </form>
+          </section>
+        </div>}
       {view==='seller'&&<><button className="back-link" onClick={()=>go('account')}><ArrowLeft size={18}/> Minha conta</button><div className="page-title"><h1>Painel do vendedor</h1><p>Seu negócio, a poucos passos de seus clientes.</p></div>
         {!myShop?<div className="seller-setup white-panel"><IllustrationSlot className="setup-illustration" src={artwork.sellerWelcome}
   alt="Ilustração para nova loja" fallback={<Store size={38}/>}/><h2>Vamos abrir sua lojinha?</h2><p>Abra sua loja agora. Informe os dados e siga as regras da comunidade.</p><form onSubmit={saveShop} className="form-stack">
