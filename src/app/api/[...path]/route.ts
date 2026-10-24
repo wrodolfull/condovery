@@ -48,6 +48,16 @@ const orderSchema=z.object({
 });
 async function processApi({req,method,parts}:Args):Promise<NextResponse> {
   const path=parts.join('/');
+  if(path==='public/condominium'&&method==='GET'){
+    const invite=clean(req.nextUrl.searchParams.get('invite'),150);
+    if(invite.length<10)bad('Informe um convite válido.');
+    const result=await query(
+      'SELECT name,towers FROM condominiums WHERE invite_code_hash=$1 AND is_active=true',
+      [inviteHash(invite)]
+    );
+    if(!result.rowCount)bad('Código de convite inválido.',404);
+    return out({name:result.rows[0].name,towers:result.rows[0].towers});
+  }
   if(path==='auth/register'&&method==='POST'){
     const b=signup.parse(await body(req));
     const condo=await query("SELECT id,towers FROM condominiums WHERE invite_code_hash=$1 AND is_active=true",[inviteHash(b.invite)]);
