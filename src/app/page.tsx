@@ -22,7 +22,7 @@ type PublicReview={id:string;rating:number;description:string;created_at:string}
 type ReviewSummary={average:number|null;count:number};
 type PublicReviews={summary:ReviewSummary;reviews:PublicReview[]};
 type SellerReview={id:string;order_id:string;order_code:number;rating:number;description:string;status:ReviewStatus;created_at:string;moderated_at:string|null};
-type ContentReport={id:string;target_type:'shop'|'product';target_id:string;target_name:string;reason:string;details:string;status:'open'|'resolved';created_at:string};
+type ContentReport={id:string;target_type:'shop'|'product';target_id:string;target_name:string;reason:string;details:string;product_blocked:boolean;status:'open'|'resolved';created_at:string};
 type CartItem={product:Product;quantity:number;note:string};
 type HomeData={categories:Category[];shops:Shop[];products:Product[]};
 type AdminData={residents:{id:string;name:string;email:string;tower:string;apartment:string;status:string}[];shops:{id:string;name:string;owner_name:string;status:string}[];stats:{residents:number;shops:number;orders:number};categories:Category[]};
@@ -561,6 +561,14 @@ export default function Page(){
       setInvite(r.invite);setCustomCode('');notify('Código atualizado. Compartilhe com os moradores.');
     }catch(e){fail(e);}finally{setBusy(false);}
   }
+  async function unblockProduct(id:string){
+    if(!window.confirm('Permitir que o vendedor revise e publique este produto novamente?'))return;
+    setBusy(true);
+    try{
+      await api('admin/products/'+id+'/unblock',{method:'PATCH'});
+      await loadAdmin();notify('Produto desbloqueado. Continua oculto até o vendedor republicar.');
+    }catch(e){fail(e);}finally{setBusy(false);}
+  }
   async function sendReport(e:React.FormEvent){
     e.preventDefault();if(!reportTarget)return;
     setBusy(true);
@@ -1066,6 +1074,16 @@ export default function Page(){
                   <button className="danger-text" disabled={busy} onClick={()=>resolveReport(r.id,'suspend_shop')}>Suspender loja</button>
                 </div>
               </article>)}
+            </div>}
+          {reports.some(r=>r.status==='resolved'&&r.target_type==='product'&&r.product_blocked)&&
+            <div className="blocked-products">
+              <h3>Produtos bloqueados</h3>
+              {reports.filter(r=>r.status==='resolved'&&r.target_type==='product'&&r.product_blocked).map(r=>
+                <div className="content-report" key={'blocked-'+r.id}>
+                  <strong>{r.target_name??'Produto'}</strong>
+                  <button type="button" className="outline-button" disabled={busy}
+                    onClick={()=>unblockProduct(r.target_id)}>Permitir revisão do produto</button>
+                </div>)}
             </div>}
         </section>
 <section className="admin-section white-panel">
