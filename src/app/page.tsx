@@ -1,0 +1,627 @@
+'use client';
+
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  ArrowLeft, ArrowRight, Bell, Building2, CakeSlice, Check, CheckCircle2, ChevronDown, ChevronRight,
+  CircleHelp, Clock3, Coffee, Gift, Heart, Home, ImagePlus, LayoutGrid, LogOut, MapPin,
+  Menu, Minus, Package, Plus, Receipt, Search, Settings, ShieldCheck, ShoppingBag, ShoppingBasket,
+  SlidersHorizontal, Sparkles, Store, Tag, Trash2, Truck, UserRound, Utensils, X, Shirt, Sandwich
+} from 'lucide-react';
+
+type Viewer={id:string;name:string;email:string;phone:string;role:'admin'|'resident';status:'pending'|'approved'|'suspended';tower:string;apartment:string;condominium_name:string;towers:string[]};
+type Category={id:string;name:string;icon:string};
+type Shop={id:string;name:string;description:string;cover_image:string|null;status?:string;is_open:boolean;delivery_enabled:boolean;pickup_enabled:boolean;lead_time:string;pickup_instructions?:string;whatsapp?:string};
+type Product={id:string;shop_id:string;shop_name?:string;category_id:string;name:string;description:string;price_cents:number;promo_price_cents:number|null;image_url:string|null;stock:number|null;is_available?:boolean;lead_time?:string;is_featured?:boolean};
+type Order={id:string;code:number;status:string;total_cents:number;shop_name:string;buyer_name:string;buyer_phone:string;tower:string;apartment:string;fulfillment:string;delivery_day:string|null;delivery_window:string;delivery_instructions:string[];note:string;items:{name:string;quantity:number;unit_price_cents:number;note:string}[];created_at:string};
+type CartItem={product:Product;quantity:number;note:string};
+type HomeData={categories:Category[];shops:Shop[];products:Product[]};
+type AdminData={residents:{id:string;name:string;email:string;tower:string;apartment:string;status:string}[];shops:{id:string;name:string;owner_name:string;status:string}[];stats:{residents:number;shops:number;orders:number};categories:Category[]};
+type View='home'|'categories'|'favorites'|'orders'|'account'|'shop'|'product'|'cart'|'success'|'seller'|'admin';
+const money=(n:number)=>new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(n/100);
+const price=(p:Product)=>p.promo_price_cents??p.price_cents;
+const statusLabel:Record<string,string>={awaiting_confirmation:'Aguardando confirmação',confirmed:'Confirmado',completed:'Concluído',cancelled:'Cancelado',pending:'Em análise',approved:'Aprovado',suspended:'Suspenso'};
+const emptyHome:HomeData={categories:[],shops:[],products:[]};
+
+async function api<T>(url:string,opts:RequestInit={}):Promise<T>{
+  const res=await fetch('/api/'+url,{credentials:'same-origin',...opts,headers:{...(opts.body instanceof FormData?{}:{'Content-Type':'application/json'}),...opts.headers}});
+  const data=await res.json().catch(()=>({}));
+  if(!res.ok)throw new Error(data.error||'Não foi possível concluir.');
+  return data as T;
+}
+const payload=(data:unknown)=>JSON.stringify(data);
+function ProductPicture({src,name,large=false}:{src?:string|null;name:string;large?:boolean}){
+  return <div className={'product-photo'+(large?' product-photo-lg':'')}>
+    {src?<img src={src} alt={name} loading="lazy"/>:<div className="photo-placeholder"><ShoppingBasket size={large?54:34} strokeWidth={1.5}/><span>feito por vizinhos</span></div>}
+  </div>;
+}
+function CategorySymbol({name,icon}:{name:string;icon?:string}){
+  const lower=name.toLowerCase();
+  const icons:Record<string,React.ElementType>={
+    'cake-slice':CakeSlice,'sandwich':Sandwich,'utensils':Utensils,'coffee':Coffee,
+    'sparkles':Sparkles,'shirt':Shirt,'gift':Gift,'shopping-bag':ShoppingBag
+  };
+  const Fallback=lower.includes('bolo')||lower.includes('doce')?CakeSlice:lower.includes('pão')||lower.includes('salgado')?ShoppingBasket:lower.includes('refei')?Utensils:lower.includes('bebida')?Coffee:lower.includes('presente')?Gift:lower.includes('beleza')?Sparkles:ShoppingBag;
+  const Icon=icons[icon??'']??Fallback;
+  return <Icon size={25} strokeWidth={1.8}/>;
+}
+function Pill({children,tone='neutral'}:{children:React.ReactNode;tone?:'neutral'|'green'|'orange'}){
+  return <span className={'pill pill-'+tone}>{children}</span>;
+}
+function SectionHeader({title,action,onAction}:{title:string;action?:string;onAction?:()=>void}){
+  return <div className="section-heading"><h2>{title}</h2>{action&&<button className="quiet-link" onClick={onAction}>{action}<ChevronRight size={15}/></button>}</div>;
+}
+function Empty({title,subtitle,action,onAction}:{title:string;subtitle:string;action?:string;onAction?:()=>void}){
+  return <div className="empty-state"><div className="empty-icon"><ShoppingBasket size={35}/></div><h3>{title}</h3><p>{subtitle}</p>{action&&<button className="outline-button" onClick={onAction}>{action}</button>}</div>;
+}
+function ProductCard({p,onClick,favorite,onFavorite}:{p:Product;onClick:()=>void;favorite:boolean;onFavorite:(id:string)=>void}){
+  return <article className="product-card">
+    <button className="product-open" onClick={onClick} aria-label={'Ver '+p.name}>
+      <ProductPicture src={p.image_url} name={p.name}/>
+      {p.promo_price_cents!=null&&<span className="card-offer">Oferta</span>}
+      <div className="product-meta"><span className="product-name">{p.name}</span><span className="muted ellipsis">{p.shop_name??''}</span>
+        <div className="product-prices">{p.promo_price_cents!=null&&<del>{money(p.price_cents)}</del>}<strong>{money(price(p))}</strong></div>
+      </div>
+    </button>
+    <button className={'favorite-heart'+(favorite?' is-favorite':'')} onClick={()=>onFavorite(p.id)} aria-label={favorite?'Remover dos favoritos':'Salvar nos favoritos'} aria-pressed={favorite}>
+      <Heart size={19} fill={favorite?'currentColor':'none'}/>
+    </button>
+  </article>;
+}
+
+export default function Page(){
+  const [viewer,setViewer]=useState<Viewer|null>(null);
+  const [loading,setLoading]=useState(true);
+  const [authMode,setAuthMode]=useState<'login'|'register'|'recover'|'reset'>('login');
+  const [passwordRecoveryEnabled,setPasswordRecoveryEnabled]=useState(false);
+  const [resetEmail,setResetEmail]=useState('');
+  const [newPassword,setNewPassword]=useState('');
+  const [googleEnabled,setGoogleEnabled]=useState(false);
+  const [googleSignup,setGoogleSignup]=useState<{email:string;name:string}|null>(null);
+  const [authForm,setAuthForm]=useState({name:'',email:'',phone:'',password:'',invite:'',tower:'',apartment:''});
+  const [condoLookup,setCondoLookup]=useState<{name:string;towers:string[]}|null>(null);
+  const [busy,setBusy]=useState(false);
+  const [error,setError]=useState('');
+  const [toast,setToast]=useState('');
+  const [view,setView]=useState<View>('home');
+  const [home,setHome]=useState<HomeData>(emptyHome);
+  const [favoriteIds,setFavoriteIds]=useState<string[]>([]);
+  const [favoriteProducts,setFavoriteProducts]=useState<Product[]>([]);
+  const [query,setQuery]=useState('');
+  const [category,setCategory]=useState('');
+  const [catalogProducts,setCatalogProducts]=useState<Product[]>([]);
+  const [catalogPage,setCatalogPage]=useState(0);
+  const [catalogHasMore,setCatalogHasMore]=useState(false);
+  const [catalogLoading,setCatalogLoading]=useState(false);
+  const [selectedShop,setSelectedShop]=useState<{shop:Shop;products:Product[]}|null>(null);
+  const [selectedProduct,setSelectedProduct]=useState<Product|null>(null);
+  const [qty,setQty]=useState(1);
+  const [itemNote,setItemNote]=useState('');
+  const [cart,setCart]=useState<CartItem[]>([]);
+  const [fulfillment,setFulfillment]=useState<'delivery'|'pickup'>('delivery');
+  const [deliveryDay,setDeliveryDay]=useState('');
+  const [deliveryWindow,setDeliveryWindow]=useState('');
+  const [instructions,setInstructions]=useState<string[]>([]);
+  const [checkoutNote,setCheckoutNote]=useState('');
+  const [lastOrder,setLastOrder]=useState<{code:number;whatsapp_url:string}|null>(null);
+  const [orders,setOrders]=useState<Order[]>([]);
+  const [sellerOrders,setSellerOrders]=useState<Order[]>([]);
+  const [myShop,setMyShop]=useState<Shop|null>(null);
+  const [myProducts,setMyProducts]=useState<Product[]>([]);
+  const [adminData,setAdminData]=useState<AdminData|null>(null);
+  const [sellerTab,setSellerTab]=useState<'orders'|'products'|'settings'>('orders');
+  const [shopForm,setShopForm]=useState({name:'',description:'',whatsapp:'',is_open:true,delivery_enabled:true,pickup_enabled:true,lead_time:'',pickup_instructions:'',cover_image:''});
+  const [productForm,setProductForm]=useState({id:'',name:'',description:'',category_id:'',price:'',promo:'',stock:'',image_url:'',is_available:true,lead_time:''});
+  const [editingProduct,setEditingProduct]=useState(false);
+  const [profile,setProfile]=useState({name:'',phone:'',tower:'',apartment:''});
+  const [invite,setInvite]=useState('');
+  const [newCategory,setNewCategory]=useState('');
+  const [categoryIcon,setCategoryIcon]=useState('shopping-bag');
+
+  const notify=(msg:string)=>{setToast(msg);setError('');};
+  const fail=(e:unknown)=>setError(e instanceof Error?e.message:'Não foi possível concluir.');
+  const go=(next:View)=>{setError('');setView(next);window.scrollTo({top:0,behavior:'smooth'});};
+  const loadHome=useCallback(async()=>{setHome(await api<HomeData>('home'));},[]);
+  const loadFavorites=useCallback(async()=>{
+    const result=await api<{ids:string[];products:Product[]}>('favorites');
+    setFavoriteIds(result.ids);setFavoriteProducts(result.products);
+  },[]);
+  const loadMine=useCallback(async()=>{
+    const data=await api<{shop:Shop|null;products:Product[]}>('shops/mine');
+    setMyShop(data.shop);setMyProducts(data.products);
+    if(data.shop)setShopForm({
+      name:data.shop.name,description:data.shop.description,whatsapp:data.shop.whatsapp??'',
+      is_open:data.shop.is_open,delivery_enabled:data.shop.delivery_enabled,pickup_enabled:data.shop.pickup_enabled,
+      lead_time:data.shop.lead_time??'',pickup_instructions:data.shop.pickup_instructions??'',cover_image:data.shop.cover_image??''
+    });
+  },[]);
+  const loadOrders=useCallback(async()=>{
+    const result=await api<{orders:Order[]}>('orders');setOrders(result.orders);
+  },[]);
+  const loadSellerOrders=useCallback(async()=>{
+    const result=await api<{orders:Order[]}>('orders?scope=seller');setSellerOrders(result.orders);
+  },[]);
+  const loadAdmin=useCallback(async()=>setAdminData(await api<AdminData>('admin/summary')),[]);
+  const refresh=useCallback(async(u:Viewer)=>{
+    await Promise.all([loadHome(),loadMine(),loadOrders(),loadFavorites(),...(u.role==='admin'?[loadAdmin()]:[])]);
+  },[loadHome,loadMine,loadOrders,loadFavorites,loadAdmin]);
+
+  useEffect(()=>{
+    api<{google:boolean;passwordRecovery:boolean}>('auth/providers').then(r=>{
+      setGoogleEnabled(r.google);setPasswordRecoveryEnabled(r.passwordRecovery);
+    }).catch(()=>{});
+    const reset=new URLSearchParams(window.location.search).get('reset');
+    if(reset==='1'){
+      setAuthMode('reset');
+      window.history.replaceState({},'',window.location.pathname);
+    }
+    const confirmed=new URLSearchParams(window.location.search).get('email_confirmed');
+    if(confirmed==='1'){
+      setToast('E-mail confirmado pelo Supabase Auth. Entre com sua senha.');
+      window.history.replaceState({},'',window.location.pathname);
+    }
+    const oauthFailure=new URLSearchParams(window.location.search).get('auth_error');
+    if(oauthFailure){
+      setError('Não foi possível concluir o acesso Google. Tente novamente.');
+      window.history.replaceState({},'',window.location.pathname);
+    }
+  },[]);
+  useEffect(()=>{
+    let active=true;
+    api<{viewer:Viewer|null;googleSignup?:{email:string;name:string}|null}>('me').then(async r=>{
+      if(!active)return;setViewer(r.viewer);
+      if(r.googleSignup){
+        setGoogleSignup(r.googleSignup);
+        setAuthMode('register');
+        setAuthForm(s=>({...s,name:r.googleSignup!.name,email:r.googleSignup!.email,password:''}));
+      }
+      if(r.viewer){
+        setProfile({name:r.viewer.name,phone:r.viewer.phone,tower:r.viewer.tower,apartment:r.viewer.apartment});
+        if(r.viewer.status==='approved')await refresh(r.viewer);
+      }
+    }).catch(e=>{if(active)fail(e);}).finally(()=>{if(active)setLoading(false);});
+    return()=>{active=false;};
+  },[refresh]);
+
+  useEffect(()=>{
+    try{const raw=window.localStorage.getItem('condovery_cart');if(raw){const parsed=JSON.parse(raw);if(Array.isArray(parsed))setCart(parsed);}}catch{}
+  },[]);
+  useEffect(()=>{try{window.localStorage.setItem('condovery_cart',JSON.stringify(cart));}catch{}},[cart]);
+  useEffect(()=>{if(!toast)return;const timer=setTimeout(()=>setToast(''),4000);return()=>clearTimeout(timer);},[toast]);
+  useEffect(()=>{if(view==='seller'&&myShop?.status==='approved')loadSellerOrders().catch(fail);},[view,myShop?.status,loadSellerOrders]);
+  useEffect(()=>{setCatalogPage(0);setCatalogProducts([]);},[query,category]);
+  useEffect(()=>{
+    if(!viewer||viewer.status!=='approved'||(view!=='home'&&view!=='categories'))return;
+    if(view==='home'&&!query.trim())return;
+    let active=true;
+    const timer=window.setTimeout(()=>{
+      setCatalogLoading(true);
+      const params=new URLSearchParams({page:String(catalogPage),limit:'24'});
+      if(query.trim())params.set('search',query.trim());
+      if(category)params.set('category',category);
+      api<{products:Product[];hasMore:boolean}>('catalog?'+params.toString()).then(r=>{
+        if(!active)return;
+        setCatalogProducts(old=>catalogPage===0?r.products:[...old,...r.products]);
+        setCatalogHasMore(r.hasMore);
+      }).catch(e=>{if(active)fail(e);}).finally(()=>{if(active)setCatalogLoading(false);});
+    },query.trim()?300:100);
+    return()=>{active=false;window.clearTimeout(timer);};
+  },[viewer?.id,viewer?.status,view,category,query,catalogPage]);
+  const categoryName=home.categories.find(c=>c.id===category)?.name;
+  const filtered=useMemo(()=>view==='categories'||query.trim()?catalogProducts:home.products,
+    [view,query,catalogProducts,home.products]);
+  const cartTotal=cart.reduce((n,i)=>n+price(i.product)*i.quantity,0);
+  const cartCount=cart.reduce((n,i)=>n+i.quantity,0);
+  const cartShop=home.shops.find(s=>s.id===cart[0]?.product.shop_id)||selectedShop?.shop;
+  const featured=home.products.filter(p=>p.promo_price_cents!=null||p.is_featured).slice(0,8);
+  const newest=home.products.slice(0,10);
+
+  async function toggleFavorite(id:string){
+    const exists=favoriteIds.includes(id);
+    setFavoriteIds(old=>exists?old.filter(x=>x!==id):[id,...old]);
+    try{
+      await api(exists?'favorites/'+id:'favorites',{method:exists?'DELETE':'POST',...(!exists?{body:payload({product_id:id})}:{})});
+      await loadFavorites();
+    }catch(e){await loadFavorites().catch(()=>{});fail(e);}
+  }
+  async function submitReset(e:React.FormEvent){
+    e.preventDefault();setBusy(true);setError('');
+    try{
+      if(authMode==='recover'){
+        const r=await api<{message:string}>('auth/password/request',{
+          method:'POST',body:payload({email:resetEmail})
+        });
+        notify(r.message);
+      }else if(authMode==='reset'){
+        const r=await api<{message:string}>('auth/password/confirm',{
+          method:'POST',body:payload({password:newPassword})
+        });
+        setNewPassword('');setAuthMode('login');notify(r.message);
+      }
+    }catch(e){fail(e);}finally{setBusy(false);}
+  }
+  async function lookupCondo(){
+    if(authForm.invite.trim().length<10){setCondoLookup(null);return;}
+    try{
+      const r=await api<{name:string;towers:string[]}>('public/condominium',{
+        method:'POST',body:payload({invite:authForm.invite.trim()})
+      });
+      setCondoLookup(r);setError('');setAuthForm(s=>({...s,tower:r.towers.includes(s.tower)?s.tower:r.towers[0]??''}));
+    }catch(e){setCondoLookup(null);fail(e);}
+  }
+  async function loginOrRegister(e:React.FormEvent){
+    e.preventDefault();setBusy(true);setError('');
+    try{
+      if(authMode==='register'&&googleSignup){
+        await api('auth/register-google',{
+          method:'POST',
+          body:payload({name:authForm.name,phone:authForm.phone,invite:authForm.invite,tower:authForm.tower,apartment:authForm.apartment})
+        });
+        const response=await api<{viewer:Viewer}>('me');
+        setGoogleSignup(null);setViewer(response.viewer);
+        setProfile({name:response.viewer.name,phone:response.viewer.phone,tower:response.viewer.tower,apartment:response.viewer.apartment});
+        go('home');
+      } else if(authMode==='register'){
+        const result=await api<{message:string}>('auth/register',{method:'POST',body:payload(authForm)});
+        setAuthMode('login');setAuthForm(s=>({...s,password:''}));notify(result.message);
+      } else {
+        await api('auth/login',{method:'POST',body:payload({email:authForm.email,password:authForm.password})});
+        const response=await api<{viewer:Viewer}>('me');setViewer(response.viewer);
+        const u=response.viewer;
+        if(u.status==='approved')await refresh(u);
+        setProfile({name:u.name,phone:u.phone,tower:u.tower,apartment:u.apartment});
+        go('home');
+      }
+    }catch(e){fail(e);}finally{setBusy(false);}
+  }
+  async function logout(){
+    try{await api('auth/logout',{method:'POST'});}catch{}
+    setViewer(null);setGoogleSignup(null);setHome(emptyHome);setFavoriteIds([]);setFavoriteProducts([]);setCart([]);setMyShop(null);setOrders([]);go('home');
+  }
+  async function openShop(id:string){
+    setBusy(true);try{setSelectedShop(await api<{shop:Shop;products:Product[]}>('shops/'+id));go('shop');}catch(e){fail(e);}finally{setBusy(false);}
+  }
+  function openProduct(p:Product){setSelectedProduct(p);setQty(1);setItemNote('');go('product');}
+  function addToCart(){
+    if(!selectedProduct)return;
+    if(cart.length&&cart[0].product.shop_id!==selectedProduct.shop_id){
+      if(!window.confirm('Seu carrinho é de outra loja. Deseja substituí-lo?'))return;
+      setCart([]);
+    }
+    setCart(current=>{
+      const base=current.length&&current[0].product.shop_id!==selectedProduct.shop_id?[]:current;
+      const same=base.find(i=>i.product.id===selectedProduct.id&&i.note===itemNote);
+      return same?base.map(i=>i===same?{...i,quantity:i.quantity+qty}:i):[...base,{product:selectedProduct,quantity:qty,note:itemNote}];
+    });
+    notify('Produto adicionado ao carrinho.');go('cart');
+  }
+  async function checkout(){
+    if(!cart.length)return;
+    setBusy(true);setError('');
+    try{
+      const result=await api<{order:{code:number};whatsapp_url:string}>('orders',{method:'POST',body:payload({
+        shop_id:cart[0].product.shop_id,
+        items:cart.map(i=>({id:i.product.id,quantity:i.quantity,note:i.note})),
+        fulfillment,delivery_day:deliveryDay||null,delivery_window:deliveryWindow,
+        instructions,note:checkoutNote
+      })});
+      setLastOrder({code:result.order.code,whatsapp_url:result.whatsapp_url});
+      setCart([]);await loadOrders();await loadHome();go('success');
+      window.location.assign(result.whatsapp_url);
+    }catch(e){fail(e);}finally{setBusy(false);}
+  }
+  async function updateStatus(id:string,status:string){
+    setBusy(true);try{
+      await api('orders/'+id,{method:'PATCH',body:payload({status})});
+      await Promise.all([loadSellerOrders(),loadOrders(),loadHome(),loadMine()]);
+      notify('Pedido atualizado.');
+    }catch(e){fail(e);}finally{setBusy(false);}
+  }
+  async function saveShop(e:React.FormEvent){
+    e.preventDefault();setBusy(true);
+    try{
+      if(!myShop){
+        await api('shops/mine',{method:'POST',body:payload({name:shopForm.name,description:shopForm.description,whatsapp:shopForm.whatsapp})});
+        notify('Loja enviada para aprovação.');
+      }else{
+        await api('shops/mine',{method:'PATCH',body:payload({...shopForm,cover_image:shopForm.cover_image||null})});
+        notify('Configurações salvas.');
+      }
+      await loadMine();await loadHome();
+    }catch(e){fail(e);}finally{setBusy(false);}
+  }
+  async function upload(file:File,kind:'product'|'cover'){
+    setBusy(true);
+    try{
+      const data=new FormData();data.append('file',file);
+      const res=await api<{url:string}>('media',{method:'POST',body:data});
+      if(kind==='product')setProductForm(s=>({...s,image_url:res.url}));
+      else setShopForm(s=>({...s,cover_image:res.url}));
+      notify('Imagem enviada.');
+    }catch(e){fail(e);}finally{setBusy(false);}
+  }
+  function editProduct(p?:Product){
+    setProductForm(p?{id:p.id,name:p.name,description:p.description,category_id:p.category_id,price:(p.price_cents/100).toFixed(2),promo:p.promo_price_cents?(p.promo_price_cents/100).toFixed(2):'',stock:p.stock==null?'':String(p.stock),image_url:p.image_url??'',is_available:p.is_available??true,lead_time:p.lead_time??''}
+      :{id:'',name:'',description:'',category_id:home.categories[0]?.id??'',price:'',promo:'',stock:'',image_url:'',is_available:true,lead_time:''});
+    setEditingProduct(true);
+  }
+  async function saveProduct(e:React.FormEvent){
+    e.preventDefault();setBusy(true);
+    try{
+      const b={name:productForm.name,description:productForm.description,category_id:productForm.category_id,
+        price_cents:Math.round(Number(productForm.price.replace(',','.'))*100),
+        promo_price_cents:productForm.promo?Math.round(Number(productForm.promo.replace(',','.'))*100):null,
+        stock:productForm.stock===''?null:Number(productForm.stock),image_url:productForm.image_url||null,
+        is_available:productForm.is_available,lead_time:productForm.lead_time};
+      await api(productForm.id?'products/'+productForm.id:'products',{method:productForm.id?'PATCH':'POST',body:payload(b)});
+      setEditingProduct(false);await Promise.all([loadMine(),loadHome()]);notify('Produto salvo.');
+    }catch(e){fail(e);}finally{setBusy(false);}
+  }
+  async function adminAction(target:'users'|'shops',id:string,status:string){
+    setBusy(true);try{await api('admin/'+target+'/'+id,{method:'PATCH',body:payload({status})});await loadAdmin();await loadHome();notify('Cadastro atualizado.');}catch(e){fail(e);}finally{setBusy(false);}
+  }
+  async function createCategory(e:React.FormEvent){
+    e.preventDefault();setBusy(true);
+    try{
+      await api('admin/categories',{method:'POST',body:payload({name:newCategory,icon:categoryIcon})});
+      setNewCategory('');await Promise.all([loadAdmin(),loadHome()]);notify('Categoria criada.');
+    }catch(e){fail(e);}finally{setBusy(false);}
+  }
+  async function generateInvite(){
+    if(!window.confirm('Gerar um novo convite? O código anterior deixará de funcionar.'))return;
+    setBusy(true);try{const r=await api<{invite:string}>('admin/invite',{method:'POST'});setInvite(r.invite);notify('Novo código gerado. Copie e compartilhe em privado.');}catch(e){fail(e);}finally{setBusy(false);}
+  }
+  async function saveProfile(e:React.FormEvent){
+    e.preventDefault();setBusy(true);try{
+      await api('me',{method:'PATCH',body:payload(profile)});
+      const r=await api<{viewer:Viewer}>('me');setViewer(r.viewer);notify(r.viewer.status==='pending'?'Novo endereço enviado para aprovação.':'Perfil atualizado.');
+    }catch(e){fail(e);}finally{setBusy(false);}
+  }
+  const bottomNav:[View,React.ElementType,string][]=[['home',Home,'Início'],['categories',LayoutGrid,'Explorar'],['favorites',Heart,'Salvos'],['orders',Receipt,'Pedidos'],['account',UserRound,'Conta']];
+
+  if(loading)return <main className="loading-page"><div className="spinner"/><strong>condovery.</strong><span>Preparando sua vizinhança</span></main>;
+  if(!viewer&&(authMode==='recover'||authMode==='reset'))return <main className="auth-layout">
+    <div className="auth-aside"><div className="auth-logo">condovery<span>.</span></div><div className="auth-art"><img src="/hero.svg" alt="Lojinha de condomínio"/></div><h1>Seu lugar na vizinhança.</h1><p>Recupere o acesso com segurança.</p></div>
+    <section className="auth-card">
+      <div className="auth-mobile-logo">condovery<span>.</span></div>
+      <div className="welcome-emoji"><ShieldCheck size={28}/></div>
+      <h2>{authMode==='recover'?'Recuperar minha senha':'Criar nova senha'}</h2>
+      <p>{authMode==='recover'?'O Supabase enviará um link de recuperação para o e-mail cadastrado.':'Escolha uma nova senha para sua conta Supabase.'}</p>
+      {error&&<div className="alert" role="alert">{error}</div>}
+      {toast&&<div className="success-banner" role="status">{toast}</div>}
+      <form className="form-stack" onSubmit={submitReset}>
+        {authMode==='recover'?<label>E-mail<input type="email" required autoComplete="email" value={resetEmail} onChange={e=>setResetEmail(e.target.value)} placeholder="seuemail@exemplo.com"/></label>:
+          <label>Nova senha<input type="password" required minLength={10} maxLength={100} autoComplete="new-password" value={newPassword} onChange={e=>setNewPassword(e.target.value)} placeholder="No mínimo 10 caracteres"/></label>}
+        <button className="primary-button" disabled={busy} type="submit">{busy?'Enviando...':authMode==='recover'?'Solicitar link':'Salvar nova senha'} <ArrowRight size={18}/></button>
+      </form>
+      <button className="text-button" onClick={()=>{setAuthMode('login');setError('');}}>Voltar ao login</button>
+    </section>
+  </main>;
+  if(!viewer)return <main className="auth-layout">
+    <div className="auth-aside"><div className="auth-logo">condovery<span>.</span></div><div className="auth-art"><img src="/hero.svg" alt="Ilustração de uma lojinha de bairro"/></div><h1>Tem coisa boa morando pertinho de você.</h1><p>Descubra, compre e venda dentro do seu condomínio.</p></div>
+    <section className="auth-card">
+      <div className="auth-mobile-logo">condovery<span>.</span></div>
+      <div className="welcome-emoji"><ShoppingBag size={28}/></div>
+      <h2>{googleSignup?'Confirme sua residência':authMode==='login'?'Que bom ter você aqui!':'Entre para a vizinhança'}</h2>
+      <p>{googleSignup?'Seu e-mail já foi verificado pelo Google. Informe seu condomínio para solicitar acesso.':authMode==='login'?'Acesse o marketplace exclusivo do seu condomínio.':'Seu cadastro será analisado pela administração.'}</p>
+      {error&&<div role="alert" className="alert">{error}</div>}
+      {toast&&<div className="success-banner">{toast}</div>}
+      <form onSubmit={loginOrRegister} className="form-stack">
+        {authMode==='register'&&<>
+          <label>Nome completo<input required autoComplete="name" value={authForm.name} onChange={e=>setAuthForm(s=>({...s,name:e.target.value}))} placeholder="Como podemos chamar você?"/></label>
+          <label>WhatsApp<input required type="tel" autoComplete="tel" value={authForm.phone} onChange={e=>setAuthForm(s=>({...s,phone:e.target.value}))} placeholder="(11) 99999-9999"/></label>
+          <label>Código de convite<input required value={authForm.invite} onBlur={lookupCondo} onChange={e=>{setCondoLookup(null);setAuthForm(s=>({...s,invite:e.target.value,tower:'' }));}} placeholder="Código fornecido pelo condomínio"/></label>{condoLookup&&<div className="success-banner"><CheckCircle2 size={15}/> {condoLookup.name}</div>}
+          <div className="field-grid"><label>Torre<select required disabled={!condoLookup} value={authForm.tower} onChange={e=>setAuthForm(s=>({...s,tower:e.target.value}))}><option value="">Selecione a torre</option>{condoLookup?.towers.map(t=><option key={t} value={t}>{t}</option>)}</select></label><label>Apartamento<input required value={authForm.apartment} onChange={e=>setAuthForm(s=>({...s,apartment:e.target.value}))} placeholder="Ex.: 83"/></label></div>
+          <p className="form-hint">O código de convite identifica seu condomínio; o cadastro precisa ser aprovado pela administração.</p>
+        </>}
+        <label>E-mail<input required readOnly={Boolean(googleSignup)} type="email" autoComplete="email" value={authForm.email} onChange={e=>setAuthForm(s=>({...s,email:e.target.value}))} placeholder="seuemail@exemplo.com"/></label>
+        {!googleSignup&&<label>Senha<input required type="password" minLength={authMode==='register'?10:1} autoComplete={authMode==='register'?'new-password':'current-password'} value={authForm.password} onChange={e=>setAuthForm(s=>({...s,password:e.target.value}))} placeholder={authMode==='register'?'Mínimo de 10 caracteres':'Sua senha'}/></label>}
+        <button className="primary-button" type="submit" disabled={busy}>{busy?'Processando...':authMode==='login'?'Entrar':'Solicitar meu acesso'}<ArrowRight size={19}/></button>
+      </form>
+      {!googleSignup&&googleEnabled&&<>
+        <div className="auth-divider"><span>ou continue com</span></div>
+        <a className="google-button" href="/api/auth/google" aria-label="Continuar com Google">
+          <svg width="21" height="21" viewBox="0 0 24 24" aria-hidden="true"><path fill="#4285F4" d="M22.6 12.3c0-.8-.1-1.5-.2-2.3H12v4.4h6c-.3 1.4-1.1 2.5-2.4 3.2v2.7h3.9c2.2-2.1 3.1-4.8 3.1-8Z"/><path fill="#34A853" d="M12 23c3 0 5.5-1 7.4-2.7l-3.9-2.7c-1.1.7-2.3 1.1-3.5 1.1-2.7 0-5-1.8-5.8-4.3h-4V17c1.8 3.6 5.5 6 9.8 6Z"/><path fill="#FBBC05" d="M6.2 14.4a6.8 6.8 0 0 1 0-4.7V7h-4C1.4 8.6 1 10.3 1 12s.4 3.4 1.2 5l4-2.6Z"/><path fill="#EA4335" d="M12 5.3c1.7 0 3.2.6 4.4 1.7l3.4-3.4C17.8 1.8 15.2 1 12 1 7.7 1 4 3.4 2.2 7l4 2.7c.8-2.6 3.1-4.4 5.8-4.4Z"/></svg>
+          Continuar com Google
+        </a>
+      </>}
+      {!googleSignup&&authMode==='login'&&passwordRecoveryEnabled&&<button className="forgot-button" onClick={()=>{setAuthMode('recover');setError('');setToast('');}}>Esqueci minha senha</button>}
+      {!googleSignup&&<p className="auth-switch">{authMode==='login'?'Ainda não tem cadastro?':'Já possui uma conta?'} <button onClick={()=>{setAuthMode(authMode==='login'?'register':'login');setError('');}}>{authMode==='login'?'Cadastre-se':'Faça login'}</button></p>}
+      <p className="auth-privacy"><ShieldCheck size={14}/> Exclusivo para moradores autorizados.</p>
+    </section>
+  </main>;
+
+  if(viewer.status!=='approved')return <main className="pending-screen"><div className="brand">condovery<span>.</span></div><div className="pending-icon"><Clock3 size={42}/></div><h1>Seu cadastro está em análise</h1><p>Para manter a comunidade segura, a administração precisa confirmar que você mora no condomínio antes de liberar a vitrine.</p><div className="pending-detail"><Building2 size={20}/><span>{viewer.condominium_name}<br/><strong>{viewer.tower} · Ap. {viewer.apartment}</strong></span></div><button className="outline-button" onClick={()=>window.location.reload()}>Verificar novamente</button><button className="text-button" onClick={logout}>Sair da conta</button></main>;
+
+  return <div className="app-shell">
+    <header className="app-header"><div className="header-inner">
+      <button className="brand" onClick={()=>go('home')} aria-label="Início Condovery">condovery<span>.</span></button>
+      <button className="location" onClick={()=>go('account')} title="Seu endereço"><MapPin size={16}/><span><small>Você está em</small><strong>{viewer.condominium_name}</strong></span><ChevronDown size={14}/></button>
+      <div className="header-actions"><button aria-label="Meus pedidos" onClick={()=>go('orders')}><Receipt size={20}/></button><button className="cart-toggle" aria-label="Abrir carrinho" onClick={()=>go('cart')}><ShoppingBag size={22}/>{cartCount>0&&<span>{cartCount}</span>}</button><button aria-label="Minha conta" onClick={()=>go('account')}><UserRound size={21}/></button></div>
+    </div></header>
+    <div className="desktop-nav"><div className="desktop-nav-inner">
+      {bottomNav.map(([target,Icon,label])=><button key={target} className={view===target?'active':''} onClick={()=>go(target)}><Icon size={18}/>{label}</button>)}
+      <button onClick={()=>{loadMine();go('seller');}}><Store size={18}/>Minha loja</button>
+      {viewer.role==='admin'&&<button onClick={()=>{loadAdmin();go('admin');}}><ShieldCheck size={18}/>Administração</button>}
+    </div></div>
+    {error&&<div className="global-alert" role="alert"><span>{error}</span><button onClick={()=>setError('')} aria-label="Fechar"><X size={17}/></button></div>}
+    {toast&&<div role="status" className="global-toast"><CheckCircle2 size={18}/>{toast}</div>}
+
+    <main className="content">
+      {view==='home'&&<>
+        <div className="hello-row"><div><p>Olá, {viewer.name.split(' ')[0]}! <span className="wave">✳</span></p><h1>O que vamos pedir hoje?</h1></div><div className="hello-bag"><ShoppingBasket size={27}/></div></div>
+        <div className="search-container"><Search size={20}/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Busque produtos ou lojas..." aria-label="Buscar produtos ou lojas"/>{query&&<button onClick={()=>setQuery('')} aria-label="Limpar busca"><X size={16}/></button>}</div>
+        {!query&&<section className="hero-banner"><div className="hero-copy"><span className="eyebrow">NOSSO CONDOMÍNIO, NOSSO MARKETPLACE</span><h2>Coisa boa mora <em>bem pertinho.</em></h2><p>Conheça os produtos e talentos dos seus vizinhos.</p><button onClick={()=>go('categories')}>Explorar produtos <ArrowRight size={17}/></button></div><img src="/hero.svg" alt="Ilustração de uma lojinha" /></section>}
+        <SectionHeader title="O que você procura?" action="Ver categorias" onAction={()=>go('categories')}/>
+        <div className="category-track">
+          {home.categories.map(c=><button key={c.id} className="category-card" onClick={()=>{setCategory(c.id);go('categories');}}><div><CategorySymbol name={c.name} icon={c.icon}/></div><span>{c.name}</span></button>)}
+        </div>
+        {!query&&featured.length>0&&<><SectionHeader title="Ofertas e destaques" action="Ver tudo" onAction={()=>go('categories')}/><div className="product-track">{featured.map(p=><ProductCard key={p.id} p={p} onClick={()=>openProduct(p)} favorite={favoriteIds.includes(p.id)} onFavorite={toggleFavorite}/>)}</div></>}
+        <SectionHeader title={query?'Resultados da busca':'Feito e vendido por vizinhos'} action={!query?'Ver produtos':undefined} onAction={()=>go('categories')}/>
+        {filtered.length?<div className="product-grid">{(query?filtered:newest).map(p=><ProductCard key={p.id} p={p} onClick={()=>openProduct(p)} favorite={favoriteIds.includes(p.id)} onFavorite={toggleFavorite}/>)}</div>
+          :<Empty title={query?'Nada por aqui ainda':'A vitrine está começando!'} subtitle={query?'Tente outro termo ou explore as categorias.':'As primeiras lojas e produtos vão aparecer aqui assim que forem aprovados.'} action={!query?'Quero vender':undefined} onAction={()=>go('seller')}/>}
+        {query&&catalogHasMore&&<button className="outline-button load-more" disabled={catalogLoading} onClick={()=>setCatalogPage(p=>p+1)}>
+          {catalogLoading?'Carregando...':'Mostrar mais produtos'} <ArrowRight size={17}/>
+        </button>}
+        {!query&&<><SectionHeader title="Lojas da vizinhança" action="Todas as lojas" onAction={()=>{setCategory('');go('categories');}}/>
+          <div className="shops-list">{home.shops.length?home.shops.slice(0,8).map(s=><button className="shop-row" key={s.id} onClick={()=>openShop(s.id)}>
+            <div className="shop-logo">{s.cover_image?<img src={s.cover_image} alt=""/>:<Store size={27}/>}</div>
+            <div><strong>{s.name}</strong><p>{s.description||'Conheça os produtos dessa loja'}</p><span className={'open-hint'+(!s.is_open?' closed':'')}><span/> {s.is_open?'Aceitando pedidos':'Pausada'}</span></div><ChevronRight size={20}/></button>):
+            <Empty title="Nenhuma loja publicada" subtitle="Seja a primeira pessoa a abrir uma loja no condomínio." action="Criar minha loja" onAction={()=>go('seller')}/>}</div>
+        </>}
+      </>}
+
+      {view==='categories'&&<>
+        <div className="page-title"><h1>Explorar</h1><p>Descubra tudo que seus vizinhos oferecem.</p></div>
+        <div className="search-container"><Search size={20}/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Buscar por produto ou loja" aria-label="Buscar"/>{query&&<button onClick={()=>setQuery('')}><X size={16}/></button>}</div>
+        <div className="filter-chips"><button className={!category?'chosen':''} onClick={()=>setCategory('')}>Todos</button>{home.categories.map(c=><button key={c.id} className={category===c.id?'chosen':''} onClick={()=>setCategory(c.id)}>{c.name}</button>)}</div>
+        <SectionHeader title={categoryName??'Produtos dos vizinhos'}/>
+        {filtered.length?<div className="product-grid">{filtered.map(p=><ProductCard key={p.id} p={p} onClick={()=>openProduct(p)} favorite={favoriteIds.includes(p.id)} onFavorite={toggleFavorite}/>)}</div>:
+          catalogLoading?<div className="loading-inline"><div className="spinner"/> Buscando produtos...</div>:
+          <Empty title="Nenhum produto encontrado" subtitle="Tente outra categoria ou volte mais tarde."/>}
+        {catalogHasMore&&<button className="outline-button load-more" disabled={catalogLoading} onClick={()=>setCatalogPage(p=>p+1)}>
+          {catalogLoading?'Carregando...':'Mostrar mais produtos'} <ArrowRight size={17}/>
+        </button>}
+        <SectionHeader title="Todas as lojas"/>
+        <div className="shops-list">{home.shops.map(s=><button key={s.id} className="shop-row" onClick={()=>openShop(s.id)}><div className="shop-logo">{s.cover_image?<img src={s.cover_image} alt=""/>:<Store size={27}/>}</div><div><strong>{s.name}</strong><p>{s.description}</p></div><ChevronRight size={18}/></button>)}</div>
+      </>}
+
+      {view==='shop'&&selectedShop&&<>
+        <button className="back-link" onClick={()=>go('home')}><ArrowLeft size={18}/> Voltar às lojas</button>
+        <div className="shop-cover">{selectedShop.shop.cover_image?<img src={selectedShop.shop.cover_image} alt={'Capa '+selectedShop.shop.name}/>:<div className="shop-cover-fallback"><Store size={62}/></div>}</div>
+        <div className="shop-head"><div><h1>{selectedShop.shop.name}</h1><p>{selectedShop.shop.description}</p></div><Pill tone={selectedShop.shop.is_open?'green':'neutral'}>{selectedShop.shop.is_open?'Aceitando pedidos':'Pausada'}</Pill></div>
+        <div className="shop-benefits"><span><Truck size={17}/> {selectedShop.shop.delivery_enabled?'Entrega disponível':'Sem entrega'}</span>{selectedShop.shop.pickup_enabled&&<span><ShoppingBag size={17}/> Retirada</span>}{selectedShop.shop.lead_time&&<span><Clock3 size={17}/>{selectedShop.shop.lead_time}</span>}</div>
+        <SectionHeader title="Produtos da loja"/>
+        <div className="product-grid">{selectedShop.products.map(p=><ProductCard key={p.id} p={{...p,shop_name:selectedShop.shop.name}} onClick={()=>openProduct({...p,shop_name:selectedShop.shop.name})} favorite={favoriteIds.includes(p.id)} onFavorite={toggleFavorite}/>)}</div>
+        {!selectedShop.products.length&&<Empty title="Loja sem produtos no momento" subtitle="Em breve, novidades por aqui."/>}
+      </>}
+
+      {view==='product'&&selectedProduct&&<>
+        <button className="back-link" onClick={()=>selectedShop?go('shop'):go('home')}><ArrowLeft size={18}/> Voltar</button>
+        <div className="product-detail">
+          <ProductPicture src={selectedProduct.image_url} name={selectedProduct.name} large/>
+          <div className="product-detail-copy"><Pill tone="orange">Da nossa vizinhança</Pill><h1>{selectedProduct.name}</h1>
+            <p className="seller-by">Por {selectedProduct.shop_name??home.shops.find(s=>s.id===selectedProduct.shop_id)?.name}</p>
+            <div className="detail-price">{selectedProduct.promo_price_cents!=null&&<del>{money(selectedProduct.price_cents)}</del>}<strong>{money(price(selectedProduct))}</strong></div>
+            <p>{selectedProduct.description||'Produto disponível diretamente com um morador do condomínio.'}</p>
+            {selectedProduct.lead_time&&<p className="time-hint"><Clock3 size={16}/> Prazo informado: {selectedProduct.lead_time}</p>}
+            <label className="field-label">Observações sobre este produto<textarea maxLength={200} rows={3} value={itemNote} onChange={e=>setItemNote(e.target.value)} placeholder="Ex.: sem cobertura, embalagem para presente..."/></label>
+            <div className="add-row"><div className="quantity"><button onClick={()=>setQty(Math.max(1,qty-1))} aria-label="Diminuir"><Minus size={18}/></button><strong>{qty}</strong><button onClick={()=>setQty(Math.min(Math.max(1,selectedProduct.stock??30),qty+1))} aria-label="Aumentar"><Plus size={18}/></button></div>
+            <button className="primary-button" disabled={selectedProduct.stock===0} onClick={addToCart}><Plus size={18}/>Adicionar · {money(price(selectedProduct)*qty)}</button></div>
+          </div>
+        </div>
+      </>}
+
+      {view==='cart'&&<>
+        <div className="page-title"><h1>Meu carrinho</h1><p>Finalize diretamente com o vendedor pelo WhatsApp.</p></div>
+        {!cart.length?<Empty title="Seu carrinho está vazio" subtitle="Adicione produtos de uma loja para começar." action="Explorar produtos" onAction={()=>go('categories')}/>:
+        <div className="checkout-layout"><section className="checkout-main">
+          <div className="white-panel"><h2><Store size={19}/> {cartShop?.name??'Sua loja'}</h2>{cart.map((item,index)=><div className="cart-item" key={item.product.id+'-'+index}>
+            <ProductPicture src={item.product.image_url} name={item.product.name}/><div className="cart-item-details"><strong>{item.product.name}</strong><small>{item.note}</small><b>{money(price(item.product)*item.quantity)}</b>
+            <div className="cart-controls"><button onClick={()=>setCart(s=>s.map((i,n)=>n===index?{...i,quantity:Math.max(1,i.quantity-1)}:i))} aria-label="Diminuir"><Minus size={15}/></button><span>{item.quantity}</span><button onClick={()=>setCart(s=>s.map((i,n)=>n===index?{...i,quantity:Math.min(30,i.quantity+1)}:i))} aria-label="Aumentar"><Plus size={15}/></button><button className="trash" onClick={()=>setCart(s=>s.filter((_,n)=>n!==index))} aria-label="Remover"><Trash2 size={16}/></button></div>
+            </div></div>)}</div>
+          <div className="white-panel"><h2><Truck size={19}/> Como prefere receber?</h2><div className="choice-row">
+            <button className={fulfillment==='delivery'?'selected':''} onClick={()=>setFulfillment('delivery')}><Truck size={19}/> Entrega</button>
+            <button className={fulfillment==='pickup'?'selected':''} onClick={()=>setFulfillment('pickup')}><ShoppingBag size={19}/> Retirada</button></div>
+            {fulfillment==='delivery'&&<div className="address-box"><MapPin size={18}/><div><strong>{viewer.tower} · Apartamento {viewer.apartment}</strong><small>Seu endereço cadastrado <button onClick={()=>go('account')}>Alterar</button></small></div></div>}
+            <div className="field-grid"><label className="field-label">Data preferida<input type="date" min={new Date().toISOString().slice(0,10)} value={deliveryDay} onChange={e=>setDeliveryDay(e.target.value)}/></label>
+            <label className="field-label">Período / horário<input value={deliveryWindow} maxLength={70} onChange={e=>setDeliveryWindow(e.target.value)} placeholder="Ex.: 18h às 20h"/></label></div>
+            <p className="helper-note">Horário sujeito à confirmação da loja.</p>
+            {fulfillment==='delivery'&&<><h3>Instruções de entrega</h3><div className="instructions">
+              {['Tocar a campainha','Não tocar a campainha','Deixar na porta','Entregar pessoalmente','Retirar na portaria'].map(t=><label key={t}><input type="checkbox" checked={instructions.includes(t)} onChange={e=>setInstructions(s=>e.target.checked?[...s.filter(x=>!((t==='Tocar a campainha'&&x==='Não tocar a campainha')||(t==='Não tocar a campainha'&&x==='Tocar a campainha'))),t]:s.filter(x=>x!==t))}/>{t}</label>)}
+              </div></>}
+            <label className="field-label">Observações gerais<textarea rows={3} maxLength={400} value={checkoutNote} onChange={e=>setCheckoutNote(e.target.value)} placeholder="Algo mais que o vendedor precisa saber?"/></label>
+          </div>
+        </section><aside className="checkout-total white-panel"><h2>Resumo do pedido</h2><div className="total-line"><span>{cartCount} {cartCount===1?'item':'itens'}</span><strong>{money(cartTotal)}</strong></div><div className="total-line bold"><span>Total dos produtos</span><strong>{money(cartTotal)}</strong></div><p>O pagamento será combinado diretamente com o vendedor.</p>
+          <button className="primary-button" disabled={busy} onClick={checkout}>{busy?'Registrando pedido...':'Continuar no WhatsApp'}<ArrowRight size={18}/></button>
+          <small>Seu pedido será registrado e ficará aguardando confirmação da loja.</small>
+        </aside></div>}
+      </>}
+
+      {view==='success'&&lastOrder&&<div className="success-page"><div className="success-icon"><Check size={44}/></div><Pill tone="green">Pedido registrado</Pill><h1>Agora é só conversar com a loja!</h1><p>Seu pedido <strong>#{lastOrder.code}</strong> foi criado. Envie a mensagem para o vendedor pelo WhatsApp para combinar disponibilidade, entrega e pagamento.</p>
+        <a className="primary-button" href={lastOrder.whatsapp_url} target="_blank" rel="noopener noreferrer">Abrir conversa no WhatsApp <ArrowRight size={18}/></a>
+        <button className="outline-button" onClick={()=>{loadOrders();go('orders');}}>Acompanhar meus pedidos</button><small>Abrir o WhatsApp não significa que o vendedor recebeu ou confirmou o pedido.</small></div>}
+
+      {view==='favorites'&&<>
+        <div className="page-title"><h1>Meus favoritos</h1><p>Seus produtos preferidos, sempre à mão.</p></div>
+        {favoriteProducts.length?<div className="product-grid">{favoriteProducts.map(p=>
+          <ProductCard key={p.id} p={p} onClick={()=>openProduct(p)} favorite={favoriteIds.includes(p.id)} onFavorite={toggleFavorite}/>
+        )}</div>:<Empty title="Nenhum favorito por enquanto" subtitle="Toque no coração de um produto para encontrá-lo facilmente depois." action="Explorar produtos" onAction={()=>go('categories')}/>}
+      </>}
+            {view==='orders'&&<><div className="page-title"><h1>Meus pedidos</h1><p>Seu histórico de compras com os vizinhos.</p></div>
+        {!orders.length?<Empty title="Ainda não fez pedidos?" subtitle="Encontre algo gostoso ou útil vendido pertinho de você." action="Começar a comprar" onAction={()=>go('home')}/>:
+        <div className="order-list">{orders.map(o=><article className="order-card" key={o.id}><div className="order-top"><strong>#{o.code} · {o.shop_name}</strong><Pill tone={o.status==='completed'?'green':o.status==='cancelled'?'neutral':'orange'}>{statusLabel[o.status]??o.status}</Pill></div><p>{o.items.map(i=>i.quantity+'× '+i.name).join(' · ')}</p><div className="order-bottom"><small>{new Date(o.created_at).toLocaleDateString('pt-BR')} · {o.fulfillment==='delivery'?'Entrega':'Retirada'}</small><strong>{money(o.total_cents)}</strong></div></article>)}</div>}</>}
+
+      {view==='account'&&<><div className="page-title"><h1>Minha conta</h1><p>Seu cantinho dentro do Condovery.</p></div>
+        <div className="account-grid"><div className="white-panel"><div className="account-welcome"><div className="avatar">{viewer.name[0]}</div><div><strong>{viewer.name}</strong><p>{viewer.email}</p></div></div><form onSubmit={saveProfile} className="form-stack">
+          <label>Nome<input required value={profile.name} onChange={e=>setProfile(s=>({...s,name:e.target.value}))}/></label>
+          <label>WhatsApp<input required type="tel" value={profile.phone} onChange={e=>setProfile(s=>({...s,phone:e.target.value}))}/></label>
+          <div className="field-grid"><label>Torre<select value={profile.tower} onChange={e=>setProfile(s=>({...s,tower:e.target.value}))}>{viewer.towers.map(t=><option key={t} value={t}>{t}</option>)}</select></label><label>Apartamento<input required value={profile.apartment} onChange={e=>setProfile(s=>({...s,apartment:e.target.value}))}/></label></div>
+          <button type="submit" className="outline-button" disabled={busy}>Salvar meus dados</button>
+        </form></div>
+        <div className="account-shortcuts"><button onClick={()=>{loadMine();go('seller');}}><Store size={23}/><span><strong>{myShop?'Minha loja':'Quero vender'}</strong><small>{myShop?'Gerencie produtos e pedidos':'Abra sua lojinha gratuita'}</small></span><ChevronRight/></button>
+        <button onClick={()=>{loadOrders();go('orders');}}><Receipt size={23}/><span><strong>Meus pedidos</strong><small>Acompanhe suas compras</small></span><ChevronRight/></button>
+        {viewer.role==='admin'&&<button onClick={()=>{loadAdmin();go('admin');}}><ShieldCheck size={23}/><span><strong>Administração</strong><small>Aprovações e configurações</small></span><ChevronRight/></button>}
+        <button onClick={logout}><LogOut size={23}/><span><strong>Sair</strong><small>Encerrar sessão neste dispositivo</small></span><ChevronRight/></button></div></div>
+      </>}
+
+      {view==='seller'&&<><button className="back-link" onClick={()=>go('account')}><ArrowLeft size={18}/> Minha conta</button><div className="page-title"><h1>Minha loja</h1><p>Seu negócio, a poucos passos de seus clientes.</p></div>
+        {!myShop?<div className="seller-setup white-panel"><div className="setup-illustration"><Store size={38}/></div><h2>Vamos abrir sua lojinha?</h2><p>Cadastre os dados básicos e a administração vai analisar sua solicitação.</p><form onSubmit={saveShop} className="form-stack">
+          <label>Nome da loja<input required minLength={3} value={shopForm.name} onChange={e=>setShopForm(s=>({...s,name:e.target.value}))} placeholder="Ex.: Bolos da Gabi"/></label>
+          <label>O que você vende?<textarea maxLength={500} value={shopForm.description} onChange={e=>setShopForm(s=>({...s,description:e.target.value}))} rows={3} placeholder="Conte um pouco sobre seus produtos"/></label>
+          <label>WhatsApp para pedidos<input required type="tel" value={shopForm.whatsapp} onChange={e=>setShopForm(s=>({...s,whatsapp:e.target.value}))} placeholder="(19) 99999-9999"/></label>
+          <button className="primary-button" disabled={busy} type="submit">Solicitar abertura <ArrowRight size={18}/></button>
+        </form></div>:<>
+          <div className="seller-overview"><div><strong>{myShop.name}</strong><p>Seu painel de vendas</p></div><Pill tone={myShop.status==='approved'?'green':'orange'}>{statusLabel[myShop.status??'pending']}</Pill></div>
+          {myShop.status!=='approved'&&<div className="info-banner"><Clock3 size={19}/> Sua loja ainda não foi aprovada. Você poderá publicar produtos após a aprovação.</div>}
+          <div className="seller-metrics"><div><small>Pedidos aguardando</small><strong>{sellerOrders.filter(o=>o.status==='awaiting_confirmation').length}</strong></div><div><small>Vendas concluídas</small><strong>{money(sellerOrders.filter(o=>o.status==='completed').reduce((n,o)=>n+o.total_cents,0))}</strong></div></div>
+          <div className="seller-tabs"><button className={sellerTab==='orders'?'active':''} onClick={()=>{setSellerTab('orders');loadSellerOrders().catch(fail);}}>Pedidos</button><button className={sellerTab==='products'?'active':''} onClick={()=>setSellerTab('products')}>Produtos</button><button className={sellerTab==='settings'?'active':''} onClick={()=>setSellerTab('settings')}>Configurações</button></div>
+          {sellerTab==='orders'&&<>{sellerOrders.length?<div className="order-list">{sellerOrders.map(o=><article className="order-card" key={o.id}>
+            <div className="order-top"><strong>Pedido #{o.code}</strong><Pill tone={o.status==='completed'?'green':'orange'}>{statusLabel[o.status]??o.status}</Pill></div>
+            <p><strong>{o.buyer_name}</strong> · {o.fulfillment==='delivery'?o.tower+' · Ap. '+o.apartment:'Retirada'}</p><p>{o.items.map(i=>i.quantity+'× '+i.name).join(' · ')}</p>
+            {o.delivery_day&&<p>Data: {String(o.delivery_day).slice(0,10)}</p>}{o.delivery_window&&<p>Preferência: {o.delivery_window}</p>}
+            {o.note&&<p>Observação: {o.note}</p>}{o.delivery_instructions?.length>0&&<p>Instruções: {o.delivery_instructions.join(', ')}</p>}
+            <div className="order-bottom"><strong>{money(o.total_cents)}</strong><div className="inline-actions">{o.status==='awaiting_confirmation'&&<><button disabled={busy} onClick={()=>updateStatus(o.id,'confirmed')}>Confirmar</button><button className="danger-text" disabled={busy} onClick={()=>updateStatus(o.id,'cancelled')}>Cancelar</button></>}
+              {o.status==='confirmed'&&<><button disabled={busy} onClick={()=>updateStatus(o.id,'completed')}>Concluir</button><button className="danger-text" disabled={busy} onClick={()=>updateStatus(o.id,'cancelled')}>Cancelar</button></>}</div></div>
+          </article>)}</div>:<Empty title="Sem pedidos ainda" subtitle="Quando moradores comprarem na sua loja, os pedidos aparecerão aqui."/>}</>}
+          {sellerTab==='products'&&<><div className="section-heading"><h2>Seus produtos</h2><button className="mini-primary" disabled={myShop.status!=='approved'} onClick={()=>editProduct()}><Plus size={17}/>Adicionar</button></div>
+            {editingProduct?<form className="white-panel form-stack product-editor" onSubmit={saveProduct}>
+              <div className="section-heading"><h2>{productForm.id?'Editar produto':'Novo produto'}</h2><button type="button" onClick={()=>setEditingProduct(false)}><X size={19}/></button></div>
+              <label>Foto do produto<div className="image-upload">{productForm.image_url?<img src={productForm.image_url} alt="Prévia do produto"/>:<ImagePlus size={29}/>}<span>Selecionar foto (até 8 MB)</span><input aria-label="Enviar foto do produto" type="file" accept="image/jpeg,image/png,image/webp" onChange={e=>{const f=e.target.files?.[0];if(f)upload(f,'product');}}/></div></label>
+              <label>Nome<input required minLength={2} maxLength={100} value={productForm.name} onChange={e=>setProductForm(s=>({...s,name:e.target.value}))}/></label>
+              <label>Descrição<textarea rows={3} maxLength={600} value={productForm.description} onChange={e=>setProductForm(s=>({...s,description:e.target.value}))}/></label>
+              <label>Categoria<select required value={productForm.category_id} onChange={e=>setProductForm(s=>({...s,category_id:e.target.value}))}><option value="">Selecione</option>{home.categories.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></label>
+              <div className="field-grid"><label>Preço (R$)<input required type="number" min=".01" step=".01" value={productForm.price} onChange={e=>setProductForm(s=>({...s,price:e.target.value}))}/></label><label>Promocional (opcional)<input type="number" min=".01" step=".01" value={productForm.promo} onChange={e=>setProductForm(s=>({...s,promo:e.target.value}))}/></label></div>
+              <div className="field-grid"><label>Estoque (opcional)<input type="number" min="0" step="1" value={productForm.stock} onChange={e=>setProductForm(s=>({...s,stock:e.target.value}))}/></label><label>Prazo de preparo<input maxLength={100} value={productForm.lead_time} onChange={e=>setProductForm(s=>({...s,lead_time:e.target.value}))} placeholder="Ex.: 1 dia"/></label></div>
+              <label className="check-label"><input type="checkbox" checked={productForm.is_available} onChange={e=>setProductForm(s=>({...s,is_available:e.target.checked}))}/> Produto disponível na vitrine</label>
+              <button className="primary-button" disabled={busy} type="submit">{busy?'Salvando...':'Salvar produto'}<Check size={18}/></button>
+            </form>:myProducts.length?<div className="seller-product-list">{myProducts.map(p=><button key={p.id} onClick={()=>editProduct(p)}><ProductPicture src={p.image_url} name={p.name}/><span><strong>{p.name}</strong><small>{money(price(p))} · {p.is_available?'Disponível':'Indisponível'}</small></span><ChevronRight size={18}/></button>)}</div>:<Empty title="Seu catálogo está vazio" subtitle="Adicione o primeiro produto para começar a vender."/>}</>}
+          {sellerTab==='settings'&&<form className="white-panel form-stack" onSubmit={saveShop}>
+            <label>Nome da loja<input required minLength={3} value={shopForm.name} onChange={e=>setShopForm(s=>({...s,name:e.target.value}))}/></label>
+            <label>Descrição<textarea rows={3} maxLength={500} value={shopForm.description} onChange={e=>setShopForm(s=>({...s,description:e.target.value}))}/></label>
+            <label>WhatsApp<input required value={shopForm.whatsapp} onChange={e=>setShopForm(s=>({...s,whatsapp:e.target.value}))}/></label>
+            <label>Foto de capa<div className="image-upload">{shopForm.cover_image?<img src={shopForm.cover_image} alt="Capa"/>:<ImagePlus size={30}/>}<span>Enviar foto de capa</span><input aria-label="Enviar foto de capa" type="file" accept="image/jpeg,image/png,image/webp" onChange={e=>{const f=e.target.files?.[0];if(f)upload(f,'cover');}}/></div></label>
+            <label>Prazo de preparo<input maxLength={100} value={shopForm.lead_time} onChange={e=>setShopForm(s=>({...s,lead_time:e.target.value}))} placeholder="Ex.: Até 2 horas"/></label>
+            <label>Orientações para retirada<textarea rows={2} maxLength={250} value={shopForm.pickup_instructions} onChange={e=>setShopForm(s=>({...s,pickup_instructions:e.target.value}))}/></label>
+            <label className="check-label"><input type="checkbox" checked={shopForm.is_open} onChange={e=>setShopForm(s=>({...s,is_open:e.target.checked}))}/> Loja aceitando pedidos</label>
+            <label className="check-label"><input type="checkbox" checked={shopForm.delivery_enabled} onChange={e=>setShopForm(s=>({...s,delivery_enabled:e.target.checked}))}/> Oferecer entrega</label>
+            <label className="check-label"><input type="checkbox" checked={shopForm.pickup_enabled} onChange={e=>setShopForm(s=>({...s,pickup_enabled:e.target.checked}))}/> Oferecer retirada</label>
+            <button className="primary-button" disabled={busy} type="submit">Salvar configurações <Check size={18}/></button>
+          </form>}
+        </>}
+      </>}
+
+      {view==='admin'&&viewer.role==='admin'&&<><button className="back-link" onClick={()=>go('account')}><ArrowLeft size={18}/> Minha conta</button><div className="page-title"><h1>Administração</h1><p>Cuide da segurança e organização da sua comunidade.</p></div>
+        {adminData?<><div className="admin-stats"><div><strong>{adminData.stats.residents}</strong><span>Moradores aprovados</span></div><div><strong>{adminData.stats.shops}</strong><span>Lojas ativas</span></div><div><strong>{adminData.stats.orders}</strong><span>Pedidos criados</span></div></div>
+        <section className="admin-section"><SectionHeader title="Moradores"/>
+          {adminData.residents.length?adminData.residents.map(r=><div className="admin-row" key={r.id}><div><strong>{r.name}</strong><p>{r.email} · {r.tower} / {r.apartment}</p><Pill tone={r.status==='approved'?'green':'orange'}>{statusLabel[r.status]}</Pill></div><div className="inline-actions">{r.status!=='approved'&&<button disabled={busy} onClick={()=>adminAction('users',r.id,'approved')}>Aprovar</button>}{r.status!=='suspended'&&<button disabled={busy} className="danger-text" onClick={()=>adminAction('users',r.id,'suspended')}>Suspender</button>}</div></div>):<p className="muted">Nenhum morador cadastrado ainda.</p>}</section>
+        <section className="admin-section"><SectionHeader title="Lojas"/>{adminData.shops.length?adminData.shops.map(s=><div className="admin-row" key={s.id}><div><strong>{s.name}</strong><p>Responsável: {s.owner_name}</p><Pill tone={s.status==='approved'?'green':'orange'}>{statusLabel[s.status]}</Pill></div><div className="inline-actions">{s.status!=='approved'&&<button disabled={busy} onClick={()=>adminAction('shops',s.id,'approved')}>Aprovar</button>}{s.status!=='suspended'&&<button disabled={busy} className="danger-text" onClick={()=>adminAction('shops',s.id,'suspended')}>Suspender</button>}</div></div>):<p className="muted">Nenhuma loja cadastrada.</p>}</section>
+        <section className="admin-section white-panel"><h2><LayoutGrid size={20}/> Categorias</h2><div className="filter-chips">{adminData.categories.map(c=><span className="category-tag" key={c.id}>{c.name}</span>)}</div><form className="admin-category-form" onSubmit={createCategory}><input required minLength={2} maxLength={60} value={newCategory} onChange={e=>setNewCategory(e.target.value)} placeholder="Nova categoria"/><select value={categoryIcon} onChange={e=>setCategoryIcon(e.target.value)} aria-label="Ícone"><option value="shopping-bag">Compras</option><option value="cake-slice">Bolos</option><option value="sandwich">Alimentos</option><option value="coffee">Bebidas</option><option value="shirt">Moda</option><option value="sparkles">Beleza</option><option value="gift">Presentes</option></select><button className="outline-button" disabled={busy} type="submit"><Plus size={16}/>Adicionar</button></form></section>
+        <section className="admin-section white-panel"><h2><ShieldCheck size={20}/> Convite do condomínio</h2><p>Novos moradores precisam de um convite e aprovação manual para acessar o marketplace.</p><button className="outline-button" disabled={busy} onClick={generateInvite}>Gerar novo convite</button>{invite&&<div className="invite-code"><code>{invite}</code><button onClick={()=>{navigator.clipboard.writeText(invite).then(()=>notify('Convite copiado.')).catch(fail);}}>Copiar</button></div>}<small>Ao gerar novo código, o anterior deixa de valer. Compartilhe apenas com moradores.</small></section>
+        </>:<Empty title="Carregando administração" subtitle="Confira sua conexão e tente novamente." action="Recarregar" onAction={()=>loadAdmin().catch(fail)}/>}
+      </>}
+    </main>
+
+    {cartCount>0&&view!=='cart'&&view!=='success'&&<button className="floating-cart" onClick={()=>go('cart')}><ShoppingBag size={19}/><span>{cartCount} {cartCount===1?'item':'itens'}</span><strong>{money(cartTotal)}</strong><ArrowRight size={18}/></button>}
+    <nav className="bottom-nav" aria-label="Navegação principal">{bottomNav.map(([target,Icon,label])=><button key={target} className={view===target?'active':''} onClick={()=>go(target)}><Icon size={22} strokeWidth={view===target?2.4:1.8}/><span>{label}</span></button>)}</nav>
+  </div>;
+}
