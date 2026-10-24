@@ -1004,7 +1004,7 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
       query("SELECT (SELECT count(*)::int FROM users WHERE condominium_id=$1 AND status='approved') AS residents, (SELECT count(*)::int FROM shops WHERE condominium_id=$1 AND status='approved') AS shops,(SELECT count(*)::int FROM orders WHERE condominium_id=$1) AS orders",[u.condominium_id]),
       query('SELECT id,name,icon FROM categories WHERE condominium_id=$1 AND is_active=true ORDER BY sort_order,name',[u.condominium_id])
     ]);
-    return out({residents:residents.rows,shops:shops.rows,stats:stats.rows[0],categories:categories.rows});
+    return out({residents:residents.rows,shops:shops.rows,stats:stats.rows[0],categories:categories.rows,towers:u.towers});
   }
   if(path==='reports'&&method==='POST'){
     const b=z.object({
