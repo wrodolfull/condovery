@@ -157,6 +157,12 @@ assert.equal(afterReject.summary.average,4.5);
 assert.equal(afterReject.summary.count,2);
 const rejectedOrder=(await request('orders',{cookie:buyerCookie})).data.orders.find(o=>o.id===third.createdOrder.id);
 assert.equal(rejectedOrder.review_status,'rejected');
+// Restore the product fixture for the subsequent Playwright buying flow.
+await request('products/'+productId,{method:'PATCH',cookie:sellerCookie,body:{
+  name:'Bolo de cenoura',description:'Com chocolate',price_cents:2500,promo_price_cents:null,
+  category_id:sellerHome.categories[0].id,stock:4,image_url:null,lead_time:'Disponível hoje',
+  is_available:true
+}});
 console.log('Verified reviews smoke PASS: eligibility, single review, moderation, average and privacy.');
 console.log('Integration smoke PASS: invite -> approval -> shop -> product -> WhatsApp order -> completed.');
 
