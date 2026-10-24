@@ -30,6 +30,8 @@ try {
   await client.query(foodOnly);
   const shopLifecycle=await readFile(new URL('../db/011_shop_lifecycle.sql',import.meta.url),'utf8');
   await client.query(shopLifecycle);
+  const productDeletion=await readFile(new URL('../db/012_deleted_products.sql',import.meta.url),'utf8');
+  await client.query(productDeletion);
   console.log('Condovery database schema applied successfully.');
 } finally {
   await client.end();
