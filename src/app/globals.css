@@ -467,3 +467,6 @@ body {background:var(--bg);letter-spacing:-.08px}
   .bottom-nav button{min-width:48px;font-size:9px}
   .bottom-nav button.active>svg{padding:5px 10px}
 }
+
+.forgot-button{background:transparent;border:0;color:#a9502d;align-self:center;margin-top:16px;font-weight:800;font-size:12px}
+.forgot-button:hover{text-decoration:underline}
