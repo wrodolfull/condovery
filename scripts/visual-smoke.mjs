@@ -15,7 +15,7 @@ async function verify(page,scene,width) {
     const important=['.app-header','.header-inner','.content','.bottom-nav',
       '.floating-cart','.hero-banner','.weekly-offer-banner','.auth-card',
       '.auth-mobile-intro','.white-panel','.checkout-layout','.order-card'];
-    const elements=important.flatMap(selector=>Array.from(document.querySelectorAll(selector)))
+    const elements=important.flatMap(selector=>Array.from(document.querySelectorAll(selector))
       .filter(el=>getComputedStyle(el).display!=='none')
       .map(el=>{const r=el.getBoundingClientRect();return {selector,left:r.left,right:r.right};}));
     return {view,documentWidth:root.scrollWidth,offending:elements.filter(x=>x.left < -2||x.right>view+2)};
