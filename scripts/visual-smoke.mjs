@@ -71,6 +71,13 @@ try{
     await page.locator('.product-open').first().click();
     await page.locator('.product-detail').waitFor({state:'visible'});
     await verify(page,'product',width);
+    // Products may have mandatory customizations before they can enter the cart.
+    const groups=page.locator('.product-detail .options-picker');
+    for(let i=0;i<await groups.count();i++){
+      const group=groups.nth(i);
+      if((await group.locator('legend').innerText()).includes('Obrigatório'))
+        await group.locator('input').first().check();
+    }
     await page.locator('.product-detail .primary-button').click();
     await page.locator('.checkout-layout').waitFor({state:'visible'});
     await verify(page,'cart',width);

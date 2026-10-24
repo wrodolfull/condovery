@@ -22,6 +22,8 @@ try {
   await client.query(standardCategories);
   const instant=await readFile(new URL('../db/007_instant_memberships_and_content_reports.sql',import.meta.url),'utf8');
   await client.query(instant);
+  const checkout=await readFile(new URL('../db/008_checkout_options_and_fees.sql',import.meta.url),'utf8');
+  await client.query(checkout);
   console.log('Condovery database schema applied successfully.');
 } finally {
   await client.end();

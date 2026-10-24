@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import {IllustrationSlot} from '@/components/IllustrationSlot';
 import {RoundedStars} from '@/components/RoundedStars';
 import {artwork,getCategoryArtwork} from '@/lib/artwork';
+import {selectedOptions, extrasTotal, type OptionGroup, type Selection} from '@/lib/orders';
 import {
   ArrowLeft, ArrowRight, Bell, Building2, CakeSlice, Check, CheckCircle2, ChevronDown, ChevronRight,
   CircleHelp, Clock3, Coffee, Gift, Heart, Home, ImagePlus, LayoutGrid, LogOut, MapPin,
@@ -14,16 +15,39 @@ import {
 
 type Viewer={id:string;name:string;email:string;phone:string;avatar_image:string|null;role:'admin'|'resident';status:'pending'|'approved'|'suspended';tower:string;apartment:string;condominium_name:string;towers:string[]};
 type Category={id:string;name:string;icon:string};
-type Shop={id:string;name:string;description:string;cover_image:string|null;logo_image:string|null;status?:string;is_open:boolean;delivery_enabled:boolean;pickup_enabled:boolean;lead_time:string;pickup_instructions?:string;whatsapp?:string};
-type Product={id:string;shop_id:string;shop_name?:string;visibility:'available'|'unavailable'|'hidden';category_id:string;name:string;description:string;price_cents:number;promo_price_cents:number|null;image_url:string|null;stock:number|null;is_available?:boolean;lead_time?:string;is_featured?:boolean};
-type Order={id:string;code:number;status:string;review_status?:'pending'|'approved'|'rejected'|null;total_cents:number;shop_name:string;buyer_name:string;buyer_phone:string;tower:string;apartment:string;fulfillment:string;delivery_day:string|null;delivery_window:string;delivery_instructions:string[];note:string;items:{name:string;quantity:number;unit_price_cents:number;note:string}[];created_at:string};
+type Shop={id:string;name:string;description:string;cover_image:string|null;logo_image:string|null;status?:string;is_open:boolean;delivery_enabled:boolean;delivery_fee_cents:number;pickup_enabled:boolean;lead_time:string;pickup_instructions?:string;whatsapp?:string};
+type Product={id:string;shop_id:string;shop_name?:string;visibility:'available'|'unavailable'|'hidden';category_id:string;name:string;description:string;price_cents:number;promo_price_cents:number|null;image_url:string|null;stock:number|null;is_available?:boolean;lead_time?:string;is_featured?:boolean;option_groups?:OptionGroup[]};
+type Order={id:string;code:number;status:string;review_status?:'pending'|'approved'|'rejected'|null;total_cents:number;shop_name:string;buyer_name:string;buyer_phone:string;tower:string;apartment:string;fulfillment:string;delivery_day:string|null;delivery_window:string;delivery_instructions:string[];note:string;subtotal_cents:number;delivery_fee_cents:number;items:{name:string;quantity:number;unit_price_cents:number;note:string;options?:{group:string;name:string;price_cents:number}[]}[];created_at:string};
 type ReviewStatus='pending'|'approved'|'rejected';
 type PublicReview={id:string;rating:number;description:string;created_at:string};
 type ReviewSummary={average:number|null;count:number};
 type PublicReviews={summary:ReviewSummary;reviews:PublicReview[]};
 type SellerReview={id:string;order_id:string;order_code:number;rating:number;description:string;status:ReviewStatus;created_at:string;moderated_at:string|null};
 type ContentReport={id:string;target_type:'shop'|'product';target_id:string;target_name:string;reason:string;details:string;product_blocked:boolean;status:'open'|'resolved';created_at:string};
-type CartItem={product:Product;quantity:number;note:string};
+type CartItem={product:Product;quantity:number;note:string;selections?:Selection;line_key?:string};
+type CheckoutQuote={subtotal_cents:number;delivery_fee_cents:number;total_cents:number;lines:{
+  name:string;quantity:number;unit_price_cents:number;total_cents:number;
+  options:{group:string;name:string;price_cents:number}[];note:string
+}[]};
+const addOns=(p:Product,choices:Selection={})=>{
+  try{return extrasTotal(selectedOptions(p.option_groups??[],choices));}catch{return 0;}
+};
+const cartUnitPrice=(i:CartItem)=>price(i.product)+addOns(i.product,i.selections);
+const moneyInput=(v:number)=>Number.isFinite(v)?(v/100).toFixed(2):'0.00';
+function MoneyInput({cents,onValue}:{cents:number;onValue:(value:number)=>void}){
+  const [raw,setRaw]=useState(moneyInput(cents));
+  const [focused,setFocused]=useState(false);
+  useEffect(()=>{if(!focused)setRaw(moneyInput(cents));},[cents,focused]);
+  return <input type="text" inputMode="decimal" autoComplete="off"
+    value={raw} onFocus={e=>{setFocused(true);e.target.select();}}
+    onChange={e=>{
+      const value=e.target.value;
+      if(!/^\\d{0,5}(?:[.,]\\d{0,2})?$/.test(value))return;
+      setRaw(value);
+      const num=Number(value.replace(',','.'));
+      onValue(Number.isFinite(num)?Math.round(num*100):0);
+    }} onBlur={()=>setFocused(false)}/>;
+}
 type HomeData={categories:Category[];shops:Shop[];products:Product[]};
 type AdminData={residents:{id:string;name:string;email:string;tower:string;apartment:string;status:string}[];shops:{id:string;name:string;owner_name:string;status:string}[];stats:{residents:number;shops:number;orders:number};categories:Category[]};
 type View='home'|'categories'|'favorites'|'orders'|'account'|'shop'|'product'|'cart'|'success'|'seller'|'admin';
@@ -31,6 +55,10 @@ const money=(n:number)=>new Intl.NumberFormat('pt-BR',{style:'currency',currency
 const price=(p:Product)=>p.promo_price_cents??p.price_cents;
 const statusLabel:Record<string,string>={awaiting_confirmation:'Aguardando confirmação',confirmed:'Confirmado',completed:'Concluído',cancelled:'Cancelado',pending:'Em análise',approved:'Ativo',suspended:'Suspenso'};
 const emptyHome:HomeData={categories:[],shops:[],products:[]};
+const cartShopSafe=(cart:CartItem[],shops:Shop[],selected:{shop:Shop}|null)=>{
+  return shops.find(s=>s.id===cart[0]?.product.shop_id)||
+    (selected&&cart.length>0&&selected.shop.id===cart[0].product.shop_id?selected.shop:undefined);
+};
 type OrderFilter='all'|'awaiting_confirmation'|'confirmed'|'completed'|'cancelled';
 const orderFilters:{key:OrderFilter;label:string}[]=[
   {key:'all',label:'Todos'},
@@ -144,6 +172,7 @@ export default function Page(){
   const [selectedProduct,setSelectedProduct]=useState<Product|null>(null);
   const [qty,setQty]=useState(1);
   const [itemNote,setItemNote]=useState('');
+  const [productChoices,setProductChoices]=useState<Selection>({});
   const [cart,setCart]=useState<CartItem[]>([]);
   const [fulfillment,setFulfillment]=useState<'delivery'|'pickup'>('delivery');
   const [deliveryDay,setDeliveryDay]=useState('');
@@ -152,6 +181,7 @@ export default function Page(){
   const [checkoutNote,setCheckoutNote]=useState('');
   const [lastOrder,setLastOrder]=useState<{code:number;whatsapp_url:string}|null>(null);
   const [checkoutKey,setCheckoutKey]=useState<string|null>(null);
+  const [revisedQuote,setRevisedQuote]=useState<CheckoutQuote|null>(null);
   const [orders,setOrders]=useState<Order[]>([]);
   const [orderFilter,setOrderFilter]=useState<OrderFilter>('all');
   const [ordersLoading,setOrdersLoading]=useState(false);
@@ -160,8 +190,8 @@ export default function Page(){
   const [myProducts,setMyProducts]=useState<Product[]>([]);
   const [adminData,setAdminData]=useState<AdminData|null>(null);
   const [sellerTab,setSellerTab]=useState<'orders'|'products'|'reviews'|'settings'>('orders');
-  const [shopForm,setShopForm]=useState({name:'',description:'',whatsapp:'',is_open:true,delivery_enabled:true,pickup_enabled:true,lead_time:'',pickup_instructions:'',cover_image:'',logo_image:''});
-  const [productForm,setProductForm]=useState({id:'',name:'',description:'',category_id:'',price:'',promo:'',stock:'',image_url:'',visibility:'available' as Product['visibility'],lead_time:''});
+  const [shopForm,setShopForm]=useState({name:'',description:'',whatsapp:'',is_open:true,delivery_enabled:true,delivery_fee_cents:0,pickup_enabled:true,lead_time:'',pickup_instructions:'',cover_image:'',logo_image:''});
+  const [productForm,setProductForm]=useState({id:'',name:'',description:'',category_id:'',price:'',promo:'',stock:'',image_url:'',visibility:'available' as Product['visibility'],lead_time:'',option_groups:[] as OptionGroup[]});
   const [editingProduct,setEditingProduct]=useState(false);
   const [profile,setProfile]=useState({name:'',phone:'',tower:'',apartment:'',avatar_image:''});
   const [invite,setInvite]=useState('');
@@ -197,7 +227,7 @@ export default function Page(){
     setMyShop(data.shop);setMyProducts(data.products);
     if(data.shop)setShopForm({
       name:data.shop.name,description:data.shop.description,whatsapp:data.shop.whatsapp??'',
-      is_open:data.shop.is_open,delivery_enabled:data.shop.delivery_enabled,pickup_enabled:data.shop.pickup_enabled,
+      is_open:data.shop.is_open,delivery_enabled:data.shop.delivery_enabled,delivery_fee_cents:data.shop.delivery_fee_cents??0,pickup_enabled:data.shop.pickup_enabled,
       lead_time:data.shop.lead_time??'',pickup_instructions:data.shop.pickup_instructions??'',cover_image:data.shop.cover_image??'',logo_image:data.shop.logo_image??''
     });
   },[]);
@@ -268,6 +298,9 @@ export default function Page(){
     try{const raw=window.localStorage.getItem('condovery_cart');if(raw){const parsed=JSON.parse(raw);if(Array.isArray(parsed))setCart(parsed);}}catch{}
   },[]);
   useEffect(()=>{try{window.localStorage.setItem('condovery_cart',JSON.stringify(cart));}catch{}},[cart]);
+  useEffect(()=>{
+    setCheckoutKey(null);setRevisedQuote(null);
+  },[cart,fulfillment,deliveryDay,deliveryWindow,instructions,checkoutNote]);
   useEffect(()=>{if(!toast)return;const timer=setTimeout(()=>setToast(''),4000);return()=>clearTimeout(timer);},[toast]);
   useEffect(()=>{if(view==='seller'&&myShop?.status==='approved'){
     loadSellerOrders().catch(fail);
@@ -307,7 +340,11 @@ export default function Page(){
   const categoryName=home.categories.find(c=>c.id===category)?.name;
   const filtered=useMemo(()=>view==='categories'||query.trim()?catalogProducts:home.products,
     [view,query,catalogProducts,home.products]);
-  const cartTotal=cart.reduce((n,i)=>n+price(i.product)*i.quantity,0);
+  const cartSubtotal=cart.reduce((n,i)=>n+cartUnitPrice(i)*i.quantity,0);
+  const actualFulfillment: 'delivery'|'pickup'=cartShopSafe(cart,home.shops,selectedShop)?.delivery_enabled===false?'pickup':
+    (cartShopSafe(cart,home.shops,selectedShop)?.pickup_enabled===false?'delivery':fulfillment);
+  const fee=actualFulfillment==='delivery'?Number(cartShopSafe(cart,home.shops,selectedShop)?.delivery_fee_cents??0):0;
+  const cartTotal=cartSubtotal+fee;
   const cartCount=cart.reduce((n,i)=>n+i.quantity,0);
   const cartShop=home.shops.find(s=>s.id===cart[0]?.product.shop_id)||selectedShop?.shop;
   const featured=home.products.filter(p=>p.promo_price_cents!=null||p.is_featured).slice(0,8);
@@ -429,7 +466,16 @@ export default function Page(){
       notify(status==='approved'?'Avaliação publicada.':'Avaliação não publicada.');
     }catch(e){fail(e);}finally{setBusy(false);}
   }
-  function openProduct(p:Product){setSelectedProduct(p);setQty(1);setItemNote('');go('product');}
+  function openProduct(p:Product){setSelectedProduct(p);setQty(1);setItemNote('');setProductChoices({});go('product');}
+  function changeChoice(group:OptionGroup,id:string){
+    setProductChoices(current=>{
+      const currentIds=current[group.id]??[];
+      const selected=group.multiple
+        ?currentIds.includes(id)?currentIds.filter(x=>x!==id):[...currentIds,id]
+        :[id];
+      return {...current,[group.id]:selected};
+    });
+  }
   const productCanBuy=(p:Product)=>p.visibility==='available'&&p.stock!==0;
   async function changeProductVisibility(id:string,visibility:Product['visibility']){
     setBusy(true);setError('');
@@ -455,35 +501,60 @@ export default function Page(){
   function addToCart(){
     if(!selectedProduct)return;
     if(!productCanBuy(selectedProduct)){notify('Este produto está indisponível.');return;}
+    try{selectedOptions(selectedProduct.option_groups??[],productChoices);}
+    catch(e){fail(e);return;}
     if(cart.length&&cart[0].product.shop_id!==selectedProduct.shop_id){
       if(!window.confirm('Seu carrinho é de outra loja. Deseja substituí-lo?'))return;
-      setCart([]);
     }
     setCart(current=>{
       const base=current.length&&current[0].product.shop_id!==selectedProduct.shop_id?[]:current;
-      const same=base.find(i=>i.product.id===selectedProduct.id&&i.note===itemNote);
-      return same?base.map(i=>i===same?{...i,quantity:i.quantity+qty}:i):[...base,{product:selectedProduct,quantity:qty,note:itemNote}];
+      const selected={...productChoices};
+      const same=base.find(i=>i.product.id===selectedProduct.id&&i.note===itemNote
+        &&JSON.stringify(i.selections??{})===JSON.stringify(selected));
+      return same?base.map(i=>i===same?{...i,quantity:i.quantity+qty}:i):
+        [...base,{product:selectedProduct,quantity:qty,note:itemNote,selections:selected,line_key:crypto.randomUUID()}];
     });
     notify('Produto adicionado ao carrinho.');go('cart');
   }
-  async function checkout(){
+  function checkoutPayload(key:string){
+    return {
+      shop_id:cart[0].product.shop_id,
+      items:cart.map(i=>({id:i.product.id,quantity:i.quantity,note:i.note,selections:i.selections??{}})),
+      fulfillment:actualFulfillment,delivery_day:deliveryDay||null,delivery_window:deliveryWindow,
+      instructions:actualFulfillment==='delivery'?instructions:[],note:checkoutNote,client_order_key:key
+    };
+  }
+  async function checkout(confirmed=false){
     if(!cart.length||busy)return;
     setBusy(true);setError('');
     const key=checkoutKey??crypto.randomUUID();
     if(!checkoutKey)setCheckoutKey(key);
     try{
+      const payloadData=checkoutPayload(key);
+      const latest=await api<{quote:CheckoutQuote}>('orders/quote',{method:'POST',body:payload(payloadData)});
+      const quote=latest.quote;
+      const changed=quote.total_cents!==cartTotal||
+        quote.lines.some((line,i)=>line.unit_price_cents!==cartUnitPrice(cart[i]));
+      const newerConfirmation=confirmed&&revisedQuote&&(
+        quote.total_cents!==revisedQuote.total_cents||
+        quote.lines.some((line,i)=>line.unit_price_cents!==revisedQuote.lines[i]?.unit_price_cents)
+      );
+      if((changed&&!confirmed)||newerConfirmation){
+        setRevisedQuote(quote);
+        notify('Confira o valor atualizado antes de registrar o pedido.');
+        return;
+      }
       const result=await api<{order:{code:number};whatsapp_url:string}>('orders',{method:'POST',body:payload({
-        shop_id:cart[0].product.shop_id,
-        items:cart.map(i=>({id:i.product.id,quantity:i.quantity,note:i.note})),
-        fulfillment,delivery_day:deliveryDay||null,delivery_window:deliveryWindow,
-        instructions,note:checkoutNote,client_order_key:key
+        ...payloadData,expected_total_cents:quote.total_cents
       })});
       setLastOrder({code:result.order.code,whatsapp_url:result.whatsapp_url});
-      setCheckoutKey(null);setCart([]);go('success');
-      // A saída para o WhatsApp não deve depender de atualizar a vitrine.
+      setCheckoutKey(null);setRevisedQuote(null);setCart([]);go('success');
       void Promise.allSettled([loadOrders(),loadHome()]);
       window.location.assign(result.whatsapp_url);
-    }catch(e){fail(e);}finally{setBusy(false);}
+    }catch(e){
+      setRevisedQuote(null);
+      fail(e);
+    }finally{setBusy(false);}
   }
   async function updateStatus(id:string,status:string){
     setBusy(true);try{
@@ -526,8 +597,8 @@ export default function Page(){
     }catch(e){fail(e);}finally{setBusy(false);}
   }
   function editProduct(p?:Product){
-    setProductForm(p?{id:p.id,name:p.name,description:p.description,category_id:p.category_id,price:(p.price_cents/100).toFixed(2),promo:p.promo_price_cents?(p.promo_price_cents/100).toFixed(2):'',stock:p.stock==null?'':String(p.stock),image_url:p.image_url??'',visibility:p.visibility??(p.is_available?'available':'hidden'),lead_time:p.lead_time??''}
-      :{id:'',name:'',description:'',category_id:home.categories[0]?.id??'',price:'',promo:'',stock:'',image_url:'',visibility:'available',lead_time:''});
+    setProductForm(p?{id:p.id,name:p.name,description:p.description,category_id:p.category_id,price:(p.price_cents/100).toFixed(2),promo:p.promo_price_cents?(p.promo_price_cents/100).toFixed(2):'',stock:p.stock==null?'':String(p.stock),image_url:p.image_url??'',visibility:p.visibility??(p.is_available?'available':'hidden'),lead_time:p.lead_time??'',option_groups:p.option_groups??[]}
+      :{id:'',name:'',description:'',category_id:home.categories[0]?.id??'',price:'',promo:'',stock:'',image_url:'',visibility:'available',lead_time:'',option_groups:[]});
     setEditingProduct(true);
   }
   async function saveProduct(e:React.FormEvent){
@@ -537,7 +608,7 @@ export default function Page(){
         price_cents:Math.round(Number(productForm.price.replace(',','.'))*100),
         promo_price_cents:productForm.promo?Math.round(Number(productForm.promo.replace(',','.'))*100):null,
         stock:productForm.stock===''?null:Number(productForm.stock),image_url:productForm.image_url||null,
-        visibility:productForm.visibility,lead_time:productForm.lead_time};
+        visibility:productForm.visibility,lead_time:productForm.lead_time,option_groups:productForm.option_groups};
       await api(productForm.id?'products/'+productForm.id:'products',{method:productForm.id?'PATCH':'POST',body:payload(b)});
       setEditingProduct(false);await Promise.all([loadMine(),loadHome()]);notify('Produto salvo.');
     }catch(e){fail(e);}finally{setBusy(false);}
@@ -800,9 +871,20 @@ export default function Page(){
             <div className="detail-price">{selectedProduct.promo_price_cents!=null&&<del>{money(selectedProduct.price_cents)}</del>}<strong>{money(price(selectedProduct))}</strong></div>
             <p>{selectedProduct.description||'Produto disponível diretamente com um morador do condomínio.'}</p>
             {selectedProduct.lead_time&&<p className="time-hint"><Clock3 size={16}/> Prazo informado: {selectedProduct.lead_time}</p>}
+            {(selectedProduct.option_groups??[]).map(group=><fieldset className="options-picker" key={group.id}>
+              <legend><strong>{group.name}</strong><small>{group.required?' Obrigatório':' Opcional'} · {group.multiple?'Várias escolhas':'Escolha uma'}</small></legend>
+              {group.options.map(choice=><label className="option-item" key={choice.id}>
+                <input type={group.multiple?'checkbox':'radio'} name={'group-'+group.id}
+                  checked={(productChoices[group.id]??[]).includes(choice.id)} onChange={()=>changeChoice(group,choice.id)}/>
+                <span>{choice.name}</span><small>{choice.price_cents>0?'+'+money(choice.price_cents):'Incluso'}</small>
+              </label>)}
+              {!group.required&&!group.multiple&&(productChoices[group.id]??[]).length>0&&
+                <button type="button" className="quiet-link"
+                  onClick={()=>setProductChoices(c=>({...c,[group.id]:[]}))}>Limpar escolha</button>}
+            </fieldset>)}
             <label className="field-label">Observações sobre este produto<textarea maxLength={200} rows={3} value={itemNote} onChange={e=>setItemNote(e.target.value)} placeholder="Ex.: sem cobertura, embalagem para presente..."/></label>
             <div className="add-row"><div className="quantity"><button onClick={()=>setQty(Math.max(1,qty-1))} aria-label="Diminuir"><Minus size={18}/></button><strong>{qty}</strong><button onClick={()=>setQty(Math.min(Math.max(1,selectedProduct.stock??30),qty+1))} aria-label="Aumentar"><Plus size={18}/></button></div>
-            <button className="primary-button" disabled={!productCanBuy(selectedProduct)} onClick={addToCart}><Plus size={18}/>Adicionar · {money(price(selectedProduct)*qty)}</button></div>
+            <button className="primary-button" disabled={!productCanBuy(selectedProduct)} onClick={addToCart}><Plus size={18}/>Adicionar · {money((price(selectedProduct)+addOns(selectedProduct,productChoices))*qty)}</button></div>
             {!productCanBuy(selectedProduct)&&<p className="helper-note">Este produto continua visível, mas não pode ser comprado agora.</p>}
             <button className="report-trigger" onClick={()=>setReportTarget({type:'product',id:selectedProduct.id,name:selectedProduct.name})}>Denunciar produto</button>
           </div>
@@ -814,30 +896,52 @@ export default function Page(){
         {!cart.length?<Empty title="Seu carrinho está vazio" subtitle="Adicione produtos de uma loja para começar." action="Explorar produtos" onAction={()=>go('categories')}/>:
         <div className="checkout-layout"><section className="checkout-main">
           <div className="white-panel"><h2><Store size={19}/> {cartShop?.name??'Sua loja'}</h2>{cart.map((item,index)=><div className="cart-item" key={item.product.id+'-'+index}>
-            <ProductPicture src={item.product.image_url} name={item.product.name}/><div className="cart-item-details"><strong>{item.product.name}</strong><small>{item.note}</small><b>{money(price(item.product)*item.quantity)}</b>
+            <ProductPicture src={item.product.image_url} name={item.product.name}/><div className="cart-item-details"><strong>{item.product.name}</strong>
+              {(item.product.option_groups??[]).flatMap(g=>(item.selections?.[g.id]??[]).map(id=>{
+                const option=g.options.find(o=>o.id===id);return option?g.name+': '+option.name+(option.price_cents?' (+'+money(option.price_cents)+')':''):null;
+              })).filter(Boolean).map((detail,i)=><small key={i}>{detail}</small>)}
+              {item.note&&<small>Obs.: {item.note}</small>}
+              <b>{money(cartUnitPrice(item)*item.quantity)}</b>
             <div className="cart-controls"><button onClick={()=>setCart(s=>s.map((i,n)=>n===index?{...i,quantity:Math.max(1,i.quantity-1)}:i))} aria-label="Diminuir"><Minus size={15}/></button><span>{item.quantity}</span><button onClick={()=>setCart(s=>s.map((i,n)=>n===index?{...i,quantity:Math.min(30,i.quantity+1)}:i))} aria-label="Aumentar"><Plus size={15}/></button><button className="trash" onClick={()=>setCart(s=>s.filter((_,n)=>n!==index))} aria-label="Remover"><Trash2 size={16}/></button></div>
             </div></div>)}</div>
           <div className="white-panel"><h2><Truck size={19}/> Como prefere receber?</h2><div className="choice-row">
-            <button className={fulfillment==='delivery'?'selected':''} onClick={()=>setFulfillment('delivery')}><Truck size={19}/> Entrega</button>
-            <button className={fulfillment==='pickup'?'selected':''} onClick={()=>setFulfillment('pickup')}><ShoppingBag size={19}/> Retirada</button></div>
-            {fulfillment==='delivery'&&<div className="address-box"><MapPin size={18}/><div><strong>{viewer.tower} · Apartamento {viewer.apartment}</strong><small>Seu endereço cadastrado <button onClick={()=>go('account')}>Alterar</button></small></div></div>}
+            {cartShop?.delivery_enabled!==false&&<button className={actualFulfillment==='delivery'?'selected':''} onClick={()=>setFulfillment('delivery')}><Truck size={19}/> Entrega</button>}
+            {cartShop?.pickup_enabled!==false&&<button className={actualFulfillment==='pickup'?'selected':''} onClick={()=>setFulfillment('pickup')}><ShoppingBag size={19}/> Retirada</button>}</div>
+            {actualFulfillment==='delivery'&&<div className="address-box"><MapPin size={18}/><div><strong>{viewer.tower} · Apartamento {viewer.apartment}</strong><small>Seu endereço cadastrado <button onClick={()=>go('account')}>Alterar</button></small></div></div>}
             <div className="field-grid"><label className="field-label">Data preferida<input type="date" min={new Date().toISOString().slice(0,10)} value={deliveryDay} onChange={e=>setDeliveryDay(e.target.value)}/></label>
             <label className="field-label">Período / horário<input value={deliveryWindow} maxLength={70} onChange={e=>setDeliveryWindow(e.target.value)} placeholder="Ex.: 18h às 20h"/></label></div>
             <p className="helper-note">Horário sujeito à confirmação da loja.</p>
-            {fulfillment==='delivery'&&<><h3>Instruções de entrega</h3><div className="instructions">
+            {actualFulfillment==='delivery'&&<><h3>Instruções de entrega</h3><div className="instructions">
               {['Tocar a campainha','Não tocar a campainha','Deixar na porta','Entregar pessoalmente','Retirar na portaria'].map(t=><label key={t}><input type="checkbox" checked={instructions.includes(t)} onChange={e=>setInstructions(s=>e.target.checked?[...s.filter(x=>!((t==='Tocar a campainha'&&x==='Não tocar a campainha')||(t==='Não tocar a campainha'&&x==='Tocar a campainha'))),t]:s.filter(x=>x!==t))}/>{t}</label>)}
               </div></>}
             <label className="field-label">Observações gerais<textarea rows={3} maxLength={400} value={checkoutNote} onChange={e=>setCheckoutNote(e.target.value)} placeholder="Algo mais que o vendedor precisa saber?"/></label>
           </div>
-        </section><aside className="checkout-total white-panel"><h2>Resumo do pedido</h2><div className="total-line"><span>{cartCount} {cartCount===1?'item':'itens'}</span><strong>{money(cartTotal)}</strong></div><div className="total-line bold"><span>Total dos produtos</span><strong>{money(cartTotal)}</strong></div><p>O pagamento será combinado diretamente com o vendedor.</p>
-          <p className="helper-note">Após abrir o WhatsApp, toque em enviar. Só o vendedor confirma o pedido no Condovery.</p>
-          <button className="primary-button" disabled={busy} onClick={checkout}>{busy?'Registrando pedido...':'Continuar no WhatsApp'}<ArrowRight size={18}/></button>
+        </section><aside className="checkout-total white-panel"><h2>Resumo do pedido</h2><div className="total-line"><span>{cartCount} {cartCount===1?'item':'itens'}</span><strong>{money(cartSubtotal)}</strong></div>
+          {actualFulfillment==='delivery'&&<div className="total-line"><span>Taxa de entrega</span><strong>{fee?money(fee):'Grátis'}</strong></div>}
+          <div className="total-line bold"><span>Total do pedido</span><strong>{money(cartTotal)}</strong></div><p>O pagamento será combinado diretamente com o vendedor.</p>
+          <div className="whatsapp-reminder"><MessageCircle size={19}/>
+            <span>O WhatsApp abrirá com a mensagem pronta. <strong>Você precisa tocar em Enviar.</strong> Apenas o vendedor confirma o pedido.</span>
+          </div>
+          {revisedQuote&&<div className="price-changed" role="alert">
+            <strong>O valor foi atualizado</strong>
+            <p>Anterior: {money(cartTotal)} → <strong>Atual: {money(revisedQuote.total_cents)}</strong></p>
+            {revisedQuote.lines.map((line,n)=><small key={n}>{line.quantity}× {line.name} — {money(line.total_cents)}</small>)}
+            <small>Taxa de entrega: {money(revisedQuote.delivery_fee_cents)}</small>
+            <button type="button" className="primary-button" disabled={busy} onClick={()=>checkout(true)}>
+              Confirmar novo valor e continuar
+            </button>
+            <button type="button" className="outline-button" onClick={()=>setRevisedQuote(null)}>Revisar carrinho</button>
+          </div>}
+          {!revisedQuote&&<button className="primary-button" disabled={busy} onClick={()=>checkout()}>
+            {busy?'Conferindo valores...':'Continuar no WhatsApp'}<ArrowRight size={18}/>
+          </button>}
           <small>O pedido fica registrado mesmo se você fechar o WhatsApp. Apenas a loja poderá confirmá-lo.</small>
         </aside></div>}
       </>}
 
       {view==='success'&&lastOrder&&<div className="success-page"><IllustrationSlot className="success-art" src={artwork.orderSuccess} alt="Pedido registrado com sucesso"
   fallback={<Check size={44}/>}/><Pill tone="green">Pedido registrado</Pill><h1>Seu pedido foi registrado!</h1><p>Seu pedido <strong>#{lastOrder.code}</strong> foi criado. Envie a mensagem para o vendedor pelo WhatsApp para combinar disponibilidade, entrega e pagamento.</p>
+        <div className="whatsapp-reminder"><MessageCircle size={18}/> <strong>Importante: toque em Enviar dentro do WhatsApp.</strong> O Condovery não envia a mensagem sozinho.</div>
         <a className="primary-button" href={lastOrder.whatsapp_url} target="_blank" rel="noopener noreferrer">Abrir conversa no WhatsApp <ArrowRight size={18}/></a>
         <button className="outline-button" onClick={()=>{loadOrders();go('orders');}}>Acompanhar meus pedidos</button><small>Abrir o WhatsApp não significa que o vendedor recebeu ou confirmou o pedido.</small></div>}
 
@@ -964,10 +1068,16 @@ export default function Page(){
           </div>
           {sellerTab==='orders'&&<>{sellerOrders.length?<div className="order-list">{sellerOrders.map(o=><article className="order-card" key={o.id}>
             <div className="order-top"><strong>Pedido #{o.code}</strong><Pill tone={o.status==='completed'?'green':'orange'}>{statusLabel[o.status]??o.status}</Pill></div>
-            <p><strong>{o.buyer_name}</strong> · {o.fulfillment==='delivery'?o.tower+' · Ap. '+o.apartment:'Retirada'}</p><p>{o.items.map(i=>i.quantity+'× '+i.name).join(' · ')}</p>
+            <p><strong>{o.buyer_name}</strong> · {o.fulfillment==='delivery'?o.tower+' · Ap. '+o.apartment:'Retirada'}</p>
+            <div className="seller-order-lines">{o.items.map((item,index)=><div key={index}>
+              <strong>{item.quantity}× {item.name} — {money(item.unit_price_cents*item.quantity)}</strong>
+              {item.options?.map((opt,i)=><small key={i}>{opt.group}: {opt.name}{opt.price_cents>0?' (+'+money(opt.price_cents)+')':''}</small>)}
+              {item.note&&<small>Obs. do produto: {item.note}</small>}
+            </div>)}</div>
+            {o.fulfillment==='delivery'&&<p>Entrega: {o.tower} · Ap. {o.apartment} · Taxa: {money(o.delivery_fee_cents??0)}</p>}
             {o.delivery_day&&<p>Data: {String(o.delivery_day).slice(0,10)}</p>}{o.delivery_window&&<p>Preferência: {o.delivery_window}</p>}
             {o.note&&<p>Observação: {o.note}</p>}{o.delivery_instructions?.length>0&&<p>Instruções: {o.delivery_instructions.join(', ')}</p>}
-            <div className="order-bottom"><strong>{money(o.total_cents)}</strong><div className="inline-actions">{o.status==='awaiting_confirmation'&&<><button disabled={busy} onClick={()=>updateStatus(o.id,'confirmed')}>Confirmar</button><button className="danger-text" disabled={busy} onClick={()=>updateStatus(o.id,'cancelled')}>Cancelar</button></>}
+            <div className="order-bottom"><strong>Subtotal {money(o.subtotal_cents??o.total_cents)} · Total {money(o.total_cents)}</strong><div className="inline-actions">{o.status==='awaiting_confirmation'&&<><button disabled={busy} onClick={()=>updateStatus(o.id,'confirmed')}>Confirmar</button><button className="danger-text" disabled={busy} onClick={()=>updateStatus(o.id,'cancelled')}>Cancelar</button></>}
               {o.status==='confirmed'&&<><button disabled={busy} onClick={()=>updateStatus(o.id,'completed')}>Concluir</button><button className="danger-text" disabled={busy} onClick={()=>updateStatus(o.id,'cancelled')}>Cancelar</button></>}</div></div>
           </article>)}</div>:<Empty title="Sem pedidos ainda" subtitle="Quando moradores comprarem na sua loja, os pedidos aparecerão aqui."/>}</>}
           {sellerTab==='reviews'&&<>
@@ -1006,6 +1116,40 @@ export default function Page(){
               <label>Categoria<select required value={productForm.category_id} onChange={e=>setProductForm(s=>({...s,category_id:e.target.value}))}><option value="">Selecione</option>{home.categories.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></label>
               <div className="field-grid"><label>Preço (R$)<input required type="number" min=".01" step=".01" value={productForm.price} onChange={e=>setProductForm(s=>({...s,price:e.target.value}))}/></label><label>Promocional (opcional)<input type="number" min=".01" step=".01" value={productForm.promo} onChange={e=>setProductForm(s=>({...s,promo:e.target.value}))}/></label></div>
               <div className="field-grid"><label>Estoque (opcional)<input type="number" min="0" step="1" value={productForm.stock} onChange={e=>setProductForm(s=>({...s,stock:e.target.value}))}/></label><label>Prazo de preparo<input maxLength={100} value={productForm.lead_time} onChange={e=>setProductForm(s=>({...s,lead_time:e.target.value}))} placeholder="Ex.: 1 dia"/></label></div>
+              <section className="product-option-editor">
+                <div className="section-heading"><h3>Opções do produto</h3>
+                  <button type="button" className="outline-button" disabled={productForm.option_groups.length>=8}
+                    onClick={()=>setProductForm(x=>({...x,option_groups:[...x.option_groups,{
+                      id:crypto.randomUUID(),name:'',required:false,multiple:false,options:[{id:crypto.randomUUID(),name:'',price_cents:0}]
+                    }]}))}><Plus size={15}/> Grupo</button>
+                </div>
+                <p className="helper-note">Ex.: Sabor, tamanho ou adicionais. Os valores são somados ao preço do produto.</p>
+                {productForm.option_groups.map(group=><div className="option-group-editor" key={group.id}>
+                  <label>Nome da opção<input required minLength={2} maxLength={65}
+                    placeholder="Ex.: Cobertura" value={group.name}
+                    onChange={e=>setProductForm(x=>({...x,option_groups:x.option_groups.map(g=>g.id===group.id?{...g,name:e.target.value}:g)}))}/></label>
+                  <div className="option-flags">
+                    <label><input type="checkbox" checked={group.required}
+                      onChange={e=>setProductForm(x=>({...x,option_groups:x.option_groups.map(g=>g.id===group.id?{...g,required:e.target.checked}:g)}))}/> Obrigatório</label>
+                    <label><input type="checkbox" checked={group.multiple}
+                      onChange={e=>setProductForm(x=>({...x,option_groups:x.option_groups.map(g=>g.id===group.id?{...g,multiple:e.target.checked}:g)}))}/> Permitir várias opções</label>
+                  </div>
+                  {group.options.map(opt=><div key={opt.id} className="option-choice-editor">
+                    <label>Escolha<input required maxLength={70} placeholder="Ex.: Chocolate" value={opt.name}
+                      onChange={e=>setProductForm(x=>({...x,option_groups:x.option_groups.map(g=>g.id===group.id?{...g,options:g.options.map(o=>o.id===opt.id?{...o,name:e.target.value}:o)}:g)}))}/></label>
+                    <label>Adicional (R$)<MoneyInput cents={opt.price_cents} onValue={cents=>setProductForm(x=>({...x,
+                      option_groups:x.option_groups.map(g=>g.id===group.id?{...g,options:g.options.map(o=>o.id===opt.id?{...o,price_cents:cents}:o)}:g)
+                    }))}/></label>
+                    <button type="button" className="option-remove" aria-label="Remover escolha"
+                      disabled={group.options.length<=1} onClick={()=>setProductForm(x=>({...x,option_groups:x.option_groups.map(g=>g.id===group.id?{...g,options:g.options.filter(o=>o.id!==opt.id)}:g)}))}><X size={16}/></button>
+                  </div>)}
+                  <div className="option-editor-footer">
+                    <button type="button" className="quiet-link" disabled={group.options.length>=15}
+                      onClick={()=>setProductForm(x=>({...x,option_groups:x.option_groups.map(g=>g.id===group.id?{...g,options:[...g.options,{id:crypto.randomUUID(),name:'',price_cents:0}]}:g)}))}>+ Adicionar escolha</button>
+                    <button type="button" className="danger-text" onClick={()=>setProductForm(x=>({...x,option_groups:x.option_groups.filter(g=>g.id!==group.id)}))}>Remover grupo</button>
+                  </div>
+                </div>)}
+              </section>
               <label>Exibição do produto
                 <select value={productForm.visibility} onChange={e=>setProductForm(s=>({...s,visibility:e.target.value as Product['visibility']}))}>
                   <option value="available">Disponível — pode comprar</option>
@@ -1043,6 +1187,10 @@ export default function Page(){
             <label>Orientações para retirada<textarea rows={2} maxLength={250} value={shopForm.pickup_instructions} onChange={e=>setShopForm(s=>({...s,pickup_instructions:e.target.value}))}/></label>
             <label className="check-label"><input type="checkbox" checked={shopForm.is_open} onChange={e=>setShopForm(s=>({...s,is_open:e.target.checked}))}/> Loja aceitando pedidos</label>
             <label className="check-label"><input type="checkbox" checked={shopForm.delivery_enabled} onChange={e=>setShopForm(s=>({...s,delivery_enabled:e.target.checked}))}/> Oferecer entrega</label>
+            {shopForm.delivery_enabled&&<label>Taxa de entrega (R$)
+              <MoneyInput cents={shopForm.delivery_fee_cents}
+                onValue={cents=>setShopForm(x=>({...x,delivery_fee_cents:cents}))}/>
+            </label>}
             <label className="check-label"><input type="checkbox" checked={shopForm.pickup_enabled} onChange={e=>setShopForm(s=>({...s,pickup_enabled:e.target.checked}))}/> Oferecer retirada</label>
             <button className="primary-button" disabled={busy} type="submit">Salvar configurações <Check size={18}/></button>
           </form>}

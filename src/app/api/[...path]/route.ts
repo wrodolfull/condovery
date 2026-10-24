@@ -4,7 +4,7 @@ import crypto from 'node:crypto';
 import sharp from 'sharp';
 import { query, transaction } from '@/lib/db';
 import { clearSession, inviteHash, issueSession, sessionViewer, tokenHash, type Viewer } from '@/lib/auth';
-import { normalizeWhatsApp, orderMessage, unitPrice } from '@/lib/orders';
+import { normalizeWhatsApp, orderMessage, unitPrice, optionGroupsSchema, selectedOptions, extrasTotal, type OptionGroup, type Selection } from '@/lib/orders';
 import { passwordAuthClient,emailConfigured,recoveryConfigured,googleAuthClient,googleConfigured,storageAdmin,storageConfigured,STORAGE_BUCKET } from '@/lib/supabase';
 import { oauthCookie,randomToken,safeAppOrigin } from '@/lib/security';
 import { violatesCommunityLanguage } from '@/lib/content-policy';
@@ -45,11 +45,14 @@ const signup=credentials.extend({
 const instructionsAllowed=['Tocar a campainha','Não tocar a campainha','Deixar na porta','Entregar pessoalmente','Retirar na portaria'];
 const orderSchema=z.object({
   shop_id:z.string().uuid(),
-  items:z.array(z.object({id:z.string().uuid(),quantity:z.number().int().min(1).max(30),note:z.string().max(200).optional()})).min(1).max(25),
+  items:z.array(z.object({id:z.string().uuid(),quantity:z.number().int().min(1).max(30),
+    note:z.string().max(200).optional(),
+    selections:z.record(z.array(z.string().uuid()).max(15)).optional()})).min(1).max(25),
   fulfillment:z.enum(['delivery','pickup']),delivery_day:z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
   delivery_window:z.string().max(70).optional(),instructions:z.array(z.enum(['Tocar a campainha','Não tocar a campainha','Deixar na porta','Entregar pessoalmente','Retirar na portaria'])).max(4).optional(),
   note:z.string().max(400).optional(),
-  client_order_key:z.string().uuid().optional()
+  client_order_key:z.string().uuid().optional(),
+  expected_total_cents:z.number().int().min(1).max(2_147_483_647).optional()
 });
 const googleRegister=z.object({
   invite:z.string().trim().min(10).max(150),
@@ -59,19 +62,20 @@ const googleRegister=z.object({
   apartment:z.string().trim().min(1).max(24)
 });
 type SavedOrder={
-  id:string;code:number;shop_name:string;whatsapp:string;total_cents:number;
+  id:string;code:number;shop_name:string;whatsapp:string;total_cents:number;subtotal_cents:number;delivery_fee_cents:number;
   fulfillment:'delivery'|'pickup';delivery_day?:string|null;delivery_window?:string;
   delivery_instructions?:string[];note?:string
 };
 async function savedWhatsApp(order:SavedOrder,u:Viewer){
   const items=await query(
-    'SELECT name_snapshot AS name,quantity,unit_price_cents,note FROM order_items WHERE order_id=$1 ORDER BY id',
+    'SELECT name_snapshot AS name,quantity,unit_price_cents,note,options FROM order_items WHERE order_id=$1 ORDER BY id',
     [order.id]
   );
   const message=orderMessage({
     code:order.code,shop:order.shop_name,buyer:u.name,tower:u.tower,apartment:u.apartment,
-    items:items.rows.map(i=>({name:String(i.name),quantity:Number(i.quantity),unit_price_cents:Number(i.unit_price_cents),note:String(i.note??'')})),
-    total_cents:order.total_cents,fulfillment:order.fulfillment,
+    items:items.rows.map(i=>({name:String(i.name),quantity:Number(i.quantity),unit_price_cents:Number(i.unit_price_cents),
+      note:String(i.note??''),options:i.options??[]})),
+    total_cents:order.total_cents,subtotal_cents:order.subtotal_cents,delivery_fee_cents:order.delivery_fee_cents,fulfillment:order.fulfillment,
     delivery_day:order.delivery_day,delivery_window:order.delivery_window,
     instructions:order.delivery_instructions??[],note:order.note
   });
@@ -367,7 +371,7 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
   approved(u);
   if(path==='favorites'&&method==='GET'){
     const r=await query(
-      "SELECT p.id,p.shop_id,p.category_id,p.name,p.description,p.price_cents,p.promo_price_cents,p.image_url,p.stock,p.visibility,p.lead_time,p.is_featured,s.name AS shop_name,s.is_open FROM favorites f JOIN products p ON p.id=f.product_id AND p.condominium_id=f.condominium_id JOIN shops s ON s.id=p.shop_id AND s.condominium_id=f.condominium_id WHERE f.condominium_id=$1 AND f.user_id=$2 AND p.visibility<>'hidden' AND s.status='approved' ORDER BY f.created_at DESC LIMIT 150",
+      "SELECT p.id,p.shop_id,p.category_id,p.name,p.description,p.price_cents,p.promo_price_cents,p.image_url,p.stock,p.visibility,p.lead_time,p.is_featured,p.option_groups,s.name AS shop_name,s.is_open FROM favorites f JOIN products p ON p.id=f.product_id AND p.condominium_id=f.condominium_id JOIN shops s ON s.id=p.shop_id AND s.condominium_id=f.condominium_id WHERE f.condominium_id=$1 AND f.user_id=$2 AND p.visibility<>'hidden' AND s.status='approved' ORDER BY f.created_at DESC LIMIT 150",
       [u.condominium_id,u.id]
     );
     return out({ids:r.rows.map(row=>row.id),products:r.rows});
@@ -401,7 +405,7 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
     if(category&&!uuid(category))bad('Categoria inválida.');
     const escaped='%'+search.replace(/[%_\\]/g,'')+'%';
     const result=await query(
-      "SELECT p.id,p.shop_id,p.category_id,p.name,p.description,p.price_cents,p.promo_price_cents,p.image_url,p.stock,p.visibility,p.lead_time,p.is_featured,s.name AS shop_name,s.is_open FROM products p JOIN shops s ON s.id=p.shop_id AND s.condominium_id=p.condominium_id WHERE p.condominium_id=$1 AND p.visibility<>'hidden' AND s.status='approved' AND ($2::uuid IS NULL OR p.category_id=$2::uuid) AND ($3::text='' OR p.name ILIKE $3 ESCAPE '\\' OR s.name ILIKE $3 ESCAPE '\\') ORDER BY p.created_at DESC,p.id DESC LIMIT $4 OFFSET $5",
+      "SELECT p.id,p.shop_id,p.category_id,p.name,p.description,p.price_cents,p.promo_price_cents,p.image_url,p.stock,p.visibility,p.lead_time,p.is_featured,p.option_groups,s.name AS shop_name,s.is_open FROM products p JOIN shops s ON s.id=p.shop_id AND s.condominium_id=p.condominium_id WHERE p.condominium_id=$1 AND p.visibility<>'hidden' AND s.status='approved' AND ($2::uuid IS NULL OR p.category_id=$2::uuid) AND ($3::text='' OR p.name ILIKE $3 ESCAPE '\\' OR s.name ILIKE $3 ESCAPE '\\') ORDER BY p.created_at DESC,p.id DESC LIMIT $4 OFFSET $5",
       [u.condominium_id,category,search?escaped:'',limit+1,page*limit]
     );
     return out({products:result.rows.slice(0,limit),hasMore:result.rows.length>limit,page});
@@ -409,8 +413,8 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
   if(path==='home'&&method==='GET'){
     const [categories,shops,products]=await Promise.all([
       query('SELECT id,name,icon FROM categories WHERE condominium_id=$1 ORDER BY sort_order,name',[u.condominium_id]),
-      query("SELECT id,name,description,cover_image,logo_image,is_open,delivery_enabled,pickup_enabled,lead_time FROM shops WHERE condominium_id=$1 AND status='approved' ORDER BY is_open DESC,created_at DESC LIMIT 100",[u.condominium_id]),
-      query("SELECT p.id,p.shop_id,p.category_id,p.name,p.description,p.price_cents,p.promo_price_cents,p.image_url,p.stock,p.visibility,p.lead_time,p.is_featured,s.name AS shop_name,s.is_open FROM products p JOIN shops s ON s.id=p.shop_id WHERE p.condominium_id=$1 AND s.condominium_id=$1 AND p.visibility<>'hidden' AND s.status='approved' ORDER BY p.is_featured DESC,p.created_at DESC LIMIT 48",[u.condominium_id])
+      query("SELECT id,name,description,cover_image,logo_image,is_open,delivery_enabled,pickup_enabled,delivery_fee_cents,lead_time FROM shops WHERE condominium_id=$1 AND status='approved' ORDER BY is_open DESC,created_at DESC LIMIT 100",[u.condominium_id]),
+      query("SELECT p.id,p.shop_id,p.category_id,p.name,p.description,p.price_cents,p.promo_price_cents,p.image_url,p.stock,p.visibility,p.lead_time,p.is_featured,p.option_groups,s.name AS shop_name,s.is_open FROM products p JOIN shops s ON s.id=p.shop_id WHERE p.condominium_id=$1 AND s.condominium_id=$1 AND p.visibility<>'hidden' AND s.status='approved' ORDER BY p.is_featured DESC,p.created_at DESC LIMIT 48",[u.condominium_id])
     ]);
     return out({categories:categories.rows,shops:shops.rows,products:products.rows});
   }
@@ -502,22 +506,22 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
       const shop=await shopOwned(u);
       const b=z.object({name:z.string().trim().min(3).max(75),description:z.string().max(500),
         whatsapp:z.string().min(10).max(20),logo_image:z.string().nullable().optional(),is_open:z.boolean(),delivery_enabled:z.boolean(),
-        pickup_enabled:z.boolean(),lead_time:z.string().max(100),pickup_instructions:z.string().max(250),
+        pickup_enabled:z.boolean(),delivery_fee_cents:z.number().int().min(0).max(1_000_000).default(0),lead_time:z.string().max(100),pickup_instructions:z.string().max(250),
         cover_image:z.string().nullable().optional()}).parse(await body(req));
       normalizeWhatsApp(b.whatsapp);
       if(violatesCommunityLanguage(b.name,b.description,b.pickup_instructions))bad('Revise o texto: linguagem imprópria não é permitida.');
       if(!b.delivery_enabled&&!b.pickup_enabled)bad('Habilite entrega ou retirada.');
       const r=await query(
-        'UPDATE shops SET name=$1,description=$2,whatsapp=$3,is_open=$4,delivery_enabled=$5,pickup_enabled=$6,lead_time=$7,pickup_instructions=$8,cover_image=$9,logo_image=$12 WHERE id=$10 AND condominium_id=$11 RETURNING *',
-        [b.name,b.description,b.whatsapp,b.is_open,b.delivery_enabled,b.pickup_enabled,b.lead_time,b.pickup_instructions,imagePath(b.cover_image),shop.id,u.condominium_id,imagePath(b.logo_image)]);
+        'UPDATE shops SET name=$1,description=$2,whatsapp=$3,is_open=$4,delivery_enabled=$5,pickup_enabled=$6,lead_time=$7,pickup_instructions=$8,cover_image=$9,logo_image=$12,delivery_fee_cents=$13 WHERE id=$10 AND condominium_id=$11 RETURNING *',
+        [b.name,b.description,b.whatsapp,b.is_open,b.delivery_enabled,b.pickup_enabled,b.lead_time,b.pickup_instructions,imagePath(b.cover_image),shop.id,u.condominium_id,imagePath(b.logo_image),b.delivery_fee_cents]);
       return out({shop:r.rows[0]});
     }
   }
   if(parts[0]==='shops'&&parts[1]&&parts[1]!=='mine'&&method==='GET'){
     if(!uuid(parts[1]))bad('Loja inválida.');
-    const s=await query("SELECT id,name,description,cover_image,logo_image,is_open,delivery_enabled,pickup_enabled,lead_time,pickup_instructions FROM shops WHERE id=$1 AND condominium_id=$2 AND status='approved'",[parts[1],u.condominium_id]);
+    const s=await query("SELECT id,name,description,cover_image,logo_image,is_open,delivery_enabled,pickup_enabled,delivery_fee_cents,lead_time,pickup_instructions FROM shops WHERE id=$1 AND condominium_id=$2 AND status='approved'",[parts[1],u.condominium_id]);
     if(!s.rowCount)bad('Loja não encontrada.',404);
-    const p=await query("SELECT id,shop_id,category_id,name,description,price_cents,promo_price_cents,image_url,stock,visibility,lead_time FROM products WHERE shop_id=$1 AND condominium_id=$2 AND visibility<>'hidden' ORDER BY created_at DESC",[parts[1],u.condominium_id]);
+    const p=await query("SELECT id,shop_id,category_id,name,description,price_cents,promo_price_cents,image_url,stock,visibility,lead_time,option_groups FROM products WHERE shop_id=$1 AND condominium_id=$2 AND visibility<>'hidden' ORDER BY created_at DESC",[parts[1],u.condominium_id]);
     return out({shop:s.rows[0],products:p.rows});
   }
   if((path==='media'||path==='media/profile')&&method==='POST'){
@@ -581,16 +585,18 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
       promo_price_cents:z.number().int().min(1).max(10_000_000).nullable().optional(),
       stock:z.number().int().min(0).max(100000).nullable().optional(),image_url:z.string().nullable().optional(),
       visibility:z.enum(['available','unavailable','hidden']).optional(),
-      is_available:z.boolean().optional(),lead_time:z.string().max(100).optional()}).parse(await body(req));
+      is_available:z.boolean().optional(),lead_time:z.string().max(100).optional(),option_groups:optionGroupsSchema.default([])}).parse(await body(req));
     if(violatesCommunityLanguage(b.name,b.description))bad('Revise o texto do produto: linguagem imprópria não é permitida.');
+    if(violatesCommunityLanguage(...b.option_groups.flatMap(g=>[g.name,...g.options.map(o=>o.name)])))
+      bad('Revise as opções de personalização: linguagem imprópria não é permitida.');
     if(b.promo_price_cents!=null&&b.promo_price_cents>=b.price_cents)bad('O preço promocional deve ser menor que o original.');
     const category=await query('SELECT id FROM categories WHERE id=$1 AND condominium_id=$2',[b.category_id,u.condominium_id]);
     if(!category.rowCount)bad('Categoria inválida.');
     const r=await query(
-      'INSERT INTO products(condominium_id,shop_id,category_id,name,description,price_cents,promo_price_cents,stock,image_url,is_available,visibility,lead_time) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *',
+      'INSERT INTO products(condominium_id,shop_id,category_id,name,description,price_cents,promo_price_cents,stock,image_url,is_available,visibility,lead_time,option_groups) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13::jsonb) RETURNING *',
       [u.condominium_id,shop.id,b.category_id,b.name,b.description??'',b.price_cents,b.promo_price_cents??null,b.stock??null,imagePath(b.image_url),
         (b.visibility??(b.is_available===false?'hidden':'available'))==='available',
-        b.visibility??(b.is_available===false?'hidden':'available'),b.lead_time??'']
+        b.visibility??(b.is_available===false?'hidden':'available'),b.lead_time??'',JSON.stringify(b.option_groups)]
     );
     return out({product:r.rows[0]},201);
   }
@@ -625,16 +631,18 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
       promo_price_cents:z.number().int().min(1).max(10_000_000).nullable(),
       stock:z.number().int().min(0).max(100000).nullable(),image_url:z.string().nullable(),
       visibility:z.enum(['available','unavailable','hidden']).optional(),
-      is_available:z.boolean().optional(),lead_time:z.string().max(100)}).parse(await body(req));
+      is_available:z.boolean().optional(),lead_time:z.string().max(100),option_groups:optionGroupsSchema.default([])}).parse(await body(req));
     if(violatesCommunityLanguage(b.name,b.description))bad('Revise o texto do produto: linguagem imprópria não é permitida.');
+    if(violatesCommunityLanguage(...b.option_groups.flatMap(g=>[g.name,...g.options.map(o=>o.name)])))
+      bad('Revise as opções de personalização: linguagem imprópria não é permitida.');
     if(b.promo_price_cents!=null&&b.promo_price_cents>=b.price_cents)bad('Preço promocional inválido.');
     const cat=await query('SELECT id FROM categories WHERE id=$1 AND condominium_id=$2',[b.category_id,u.condominium_id]);
     if(!cat.rowCount)bad('Categoria inválida.');
     const r=await query(
-      'UPDATE products SET name=$1,description=$2,category_id=$3,price_cents=$4,promo_price_cents=$5,stock=$6,image_url=$7,is_available=$8,lead_time=$9,visibility=$13 WHERE id=$10 AND shop_id=$11 AND condominium_id=$12 RETURNING *',
+      'UPDATE products SET name=$1,description=$2,category_id=$3,price_cents=$4,promo_price_cents=$5,stock=$6,image_url=$7,is_available=$8,lead_time=$9,visibility=$13,option_groups=$14::jsonb WHERE id=$10 AND shop_id=$11 AND condominium_id=$12 RETURNING *',
       [b.name,b.description,b.category_id,b.price_cents,b.promo_price_cents,b.stock,imagePath(b.image_url),
         (b.visibility??(b.is_available===false?'hidden':'available'))==='available',b.lead_time,parts[1],shop.id,u.condominium_id,
-        b.visibility??(b.is_available===false?'hidden':'available')]
+        b.visibility??(b.is_available===false?'hidden':'available'),JSON.stringify(b.option_groups)]
     );
     return out({product:r.rows[0]});
   }
@@ -648,10 +656,11 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
     if(!found.rowCount)bad('Pedido não encontrado ou já encerrado.',404);
     return out({whatsapp_url:await savedWhatsApp(found.rows[0] as SavedOrder,u)});
   }
-  if(path==='orders'&&method==='POST'){
+  if(path==='orders/quote'||(path==='orders'&&method==='POST')){
+    if(path==='orders/quote'&&method!=='POST')bad('Rota não encontrada.',404);
     const b=orderSchema.parse(await body(req));
-    if(new Set(b.items.map(i=>i.id)).size!==b.items.length)bad('Itens duplicados.');
-    if(b.client_order_key){
+    // Keep repeat product IDs: same cake can have a different note/selection in each line.
+    if(path==='orders'&&b.client_order_key){
       const old=await query(
         "SELECT o.*,s.name AS shop_name,s.whatsapp FROM orders o JOIN shops s ON s.id=o.shop_id "+
         "WHERE o.condominium_id=$1 AND o.buyer_id=$2 AND o.client_order_key=$3",
@@ -660,47 +669,80 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
       if(old.rowCount)return out({order:old.rows[0],whatsapp_url:await savedWhatsApp(old.rows[0] as SavedOrder,u)});
     }
     const result=await transaction(async tx=>{
-      const sh=await tx.query("SELECT * FROM shops WHERE id=$1 AND condominium_id=$2 AND status='approved' FOR UPDATE",[b.shop_id,u.condominium_id]);
-      const shop=sh.rows[0];
-      if(b.client_order_key&&shop){
-        const prev=await tx.query(
+      const sr=await tx.query(
+        "SELECT * FROM shops WHERE id=$1 AND condominium_id=$2 AND status='approved' FOR UPDATE",
+        [b.shop_id,u.condominium_id]
+      );
+      const shop=sr.rows[0];
+      if(b.client_order_key&&shop&&path==='orders'){
+        const previous=await tx.query(
           "SELECT o.*,s.name AS shop_name,s.whatsapp FROM orders o JOIN shops s ON s.id=o.shop_id "+
           "WHERE o.condominium_id=$1 AND o.buyer_id=$2 AND o.client_order_key=$3",
           [u.condominium_id,u.id,b.client_order_key]
         );
-        if(prev.rowCount)return {order:prev.rows[0],whatsapp_url:await savedWhatsApp(prev.rows[0] as SavedOrder,u)};
+        if(previous.rowCount)return {order:previous.rows[0],whatsapp_url:await savedWhatsApp(previous.rows[0] as SavedOrder,u)};
       }
       if(!shop||!shop.is_open)bad('Loja não está recebendo pedidos.');
-      if(b.fulfillment==='delivery'&&!shop.delivery_enabled||b.fulfillment==='pickup'&&!shop.pickup_enabled)bad('Forma de recebimento indisponível.');
-      const ids=b.items.map(i=>i.id);
-      const p=await tx.query(
-        "SELECT * FROM products WHERE id=ANY($1::uuid[]) AND condominium_id=$2 AND shop_id=$3 AND is_available=true AND visibility='available' ORDER BY id FOR UPDATE",
+      if((b.fulfillment==='delivery'&&!shop.delivery_enabled)||
+         (b.fulfillment==='pickup'&&!shop.pickup_enabled))bad('Forma de recebimento indisponível.');
+      const ids=[...new Set(b.items.map(i=>i.id))];
+      const dbItems=await tx.query(
+        "SELECT * FROM products WHERE id=ANY($1::uuid[]) AND condominium_id=$2 AND shop_id=$3 "+
+        "AND is_available=true AND visibility='available' AND moderation_blocked=false ORDER BY id FOR UPDATE",
         [ids,u.condominium_id,shop.id]
       );
-      if(p.rows.length!==b.items.length)bad('Um ou mais produtos estão indisponíveis.');
-      const products=new Map(p.rows.map(x=>[x.id,x]));
-      let total=0;
+      if(dbItems.rows.length!==ids.length)bad('Um ou mais produtos estão indisponíveis.');
+      const products=new Map(dbItems.rows.map(p=>[p.id,p]));
+      const amounts=new Map<string,number>();
+      for(const i of b.items)amounts.set(i.id,(amounts.get(i.id)??0)+i.quantity);
+      for(const [id,amount] of amounts){
+        const product=products.get(id)!;
+        if(product.stock!==null&&product.stock<amount)bad('Estoque insuficiente para '+product.name+'.');
+      }
+      let subtotal=0;
       const items=b.items.map(i=>{
-        const item=products.get(i.id)!;
-        if(item.stock!==null&&item.stock<i.quantity)bad('Estoque insuficiente para '+item.name+'.');
-        const cents=unitPrice(item);total+=cents*i.quantity;
-        return {product_id:item.id,name:item.name,quantity:i.quantity,unit_price_cents:cents,note:i.note??''};
+        const product=products.get(i.id)!;
+        const groups=optionGroupsSchema.parse(product.option_groups??[]);
+        let chosen;
+        try{chosen=selectedOptions(groups,i.selections??{});}
+        catch(e){bad(e instanceof Error?e.message:'Personalização inválida.');}
+        const cents=unitPrice(product)+extrasTotal(chosen!);
+        subtotal+=cents*i.quantity;
+        return {product_id:product.id,name:product.name,quantity:i.quantity,unit_price_cents:cents,
+          options:chosen!,note:i.note??''};
       });
+      const fee=b.fulfillment==='delivery'?Number(shop.delivery_fee_cents??0):0;
+      const total=subtotal+fee;
+      if(!Number.isSafeInteger(total)||total>2_147_483_647)bad('Total do pedido ultrapassa o limite.',400);
+      const quote={subtotal_cents:subtotal,delivery_fee_cents:fee,total_cents:total,
+        lines:items.map(i=>({name:i.name,quantity:i.quantity,unit_price_cents:i.unit_price_cents,
+          total_cents:i.quantity*i.unit_price_cents,options:i.options,note:i.note}))};
+      if(path==='orders/quote')return {quote};
+      if(b.expected_total_cents!==undefined&&b.expected_total_cents!==total)
+        bad('O valor foi atualizado. Confira o novo total antes de finalizar.',409);
       const created=await tx.query(
-        'INSERT INTO orders(condominium_id,buyer_id,shop_id,fulfillment,delivery_day,delivery_window,delivery_instructions,note,total_cents,client_order_key) VALUES($1,$2,$3,$4,$5,$6,$7::jsonb,$8,$9,$10) RETURNING *',
-        [u.condominium_id,u.id,shop.id,b.fulfillment,b.delivery_day??null,b.delivery_window??'',JSON.stringify(b.instructions??[]),b.note??'',total,b.client_order_key??null]
+        "INSERT INTO orders(condominium_id,buyer_id,shop_id,fulfillment,delivery_day,delivery_window,"+
+        "delivery_instructions,note,total_cents,client_order_key,subtotal_cents,delivery_fee_cents) "+
+        "VALUES($1,$2,$3,$4,$5,$6,$7::jsonb,$8,$9,$10,$11,$12) RETURNING *",
+        [u.condominium_id,u.id,shop.id,b.fulfillment,b.delivery_day??null,b.delivery_window??'',
+          JSON.stringify(b.instructions??[]),b.note??'',total,b.client_order_key??null,subtotal,fee]
       );
       for(const item of items){
-        await tx.query('INSERT INTO order_items(order_id,product_id,name_snapshot,quantity,unit_price_cents,note) VALUES($1,$2,$3,$4,$5,$6)',
-          [created.rows[0].id,item.product_id,item.name,item.quantity,item.unit_price_cents,item.note]);
+        await tx.query(
+          'INSERT INTO order_items(order_id,product_id,name_snapshot,quantity,unit_price_cents,note,options) '+
+          'VALUES($1,$2,$3,$4,$5,$6,$7::jsonb)',
+          [created.rows[0].id,item.product_id,item.name,item.quantity,item.unit_price_cents,item.note,JSON.stringify(item.options)]
+        );
       }
-      const message=orderMessage({code:created.rows[0].code,shop:shop.name,buyer:u.name,tower:u.tower,apartment:u.apartment,
-        items:items.map(x=>({name:x.name,quantity:x.quantity,unit_price_cents:x.unit_price_cents,note:x.note})),
-        total_cents:total,fulfillment:b.fulfillment,delivery_day:b.delivery_day,delivery_window:b.delivery_window,
+      const message=orderMessage({code:created.rows[0].code,shop:shop.name,buyer:u.name,tower:u.tower,
+        apartment:u.apartment,items:items.map(i=>({name:i.name,quantity:i.quantity,unit_price_cents:i.unit_price_cents,
+          note:i.note,options:i.options})),total_cents:total,subtotal_cents:subtotal,delivery_fee_cents:fee,
+        fulfillment:b.fulfillment,delivery_day:b.delivery_day,delivery_window:b.delivery_window,
         instructions:b.instructions,note:b.note});
-      return {order:created.rows[0],whatsapp_url:'https://wa.me/'+normalizeWhatsApp(shop.whatsapp)+'?text='+encodeURIComponent(message)};
+      return {order:created.rows[0],
+        whatsapp_url:'https://wa.me/'+normalizeWhatsApp(shop.whatsapp)+'?text='+encodeURIComponent(message)};
     });
-    return out(result,201);
+    return out(result,path==='orders'?201:200);
   }
   if(path==='orders'&&method==='GET'){
     const scope=req.nextUrl.searchParams.get('scope');
@@ -711,7 +753,7 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
     let shopId:string|undefined;
     if(seller){const sh=await shopOwned(u);shopId=sh.id;}
     const r=await query(
-      "SELECT o.*,(SELECT rv.status FROM shop_reviews rv WHERE rv.order_id=o.id AND rv.condominium_id=o.condominium_id) AS review_status,s.name AS shop_name,bu.name AS buyer_name,bu.tower,bu.apartment,bu.phone AS buyer_phone,COALESCE(json_agg(json_build_object('name',i.name_snapshot,'quantity',i.quantity,'unit_price_cents',i.unit_price_cents,'note',i.note)) FILTER (WHERE i.id IS NOT NULL),'[]'::json) AS items FROM orders o JOIN shops s ON s.id=o.shop_id JOIN users bu ON bu.id=o.buyer_id LEFT JOIN order_items i ON i.order_id=o.id WHERE o.condominium_id=$1 AND "+(seller?'o.shop_id=$2':'o.buyer_id=$2')+(status?' AND o.status=$3':'')+" GROUP BY o.id,s.name,bu.id ORDER BY o.created_at DESC LIMIT 100",
+      "SELECT o.*,(SELECT rv.status FROM shop_reviews rv WHERE rv.order_id=o.id AND rv.condominium_id=o.condominium_id) AS review_status,s.name AS shop_name,bu.name AS buyer_name,bu.tower,bu.apartment,bu.phone AS buyer_phone,COALESCE(json_agg(json_build_object('name',i.name_snapshot,'quantity',i.quantity,'unit_price_cents',i.unit_price_cents,'note',i.note,'options',i.options)) FILTER (WHERE i.id IS NOT NULL),'[]'::json) AS items FROM orders o JOIN shops s ON s.id=o.shop_id JOIN users bu ON bu.id=o.buyer_id LEFT JOIN order_items i ON i.order_id=o.id WHERE o.condominium_id=$1 AND "+(seller?'o.shop_id=$2':'o.buyer_id=$2')+(status?' AND o.status=$3':'')+" GROUP BY o.id,s.name,bu.id ORDER BY o.created_at DESC LIMIT 100",
       [...[u.condominium_id,seller?shopId:u.id],...(status?[status]:[])]
     );
     // Buyers do not need to see delivery address of someone else; shop owner sees only data for their own orders.
