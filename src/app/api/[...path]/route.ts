@@ -4,7 +4,7 @@ import crypto from 'node:crypto';
 import sharp from 'sharp';
 import { query, transaction } from '@/lib/db';
 import { clearSession, inviteHash, issueSession, sessionViewer, tokenHash, type Viewer } from '@/lib/auth';
-import { normalizeWhatsApp, orderMessage, unitPrice, optionGroupsSchema, selectedOptions, extrasTotal, type OptionGroup, type Selection } from '@/lib/orders';
+import { normalizeWhatsApp, orderMessage, unitPrice, optionGroupsSchema, selectedOptions, extrasTotal, validArrivalInstructions, type OptionGroup, type Selection } from '@/lib/orders';
 import { passwordAuthClient,emailConfigured,recoveryConfigured,googleAuthClient,googleConfigured,storageAdmin,storageConfigured,STORAGE_BUCKET } from '@/lib/supabase';
 import { oauthCookie,randomToken,safeAppOrigin } from '@/lib/security';
 import { violatesCommunityLanguage } from '@/lib/content-policy';
@@ -42,14 +42,17 @@ const signup=credentials.extend({
   password:z.string().min(10).max(100),invite:z.string().trim().min(10).max(150),
   tower:z.string().trim().min(1).max(60),apartment:z.string().trim().min(1).max(24)
 });
-const instructionsAllowed=['Tocar a campainha','Não tocar a campainha','Deixar na porta','Entregar pessoalmente','Retirar na portaria'];
+// The allowed arrival values and conflicts are checked against a shared rule.
 const orderSchema=z.object({
   shop_id:z.string().uuid(),
   items:z.array(z.object({id:z.string().uuid(),quantity:z.number().int().min(1).max(30),
     note:z.string().max(200).optional(),
     selections:z.record(z.array(z.string().uuid()).max(15)).optional()})).min(1).max(25),
   fulfillment:z.enum(['delivery','pickup']),delivery_day:z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
-  delivery_window:z.string().max(70).optional(),instructions:z.array(z.enum(['Tocar a campainha','Não tocar a campainha','Deixar na porta','Entregar pessoalmente','Retirar na portaria'])).max(4).optional(),
+  delivery_window:z.string().max(70).optional(),instructions:z.array(z.enum(['Bater na porta','Tocar a campainha','Não tocar a campainha','Deixar na porta','Entregar pessoalmente','Retirar na portaria']))
+    .max(5).optional().refine(values=>validArrivalInstructions(values??[]),{
+      message:'Não é possível escolher tocar a campainha junto com bater na porta ou não tocar.'
+    }),
   note:z.string().max(400).optional(),
   client_order_key:z.string().uuid().optional(),
   expected_total_cents:z.number().int().min(1).max(2_147_483_647).optional()

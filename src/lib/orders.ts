@@ -49,6 +49,25 @@ export function selectedOptions(groups:OptionGroup[],selections:Selection={}):Ch
 export function extrasTotal(options:ChosenOption[]):number{
   return options.reduce((sum,opt)=>sum+opt.price_cents,0);
 }
+// Arrival instructions follow the order into the vendor WhatsApp message.
+export const arrivalInstructionOptions=[
+  'Bater na porta','Tocar a campainha','Não tocar a campainha',
+  'Deixar na porta','Entregar pessoalmente','Retirar na portaria'
+] as const;
+export function validArrivalInstructions(values:readonly string[]):boolean{
+  return new Set(values).size===values.length &&
+    values.every(v=>(arrivalInstructionOptions as readonly string[]).includes(v)) &&
+    !(values.includes('Tocar a campainha') &&
+      (values.includes('Não tocar a campainha')||values.includes('Bater na porta')));
+}
+export function toggleArrivalInstruction(current:string[],choice:string,checked:boolean):string[]{
+  if(!checked)return current.filter(v=>v!==choice);
+  const next=current.filter(v=>v!==choice &&
+    !(choice==='Tocar a campainha'&&(v==='Não tocar a campainha'||v==='Bater na porta')) &&
+    !(choice==='Não tocar a campainha'&&v==='Tocar a campainha') &&
+    !(choice==='Bater na porta'&&v==='Tocar a campainha'));
+  return [...next,choice];
+}
 export type MessageItem = {
   name:string;quantity:number;unit_price_cents:number;note?:string;
   options?:ChosenOption[]

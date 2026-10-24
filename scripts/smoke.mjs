@@ -83,7 +83,7 @@ assert.ok(visible.products.find(p=>p.id===productId));
 const checkoutKey=crypto.randomUUID();
 const checkoutBody={
   shop_id:shopId,items:[{id:productId,quantity:2}],fulfillment:'delivery',
-  delivery_window:'18h–20h',instructions:['Não tocar a campainha'],
+  delivery_window:'18h–20h',instructions:['Bater na porta','Não tocar a campainha'],
   client_order_key:checkoutKey
 };
 const created=await request('orders',{method:'POST',cookie:buyerCookie,body:checkoutBody,expected:201});
@@ -92,7 +92,7 @@ assert.equal(retry.data.order.id,created.data.order.id);
 assert.equal(retry.data.whatsapp_url,created.data.whatsapp_url);
 const contact=(await request('orders/'+created.data.order.id+'/whatsapp',{cookie:buyerCookie})).data;
 assert.match(contact.whatsapp_url,/^https:\/\/wa\.me\/55/);
-assert.ok(decodeURIComponent(contact.whatsapp_url).includes('Não tocar a campainha'));
+assert.ok(decodeURIComponent(contact.whatsapp_url).includes('Bater na porta; Não tocar a campainha'));
 await request('orders/'+created.data.order.id+'/whatsapp',{cookie:sellerCookie,expected:404});
 const orderId=created.data.order.id;
 assert.match(created.data.whatsapp_url,/^https:\/\/wa\.me\/55/);
@@ -252,6 +252,9 @@ const shopSettings={
 };
 await request('shops/mine',{method:'PATCH',cookie:sellerCookie,body:shopSettings});
 const quoteReq={shop_id:shopId,items:choose,fulfillment:'delivery'};
+await request('orders/quote',{method:'POST',cookie:buyerCookie,expected:400,body:{
+  ...quoteReq,instructions:['Bater na porta','Tocar a campainha']
+}});
 const quoted=(await request('orders/quote',{method:'POST',cookie:buyerCookie,body:quoteReq})).data.quote;
 assert.equal(quoted.lines.length,2);
 assert.equal(quoted.lines[0].unit_price_cents,2400);
