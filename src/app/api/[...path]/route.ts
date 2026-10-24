@@ -329,18 +329,23 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
   const u=await viewer(req);
   if(path==='me'&&method==='PATCH'){
     approved(u);
-    const b=z.object({name:z.string().trim().min(2).max(90),phone:z.string().trim().min(10).max(20),tower:z.string().min(1).max(60),apartment:z.string().min(1).max(24)}).parse(await body(req));
+    const b=z.object({name:z.string().trim().min(2).max(90),phone:z.string().trim().min(10).max(20),tower:z.string().min(1).max(60),apartment:z.string().min(1).max(24),avatar_image:z.string().nullable().optional()}).parse(await body(req));
+    if(b.avatar_image){
+      const avatar=await query('SELECT id FROM media_assets WHERE id=$1 AND condominium_id=$2 AND user_id=$3',
+        [imagePath(b.avatar_image)?.split('/').pop(),u.condominium_id,u.id]);
+      if(!avatar.rowCount)bad('Escolha uma foto enviada no seu perfil.',403);
+    }
     if(!u.towers.includes(b.tower))bad('Torre inválida.');
     await query(
-      "UPDATE users SET name=$1,phone=$2,tower=$3,apartment=$4,status=CASE WHEN tower<>$3 OR apartment<>$4 THEN 'pending' ELSE status END WHERE id=$5 AND condominium_id=$6",
-      [b.name,b.phone,b.tower,b.apartment,u.id,u.condominium_id]
+      "UPDATE users SET name=$1,phone=$2,tower=$3,apartment=$4,avatar_image=COALESCE($7,avatar_image),status=CASE WHEN tower<>$3 OR apartment<>$4 THEN 'pending' ELSE status END WHERE id=$5 AND condominium_id=$6",
+      [b.name,b.phone,b.tower,b.apartment,u.id,u.condominium_id,b.avatar_image??null]
     );
     return out({ok:true});
   }
   approved(u);
   if(path==='favorites'&&method==='GET'){
     const r=await query(
-      "SELECT p.id,p.shop_id,p.category_id,p.name,p.description,p.price_cents,p.promo_price_cents,p.image_url,p.stock,p.lead_time,p.is_featured,s.name AS shop_name,s.is_open FROM favorites f JOIN products p ON p.id=f.product_id AND p.condominium_id=f.condominium_id JOIN shops s ON s.id=p.shop_id AND s.condominium_id=f.condominium_id WHERE f.condominium_id=$1 AND f.user_id=$2 AND p.is_available=true AND s.status='approved' ORDER BY f.created_at DESC LIMIT 150",
+      "SELECT p.id,p.shop_id,p.category_id,p.name,p.description,p.price_cents,p.promo_price_cents,p.image_url,p.stock,p.visibility,p.lead_time,p.is_featured,s.name AS shop_name,s.is_open FROM favorites f JOIN products p ON p.id=f.product_id AND p.condominium_id=f.condominium_id JOIN shops s ON s.id=p.shop_id AND s.condominium_id=f.condominium_id WHERE f.condominium_id=$1 AND f.user_id=$2 AND p.visibility<>'hidden' AND s.status='approved' ORDER BY f.created_at DESC LIMIT 150",
       [u.condominium_id,u.id]
     );
     return out({ids:r.rows.map(row=>row.id),products:r.rows});
@@ -348,7 +353,7 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
   if(path==='favorites'&&method==='POST'){
     const b=z.object({product_id:z.string().uuid()}).parse(await body(req));
     const valid=await query(
-      "SELECT p.id FROM products p JOIN shops s ON s.id=p.shop_id AND s.condominium_id=p.condominium_id WHERE p.id=$1 AND p.condominium_id=$2 AND p.is_available=true AND s.status='approved'",
+      "SELECT p.id FROM products p JOIN shops s ON s.id=p.shop_id AND s.condominium_id=p.condominium_id WHERE p.id=$1 AND p.condominium_id=$2 AND p.visibility<>'hidden' AND s.status='approved'",
       [b.product_id,u.condominium_id]
     );
     if(!valid.rowCount)bad('Produto indisponível.',404);
@@ -374,7 +379,7 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
     if(category&&!uuid(category))bad('Categoria inválida.');
     const escaped='%'+search.replace(/[%_\\]/g,'')+'%';
     const result=await query(
-      "SELECT p.id,p.shop_id,p.category_id,p.name,p.description,p.price_cents,p.promo_price_cents,p.image_url,p.stock,p.lead_time,p.is_featured,s.name AS shop_name,s.is_open FROM products p JOIN shops s ON s.id=p.shop_id AND s.condominium_id=p.condominium_id WHERE p.condominium_id=$1 AND p.is_available=true AND s.status='approved' AND ($2::uuid IS NULL OR p.category_id=$2::uuid) AND ($3::text='' OR p.name ILIKE $3 ESCAPE '\\' OR s.name ILIKE $3 ESCAPE '\\') ORDER BY p.created_at DESC,p.id DESC LIMIT $4 OFFSET $5",
+      "SELECT p.id,p.shop_id,p.category_id,p.name,p.description,p.price_cents,p.promo_price_cents,p.image_url,p.stock,p.visibility,p.lead_time,p.is_featured,s.name AS shop_name,s.is_open FROM products p JOIN shops s ON s.id=p.shop_id AND s.condominium_id=p.condominium_id WHERE p.condominium_id=$1 AND p.visibility<>'hidden' AND s.status='approved' AND ($2::uuid IS NULL OR p.category_id=$2::uuid) AND ($3::text='' OR p.name ILIKE $3 ESCAPE '\\' OR s.name ILIKE $3 ESCAPE '\\') ORDER BY p.created_at DESC,p.id DESC LIMIT $4 OFFSET $5",
       [u.condominium_id,category,search?escaped:'',limit+1,page*limit]
     );
     return out({products:result.rows.slice(0,limit),hasMore:result.rows.length>limit,page});
@@ -382,8 +387,8 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
   if(path==='home'&&method==='GET'){
     const [categories,shops,products]=await Promise.all([
       query('SELECT id,name,icon FROM categories WHERE condominium_id=$1 ORDER BY sort_order,name',[u.condominium_id]),
-      query("SELECT id,name,description,cover_image,is_open,delivery_enabled,pickup_enabled,lead_time FROM shops WHERE condominium_id=$1 AND status='approved' ORDER BY is_open DESC,created_at DESC LIMIT 100",[u.condominium_id]),
-      query("SELECT p.id,p.shop_id,p.category_id,p.name,p.description,p.price_cents,p.promo_price_cents,p.image_url,p.stock,p.lead_time,p.is_featured,s.name AS shop_name,s.is_open FROM products p JOIN shops s ON s.id=p.shop_id WHERE p.condominium_id=$1 AND s.condominium_id=$1 AND p.is_available=true AND s.status='approved' ORDER BY p.is_featured DESC,p.created_at DESC LIMIT 48",[u.condominium_id])
+      query("SELECT id,name,description,cover_image,logo_image,is_open,delivery_enabled,pickup_enabled,lead_time FROM shops WHERE condominium_id=$1 AND status='approved' ORDER BY is_open DESC,created_at DESC LIMIT 100",[u.condominium_id]),
+      query("SELECT p.id,p.shop_id,p.category_id,p.name,p.description,p.price_cents,p.promo_price_cents,p.image_url,p.stock,p.visibility,p.lead_time,p.is_featured,s.name AS shop_name,s.is_open FROM products p JOIN shops s ON s.id=p.shop_id WHERE p.condominium_id=$1 AND s.condominium_id=$1 AND p.visibility<>'hidden' AND s.status='approved' ORDER BY p.is_featured DESC,p.created_at DESC LIMIT 48",[u.condominium_id])
     ]);
     return out({categories:categories.rows,shops:shops.rows,products:products.rows});
   }
@@ -473,26 +478,27 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
     if(method==='PATCH'){
       const shop=await shopOwned(u);
       const b=z.object({name:z.string().trim().min(3).max(75),description:z.string().max(500),
-        whatsapp:z.string().min(10).max(20),is_open:z.boolean(),delivery_enabled:z.boolean(),
+        whatsapp:z.string().min(10).max(20),logo_image:z.string().nullable().optional(),is_open:z.boolean(),delivery_enabled:z.boolean(),
         pickup_enabled:z.boolean(),lead_time:z.string().max(100),pickup_instructions:z.string().max(250),
         cover_image:z.string().nullable().optional()}).parse(await body(req));
       normalizeWhatsApp(b.whatsapp);
       if(!b.delivery_enabled&&!b.pickup_enabled)bad('Habilite entrega ou retirada.');
       const r=await query(
-        'UPDATE shops SET name=$1,description=$2,whatsapp=$3,is_open=$4,delivery_enabled=$5,pickup_enabled=$6,lead_time=$7,pickup_instructions=$8,cover_image=$9 WHERE id=$10 AND condominium_id=$11 RETURNING *',
-        [b.name,b.description,b.whatsapp,b.is_open,b.delivery_enabled,b.pickup_enabled,b.lead_time,b.pickup_instructions,imagePath(b.cover_image),shop.id,u.condominium_id]);
+        'UPDATE shops SET name=$1,description=$2,whatsapp=$3,is_open=$4,delivery_enabled=$5,pickup_enabled=$6,lead_time=$7,pickup_instructions=$8,cover_image=$9,logo_image=$12 WHERE id=$10 AND condominium_id=$11 RETURNING *',
+        [b.name,b.description,b.whatsapp,b.is_open,b.delivery_enabled,b.pickup_enabled,b.lead_time,b.pickup_instructions,imagePath(b.cover_image),shop.id,u.condominium_id,imagePath(b.logo_image)]);
       return out({shop:r.rows[0]});
     }
   }
   if(parts[0]==='shops'&&parts[1]&&parts[1]!=='mine'&&method==='GET'){
     if(!uuid(parts[1]))bad('Loja inválida.');
-    const s=await query("SELECT id,name,description,cover_image,is_open,delivery_enabled,pickup_enabled,lead_time,pickup_instructions FROM shops WHERE id=$1 AND condominium_id=$2 AND status='approved'",[parts[1],u.condominium_id]);
+    const s=await query("SELECT id,name,description,cover_image,logo_image,is_open,delivery_enabled,pickup_enabled,lead_time,pickup_instructions FROM shops WHERE id=$1 AND condominium_id=$2 AND status='approved'",[parts[1],u.condominium_id]);
     if(!s.rowCount)bad('Loja não encontrada.',404);
-    const p=await query("SELECT id,shop_id,category_id,name,description,price_cents,promo_price_cents,image_url,stock,lead_time FROM products WHERE shop_id=$1 AND condominium_id=$2 AND is_available=true ORDER BY created_at DESC",[parts[1],u.condominium_id]);
+    const p=await query("SELECT id,shop_id,category_id,name,description,price_cents,promo_price_cents,image_url,stock,visibility,lead_time FROM products WHERE shop_id=$1 AND condominium_id=$2 AND visibility<>'hidden' ORDER BY created_at DESC",[parts[1],u.condominium_id]);
     return out({shop:s.rows[0],products:p.rows});
   }
-  if(path==='media'&&method==='POST'){
-    const shop=await shopOwned(u);
+  if((path==='media'||path==='media/profile')&&method==='POST'){
+    const personal=path==='media/profile';
+    const shop=personal?null:await shopOwned(u);
     const form=await req.formData();
     const input=form.get('file');
     if(!(input instanceof File))throw new ApiError(400,'Selecione uma imagem.');
@@ -513,23 +519,24 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
         .webp({quality:78,effort:4}).toBuffer();
     }catch{bad('Imagem inválida ou com resolução excessiva.');}
     // Only server uses the private Storage service credential.
-    const objectKey=u.condominium_id+'/'+shop.id+'/'+crypto.randomUUID()+'.webp';
+    const objectKey=u.condominium_id+'/'+(personal?'profile/'+u.id:shop!.id)+'/'+crypto.randomUUID()+'.webp';
     const {error:uploadError}=await storageAdmin().storage.from(STORAGE_BUCKET).upload(
       objectKey,optimized!,{contentType:'image/webp',upsert:false,cacheControl:'86400'}
     );
     if(uploadError)bad('Não foi possível enviar a foto.',502);
     try{
       const r=await query(
-        'INSERT INTO media_assets(condominium_id,shop_id,mime,storage_key) VALUES($1,$2,$3,$4) RETURNING id',
-        [u.condominium_id,shop.id,'image/webp',objectKey]
+        'INSERT INTO media_assets(condominium_id,shop_id,user_id,mime,storage_key) VALUES($1,$2,$3,$4,$5) RETURNING id',
+        [u.condominium_id,shop?.id??null,personal?u.id:null,'image/webp',objectKey]
       );
       return out({url:'/api/media/'+r.rows[0].id},201);
     }catch(e){await storageAdmin().storage.from(STORAGE_BUCKET).remove([objectKey]);throw e;}
   }
   if(parts[0]==='media'&&parts[1]&&method==='GET'){
     if(!uuid(parts[1]))bad('Arquivo inválido.');
-    const r=await query('SELECT mime,bytes,storage_key FROM media_assets WHERE condominium_id=$1 AND id=$2',[u.condominium_id,parts[1]]);
+    const r=await query('SELECT mime,bytes,storage_key,user_id FROM media_assets WHERE condominium_id=$1 AND id=$2',[u.condominium_id,parts[1]]);
     if(!r.rowCount)bad('Imagem não encontrada.',404);
+    if(r.rows[0].user_id&&r.rows[0].user_id!==u.id)bad('Foto pessoal indisponível.',403);
     let bytes:Uint8Array;
     if(r.rows[0].storage_key){
       const {data,error:downloadError}=await storageAdmin().storage.from(STORAGE_BUCKET).download(r.rows[0].storage_key);
@@ -549,15 +556,29 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
       category_id:z.string().uuid(),price_cents:z.number().int().min(1).max(10_000_000),
       promo_price_cents:z.number().int().min(1).max(10_000_000).nullable().optional(),
       stock:z.number().int().min(0).max(100000).nullable().optional(),image_url:z.string().nullable().optional(),
+      visibility:z.enum(['available','unavailable','hidden']).optional(),
       is_available:z.boolean().optional(),lead_time:z.string().max(100).optional()}).parse(await body(req));
     if(b.promo_price_cents!=null&&b.promo_price_cents>=b.price_cents)bad('O preço promocional deve ser menor que o original.');
     const category=await query('SELECT id FROM categories WHERE id=$1 AND condominium_id=$2',[b.category_id,u.condominium_id]);
     if(!category.rowCount)bad('Categoria inválida.');
     const r=await query(
-      'INSERT INTO products(condominium_id,shop_id,category_id,name,description,price_cents,promo_price_cents,stock,image_url,is_available,lead_time) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *',
-      [u.condominium_id,shop.id,b.category_id,b.name,b.description??'',b.price_cents,b.promo_price_cents??null,b.stock??null,imagePath(b.image_url),b.is_available??true,b.lead_time??'']
+      'INSERT INTO products(condominium_id,shop_id,category_id,name,description,price_cents,promo_price_cents,stock,image_url,is_available,visibility,lead_time) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *',
+      [u.condominium_id,shop.id,b.category_id,b.name,b.description??'',b.price_cents,b.promo_price_cents??null,b.stock??null,imagePath(b.image_url),
+        (b.visibility??(b.is_available===false?'hidden':'available'))==='available',
+        b.visibility??(b.is_available===false?'hidden':'available'),b.lead_time??'']
     );
     return out({product:r.rows[0]},201);
+  }
+  if(parts[0]==='products'&&parts[1]&&parts[2]==='visibility'&&method==='PATCH'){
+    if(!uuid(parts[1]))bad('Produto inválido.');
+    const shop=await shopOwned(u,true);
+    const b=z.object({visibility:z.enum(['available','unavailable','hidden'])}).parse(await body(req));
+    const updated=await query(
+      'UPDATE products SET visibility=$1,is_available=($1=\'available\') WHERE id=$2 AND condominium_id=$3 AND shop_id=$4 RETURNING *',
+      [b.visibility,parts[1],u.condominium_id,shop.id]
+    );
+    if(!updated.rowCount)bad('Produto não encontrado.',404);
+    return out({product:updated.rows[0]});
   }
   if(parts[0]==='products'&&parts[1]&&['PATCH','DELETE'].includes(method)){
     if(!uuid(parts[1]))bad('Produto inválido.');
@@ -565,20 +586,23 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
     const owned=await query('SELECT id FROM products WHERE id=$1 AND shop_id=$2 AND condominium_id=$3',[parts[1],shop.id,u.condominium_id]);
     if(!owned.rowCount)bad('Produto não encontrado.',404);
     if(method==='DELETE'){
-      await query('UPDATE products SET is_available=false WHERE id=$1 AND shop_id=$2',[parts[1],shop.id]);
+      await query("UPDATE products SET is_available=false,visibility='hidden' WHERE id=$1 AND shop_id=$2",[parts[1],shop.id]);
       return out({ok:true});
     }
     const b=z.object({name:z.string().trim().min(2).max(100),description:z.string().max(600),
       category_id:z.string().uuid(),price_cents:z.number().int().min(1).max(10_000_000),
       promo_price_cents:z.number().int().min(1).max(10_000_000).nullable(),
       stock:z.number().int().min(0).max(100000).nullable(),image_url:z.string().nullable(),
-      is_available:z.boolean(),lead_time:z.string().max(100)}).parse(await body(req));
+      visibility:z.enum(['available','unavailable','hidden']).optional(),
+      is_available:z.boolean().optional(),lead_time:z.string().max(100)}).parse(await body(req));
     if(b.promo_price_cents!=null&&b.promo_price_cents>=b.price_cents)bad('Preço promocional inválido.');
     const cat=await query('SELECT id FROM categories WHERE id=$1 AND condominium_id=$2',[b.category_id,u.condominium_id]);
     if(!cat.rowCount)bad('Categoria inválida.');
     const r=await query(
-      'UPDATE products SET name=$1,description=$2,category_id=$3,price_cents=$4,promo_price_cents=$5,stock=$6,image_url=$7,is_available=$8,lead_time=$9 WHERE id=$10 AND shop_id=$11 AND condominium_id=$12 RETURNING *',
-      [b.name,b.description,b.category_id,b.price_cents,b.promo_price_cents,b.stock,imagePath(b.image_url),b.is_available,b.lead_time,parts[1],shop.id,u.condominium_id]
+      'UPDATE products SET name=$1,description=$2,category_id=$3,price_cents=$4,promo_price_cents=$5,stock=$6,image_url=$7,is_available=$8,lead_time=$9,visibility=$13 WHERE id=$10 AND shop_id=$11 AND condominium_id=$12 RETURNING *',
+      [b.name,b.description,b.category_id,b.price_cents,b.promo_price_cents,b.stock,imagePath(b.image_url),
+        (b.visibility??(b.is_available===false?'hidden':'available'))==='available',b.lead_time,parts[1],shop.id,u.condominium_id,
+        b.visibility??(b.is_available===false?'hidden':'available')]
     );
     return out({product:r.rows[0]});
   }
@@ -592,7 +616,7 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
       if(b.fulfillment==='delivery'&&!shop.delivery_enabled||b.fulfillment==='pickup'&&!shop.pickup_enabled)bad('Forma de recebimento indisponível.');
       const ids=b.items.map(i=>i.id);
       const p=await tx.query(
-        "SELECT * FROM products WHERE id=ANY($1::uuid[]) AND condominium_id=$2 AND shop_id=$3 AND is_available=true ORDER BY id FOR UPDATE",
+        "SELECT * FROM products WHERE id=ANY($1::uuid[]) AND condominium_id=$2 AND shop_id=$3 AND is_available=true AND visibility='available' ORDER BY id FOR UPDATE",
         [ids,u.condominium_id,shop.id]
       );
       if(p.rows.length!==b.items.length)bad('Um ou mais produtos estão indisponíveis.');
