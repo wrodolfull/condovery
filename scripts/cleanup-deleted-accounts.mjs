@@ -18,11 +18,6 @@ try{
   );
   for(const job of jobs.rows){
     try{
-      if(!job.auth_done){
-        const {error}=await supabase.auth.admin.deleteUser(job.auth_user_id);
-        if(error&&error.status!==404&&error.code!=='user_not_found')throw error;
-        await db.query('UPDATE account_deletion_jobs SET auth_done=true WHERE id=$1',[job.id]);
-      }
       if(!job.storage_done){
         const keys=Array.isArray(job.storage_keys)?[...new Set(job.storage_keys)]:[];
         for(let i=0;i<keys.length;i+=100){
@@ -30,6 +25,11 @@ try{
           if(error)throw error;
         }
         await db.query('UPDATE account_deletion_jobs SET storage_done=true WHERE id=$1',[job.id]);
+      }
+      if(!job.auth_done){
+        const {error}=await supabase.auth.admin.deleteUser(job.auth_user_id);
+        if(error&&error.status!==404&&error.code!=='user_not_found')throw error;
+        await db.query('UPDATE account_deletion_jobs SET auth_done=true WHERE id=$1',[job.id]);
       }
       await db.query("UPDATE account_deletion_jobs SET finished_at=now(),storage_keys='[]'::jsonb,last_error=NULL WHERE id=$1",
         [job.id]);
