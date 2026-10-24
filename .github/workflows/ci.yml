@@ -39,6 +39,8 @@ jobs:
       - run: npm run build
       - name: Apply DB schema
         run: node scripts/migrate.mjs
+      - name: Verify migrations are idempotent
+        run: node scripts/migrate.mjs
       - name: Bootstrap test condominium
         run: node scripts/bootstrap.mjs
       - name: Start app

@@ -49,7 +49,16 @@ own HttpOnly session, subject to condominium approval.
   \`/api/media/:id\` handlers; no service keys or object paths are returned.
 - Never copy service role, DB password, Google Client Secret or invitation
   into commits or browser-readable variables.
-- For password reset via email, an SMTP mail service and recovery flow still
-  need to be configured prior to public launch.
+- Password recovery is implemented with single-use 30-minute tokens and
+  backend-only email dispatch. Configure `RESEND_API_KEY` and
+  `RESEND_FROM` with a **verified sending domain** to activate it.
+  Without these values, recovery stays hidden. Use a real email provider
+  rather than sending tokens in logs.
+- Google OAuth is supported in source code but **cannot be validated end-to-end
+  without your project's Google/Supabase credentials**. Exercise this flow on
+  the actual callback domain before launch.
+- The search endpoint `/api/catalog` supports server-side pagination and
+  parameterized substring search, backed by Postgres indexes.
+- Private favorites belong to the user+condominium and are stored in Postgres.
 - Maintain LGPD notices, backups, rate limiting, abuse controls and routine
   vulnerability scans. A passing CI run does not replace security QA.
