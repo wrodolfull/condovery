@@ -358,3 +358,95 @@ button:focus-visible,a:focus-visible{outline:3px solid #be9e1b;outline-offset:3p
 .admin-category-form input,.admin-category-form select{height:43px;border:1px solid #e0e2dc;border-radius:10px;padding:9px 12px;background:#fff;font-size:12px;min-width:0}
 .admin-category-form input{flex:1;min-width:130px}
 .admin-category-form .outline-button{min-height:43px;white-space:nowrap}
+
+
+/* Condovery 2026 — mobile-first visual refinement.
+   Inspired by the supplied food-delivery layouts; independent visual identity. */
+:root {
+  --ink:#251f18;
+  --muted:#756f65;
+  --bg:#f7f5ee;
+  --line:#e8e3d9;
+  --yellow:#ffcf25;
+  --yellow-hover:#f4bd17;
+  --orange:#fc6741;
+  --green:#1f845d;
+  --shadow:0 15px 35px rgba(40,31,16,.06)
+}
+body {background:var(--bg);letter-spacing:-.08px}
+.app-header,.desktop-nav {background:#fdfcf7}
+.app-header {border-bottom:1px solid #eae5da}
+.header-actions button{background:#fff7e8}
+.brand{letter-spacing:-1.5px}
+.brand span,.auth-logo span,.auth-mobile-logo span {color:var(--orange)}
+.content {max-width:1140px}
+.hello-row h1{letter-spacing:-1.15px}
+.hello-bag{background:#ffdfcf;color:#e65731;border-radius:50%}
+.search-container {background:#fffefb;border:1px solid #ede6dc;box-shadow:0 8px 22px rgba(58,45,25,.04);border-radius:28px}
+.hero-banner {background:linear-gradient(120deg,#f96036 0%,#ff8550 100%);color:#fff;border-radius:29px;box-shadow:0 15px 35px rgba(234,88,43,.13)}
+.hero-banner h2 em{color:#ffe24d}
+.hero-banner .eyebrow{color:#fff3e9}
+.hero-banner p{color:#fff2ea}
+.hero-banner button{background:#fffef7;color:#292119;border-radius:999px;box-shadow:0 4px 14px rgba(40,22,10,.08)}
+.hero-banner button:hover{background:#ffecc0}
+.section-heading{margin-top:31px}
+.section-heading h2{letter-spacing:-.5px;font-size:21px}
+.quiet-link{color:#d65c39}
+.category-card div{border-radius:25px;background:#fff0dd}
+.category-card:nth-child(4n + 2) div{background:#e8f2e3}
+.category-card:nth-child(4n + 3) div{background:#eae6f5}
+.category-card:nth-child(4n + 4) div{background:#ffe8d7}
+.product-card{border:0;border-radius:20px;background:#fffcf8;box-shadow:0 6px 25px rgba(36,27,13,.055)}
+.product-card .product-photo{aspect-ratio:1/1;border-radius:18px}
+.product-card .photo-placeholder{background:linear-gradient(155deg,#e9e4d2,#f7ead0)}
+.product-card .product-meta{padding:12px 11px 14px}
+.product-name{font-size:14px}
+.product-prices strong{font-size:15px}
+.card-offer{border-radius:999px;background:#f7653c;padding:5px 10px}
+.shop-row,.white-panel,.order-card,.account-shortcuts button,.seller-product-list button{background:#fffefa;border-color:#ece7db}
+.shop-row:hover,.seller-product-list button:hover{border-color:var(--orange)}
+.shop-logo{background:#ffebc2}
+.pill-orange{background:#ffe3d7;color:#b84d2f}
+.filter-chips button.chosen{background:#25221d;border-color:#25221d}
+.primary-button,.mini-primary{border-radius:999px}
+.primary-button{background:var(--yellow)}
+.product-photo-lg{border-radius:25px;background:#e6e0cf}
+.product-detail-copy h1{font-weight:900}
+.choice-row button.selected{border-color:#ef783e;background:#fff0e7}
+.auth-layout{background:#fffefa}
+.auth-aside{background:#ff6c40}
+.auth-aside h1,.auth-aside>p,.auth-logo{color:#fff}
+.auth-aside .auth-logo span{color:#ffe065}
+.auth-card{background:#fffefa}
+.auth-card h2{letter-spacing:-.75px}
+.auth-switch button{color:#e45d36}
+.auth-divider{display:flex;align-items:center;gap:12px;margin-top:21px;color:#858079;font-size:12px}
+.auth-divider:before,.auth-divider:after{content:'';height:1px;background:#e7e3db;flex:1}
+.google-button{display:flex;align-items:center;justify-content:center;gap:12px;width:100%;padding:13px 17px;min-height:52px;border:1px solid #dddcd4;border-radius:999px;background:#fff;color:#27251f;font-weight:800;margin-top:15px}
+.google-button:hover{background:#f8f6f0;border-color:#b6b2a8}
+.auth-card input[readonly]{background:#f4f3f0!important;color:#5c5e57!important}
+.form-stack select:disabled{background:#f5f3ef;color:#93918a}
+.auth-privacy{color:#7a756c}
+@media(max-width:899px){
+  .bottom-nav{
+    left:17px;right:17px;bottom:calc(12px + env(safe-area-inset-bottom));
+    width:auto;border:0;background:#24211c;color:#fff;
+    border-radius:999px;padding:9px 12px;
+    box-shadow:0 12px 30px rgba(30,22,15,.28);
+    justify-content:space-between
+  }
+  .bottom-nav button{color:#ccc7be;min-width:59px;gap:2px}
+  .bottom-nav button.active{color:#ffdb3a}
+  .bottom-nav button.active>svg{background:#ffcf25;color:#28231b;border-radius:100px;padding:5px 14px}
+  .floating-cart{bottom:calc(91px + env(safe-area-inset-bottom));border-radius:999px;background:#24211c}
+  .global-toast{bottom:calc(157px + env(safe-area-inset-bottom))}
+  .content{padding-bottom:calc(150px + env(safe-area-inset-bottom))}
+  .hero-banner{min-height:234px}
+  .hero-banner>img{filter:drop-shadow(0 9px 8px rgba(54,28,12,.12))}
+}
+@media(max-width:420px){
+  .hero-banner{min-height:218px}
+  .hero-banner h2{font-size:27px}
+  .hero-banner button{padding:10px 12px}
+  .bottom-nav button{min-width:55px}
+}
