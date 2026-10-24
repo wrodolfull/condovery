@@ -1,56 +1,78 @@
 # Condovery
 
-Marketplace privado e **mobile-first** para moradores. A experiência combina vitrine híbrida (categorias, produtos, ofertas e lojas), pedido com instruções de entrega e envio manual por WhatsApp.
+Marketplace **mobile-first** privado para moradores de condomínios. Vitrine
+híbrida (produtos, ofertas e lojas), busca, favoritos, carrinho por loja,
+entrega/retirada e conclusão da conversa pelo WhatsApp.
 
-## Stack
-Next.js 15 / React 19 / TypeScript / PostgreSQL (todas as consultas passam pelo backend) / autenticação por cookie de sessão HttpOnly e bcrypt / PWA.
+## Arquitetura
 
-## Inicialização
-1. npm install
-2. Crie uma base PostgreSQL 15+ e copie .env.example para .env.local; preencha DATABASE_URL.
-3. Execute `npm run db:migrate` para aplicar o esquema PostgreSQL (ou `psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f db/schema.sql`).
-4. Preencha as variáveis `BOOTSTRAP_*` no `.env.local` e execute `npm run db:bootstrap`. O comando inicializa condomínio, 23 torres e administrador. Não exponha o convite publicamente.
-5. npm run dev e abra http://localhost:3000
+- **Interface:** Next.js 15 + React 19 + TypeScript, web responsiva e PWA.
+- **Backend:** Next.js API Routes (Node), autenticação por sessão opaca HttpOnly,
+  isolamento por condomínio, autorização por perfil e rate limiting.
+- **Banco:** PostgreSQL do Supabase, acessível exclusivamente no backend.
+  Consultas SQL parametrizadas, índices e paginação no servidor.
+- **Identidade:** Supabase Auth para cadastro com e-mail/senha,
+  **confirmação de e-mail**, login, recuperação de senha e Google OAuth PKCE.
+  Nenhum login usa bcrypt para verificar senhas no banco Condovery.
+- **Imagens:** Supabase Storage privado. Upload pelo backend; redução para
+  WebP (até 960px) e remoção de metadados de imagens.
+- **Residência:** convite e torre/apartamento obrigatórios, depois aprovação
+  administrativa mesmo que a identidade Supabase já esteja verificada.
 
-Importante: o script de bootstrap não altera a senha de um administrador já existente. Modifique as torres pelo banco para corresponder à numeração real antes de abrir o cadastro.
+## Preparação do ambiente
 
-## O que está implementado
-- Cadastro com convite e aprovação administrativa; login; sessão segura; recuperação de senha via e-mail disponível após configurar Supabase Auth.
-- PostgreSQL no Supabase com conexão privada ao backend (pool otimizado), RLS habilitado nas tabelas de negócio e Google OAuth/PKCE via Supabase Auth.
-- Google novos usuários: convite do condomínio, torre/apartamento e aprovação obrigatória.
-- Fotos otimizadas em WebP (até 960px, metadados EXIF removidos) no bucket PRIVADO do Supabase Storage, com credenciais exclusivas do servidor.
-- Isolamento de dados por condominium_id, inclusive em endpoints de administração e imagens.
-- Pesquisa paginada pelo backend e favoritos persistidos por morador.
-- Marketplace privado, categorias, pesquisa, lojas e catálogo com preços e promoções.
-- Solicitação de loja e aprovação; CRUD de produtos com upload de foto (otimização WebP com entrada de até 8 MB por imagem), horários/prazo orientativos e estoque opcional.
-- Carrinho de uma loja por vez; endereço torre/apartamento do usuário; retirada ou entrega; preferências e observações.
-- Criação de pedido no backend antes de abrir WhatsApp; status aguardando confirmação, confirmado, concluído, cancelado. **Abrir WhatsApp não comprova envio nem venda realizada.**
-- Controle manual de confirmação e estoque no painel do vendedor; painel administrativo para moradores e lojas.
-- PWA instalável com layout responsivo e navegação inferior no celular.
+1. Execute npm install.
+2. Copie .env.example para .env.local. Configure as variáveis de conexão
+   do PostgreSQL e do Supabase Auth/Storage, além de APP_URL.
+3. Configure no painel Supabase os providers Email (com **Confirm email**)
+   e Google, redirects, SMTP e o template de reset. Instruções detalhadas:
+   [docs/SUPABASE_SETUP.md](docs/SUPABASE_SETUP.md).
+4. Crie o bucket privado condovery-media.
+5. Execute npm run db:migrate para aplicar o SQL base e as migrações.
+6. Defina BOOTSTRAP_* no .env.local e execute npm run db:bootstrap.
+   O administrador é criado ou identificado no Supabase Auth sem gravação
+   da sua senha no PostgreSQL do Condovery.
+7. Execute npm run dev.
 
-## Segurança e limites
-- Senhas com bcrypt, autenticação via sessões opacas HttpOnly SameSite Lax, validação de entradas, rate-limit persistido para login, ações autorizadas no servidor.
-- A aprovação de moradores e o convite são obrigatórios. O identificador do condomínio vem da sessão autenticada, não do payload do cliente.
-- Sem gateway de pagamento, integração com API oficial WhatsApp, confirmação automática de envio, rastreamento de pagamento ou push. E-mails de recuperação exigem configuração do Supabase Auth.
-- Imagens são armazenadas em PostgreSQL para facilitar o piloto; migrar para object storage antes da expansão.
-- Executar atrás de HTTPS em produção e configurar as políticas do condomínio/LGPD, retenção e backups. O convite só permite solicitar acesso, não aprova o morador.
-- Não exibir torres/apartamentos em listagens públicas. Os dados são visíveis apenas aos participantes autorizados do pedido.
-- Cadastros pendentes não podem navegar no marketplace.
+Os nomes das 23 torres são apenas dados padrão do piloto. Ajuste as torres
+reais antes de admitir moradores.
 
-## Validação
-npm run typecheck
-npm run test
-npm run build
+## Escopo da primeira versão
 
-O workflow CI executa uma integração com PostgreSQL real e verifica cadastro, aprovação, loja, produto e ciclo de pedido. Para executar localmente: configure `DATABASE_URL` e as variáveis `BOOTSTRAP_*`, rode `node scripts/migrate.mjs`, `node scripts/bootstrap.mjs`, `npm start` e `node scripts/smoke.mjs` com o servidor ativo. Use apenas em banco de testes.
+- Login, cadastro, recuperação de senha (Supabase Auth) e login Google;
+- Aprovação de moradores, lojas e alteração de endereço;
+- Catálogo com categorias, ofertas, produtos e busca paginada;
+- Favoritos por morador e condomínio;
+- Cadastro de lojas, produtos, fotos, preço, estoque e horário orientativo;
+- Carrinho de uma loja por vez, observações e preferências de entrega;
+- Registro de pedidos antes do link WhatsApp, com confirmação manual
+  do vendedor, conclusão e cancelamento;
+- Dashboard administrativo de moradores, lojas e categorias.
 
-## Referência de UX
-Inspiração conceitual no 99Food: campo de busca em destaque, categorias, ofertas e navegação inferior. Identidade, componentes, textos e código próprios do Condovery.
+Não há gateway de pagamento, disparo automático de WhatsApp, notificações
+push ou rastreamento de entrega. Abrir o WhatsApp não comprova pagamento,
+envio da mensagem ou confirmação de venda.
 
-## Integração Supabase e Google
+## Testes
 
-Consulte [docs/SUPABASE_SETUP.md](docs/SUPABASE_SETUP.md). A PR é entregue sem credenciais, bucket criado ou OAuth habilitado no painel. Fluxos externos precisam de QA manual no domínio final.
+- npm run typecheck
+- npm test
+- npm run build
 
-## Identidade e acesso
+O GitHub Actions executa testes automatizados com PostgreSQL real e um
+**stub local isolado de Supabase Auth**, simulando confirmação, login e
+recuperação, além de API de pedidos. Testes manuais com Supabase Auth/Google
+reais, e-mails e Storage continuam obrigatórios antes da produção.
 
-E-mail/senha, confirmação, recuperação e Google são processados pelo Supabase Auth. Para habilitar todos os fluxos veja [configuração](docs/SUPABASE_SETUP.md). Hashes antigos de senhas locais não são aceitos pela versão atual; migre as identidades de moradores existentes antes de lançar.
+## Migração de autenticação antiga
+
+O backend anterior armazenava hashes bcrypt locais. Eles são mantidos
+somente para uma transição administrada e **não autenticam usuários nesta
+versão**. Associe as identidades existentes ao Supabase Auth com confirmação
+de e-mail e migração segura de senha. Não faça a implantação em uma base
+com contas reais sem plano de migração, backup e testes de reversão.
+
+## Visual
+
+A navegação mobile-first se inspira na organização de aplicativos de
+delivery, com componentes e identidade própria do Condovery.
