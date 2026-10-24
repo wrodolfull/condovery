@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z, ZodError } from 'zod';
 import bcrypt from 'bcryptjs';
 import crypto from 'node:crypto';
+import sharp from 'sharp';
 import { query, transaction } from '@/lib/db';
 import { clearSession, inviteHash, issueSession, sessionViewer, tokenHash, type Viewer } from '@/lib/auth';
 import { normalizeWhatsApp, orderMessage, unitPrice } from '@/lib/orders';
@@ -378,24 +379,30 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
     if(!(input instanceof File))throw new ApiError(400,'Selecione uma imagem.');
     const file:File=input;
     if(!['image/jpeg','image/png','image/webp'].includes(file.type))bad('Imagem deve ser JPG, PNG ou WebP.');
-    if(file.size<1||file.size>1_500_000)bad('A imagem deve ter no máximo 1,5 MB.');
+    if(file.size<1||file.size>8_000_000)bad('A imagem deve ter no máximo 8 MB.');
     const buffer=Buffer.from(await file.arrayBuffer());
     const jpg=buffer[0]===255&&buffer[1]===216&&buffer[2]===255;
     const png=buffer.subarray(0,8).equals(Buffer.from([137,80,78,71,13,10,26,10]));
     const webp=buffer.toString('ascii',0,4)==='RIFF'&&buffer.toString('ascii',8,12)==='WEBP';
     if(!(file.type==='image/jpeg'&&jpg||file.type==='image/png'&&png||file.type==='image/webp'&&webp))bad('O arquivo não corresponde ao formato declarado.');
     if(!storageConfigured())bad('Armazenamento de imagens não configurado.',503);
+    // Strip EXIF location/metadata, limit pixels, and deliver optimized WebP.
+    let optimized:Buffer;
+    try{
+      optimized=await sharp(buffer,{failOn:'error',limitInputPixels:20_000_000})
+        .rotate().resize(960,960,{fit:'inside',withoutEnlargement:true})
+        .webp({quality:78,effort:4}).toBuffer();
+    }catch{bad('Imagem inválida ou com resolução excessiva.');}
     // Only server uses the private Storage service credential.
-    const ext=file.type==='image/jpeg'?'jpg':file.type==='image/png'?'png':'webp';
-    const objectKey=u.condominium_id+'/'+shop.id+'/'+crypto.randomUUID()+'.'+ext;
+    const objectKey=u.condominium_id+'/'+shop.id+'/'+crypto.randomUUID()+'.webp';
     const {error:uploadError}=await storageAdmin().storage.from(STORAGE_BUCKET).upload(
-      objectKey,buffer,{contentType:file.type,upsert:false,cacheControl:'86400'}
+      objectKey,optimized!,{contentType:'image/webp',upsert:false,cacheControl:'86400'}
     );
     if(uploadError)bad('Não foi possível enviar a foto.',502);
     try{
       const r=await query(
         'INSERT INTO media_assets(condominium_id,shop_id,mime,storage_key) VALUES($1,$2,$3,$4) RETURNING id',
-        [u.condominium_id,shop.id,file.type,objectKey]
+        [u.condominium_id,shop.id,'image/webp',objectKey]
       );
       return out({url:'/api/media/'+r.rows[0].id},201);
     }catch(e){await storageAdmin().storage.from(STORAGE_BUCKET).remove([objectKey]);throw e;}
