@@ -6,6 +6,7 @@ import {RoundedStars} from '@/components/RoundedStars';
 import {ImageCropper,type ImageKind} from '@/components/ImageCropper';
 import {clientUUID} from '@/lib/client-uuid';
 import {parseMoneyInput} from '@/lib/money-input';
+import {towerLabels,currentTowerScheme,type TowerScheme} from '@/lib/towers';
 import {artwork,getCategoryArtwork} from '@/lib/artwork';
 import {IMAGE_MIME_TYPES, imageSizeIsAllowed} from '@/lib/image-limits';
 import {selectedOptions, extrasTotal, arrivalInstructionOptions, toggleArrivalInstruction, type OptionGroup, type Selection} from '@/lib/orders';
@@ -53,7 +54,7 @@ function MoneyInput({cents,onValue}:{cents:number;onValue:(value:number)=>void})
     }} onBlur={()=>setFocused(false)}/>;
 }
 type HomeData={categories:Category[];shops:Shop[];products:Product[]};
-type AdminData={residents:{id:string;name:string;email:string;tower:string;apartment:string;status:string}[];shops:{id:string;name:string;owner_name:string;status:string}[];stats:{residents:number;shops:number;orders:number};categories:Category[]};
+type AdminData={towers:string[];residents:{id:string;name:string;email:string;tower:string;apartment:string;status:string}[];shops:{id:string;name:string;owner_name:string;status:string}[];stats:{residents:number;shops:number;orders:number};categories:Category[]};
 type View='home'|'categories'|'favorites'|'orders'|'account'|'shop'|'product'|'cart'|'success'|'seller'|'admin';
 const money=(n:number)=>new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(n/100);
 const price=(p:Product)=>p.promo_price_cents??p.price_cents;
@@ -203,6 +204,7 @@ export default function Page(){
   const [reviewRating,setReviewRating]=useState(0);
   const [reviewText,setReviewText]=useState('');
   const [sharedShopId,setSharedShopId]=useState<string|null>(null);
+  const [shareFallback,setShareFallback]=useState<{link:string;name:string}|null>(null);
   const [selectedProduct,setSelectedProduct]=useState<Product|null>(null);
   const [qty,setQty]=useState(1);
   const [itemNote,setItemNote]=useState('');
@@ -230,6 +232,7 @@ export default function Page(){
   const [shopForm,setShopForm]=useState({name:'',description:'',whatsapp:'',is_open:true,delivery_enabled:true,delivery_fee_cents:0,pickup_enabled:true,lead_time:'',pickup_instructions:'',cover_image:'',logo_image:''});
   const [productForm,setProductForm]=useState({id:'',name:'',description:'',category_id:'',price:'',promo:'',stock:'',image_url:'',visibility:'available' as Product['visibility'],lead_time:'',option_groups:[] as OptionGroup[]});
   const [editingProduct,setEditingProduct]=useState(false);
+  const [deleteProductTarget,setDeleteProductTarget]=useState<Product|null>(null);
   const [profile,setProfile]=useState({name:'',phone:'',tower:'',apartment:'',avatar_image:''});
   const [invite,setInvite]=useState('');
   const [customCode,setCustomCode]=useState('');
@@ -240,6 +243,8 @@ export default function Page(){
   const [reportDetails,setReportDetails]=useState('');
   const [newCategory,setNewCategory]=useState('');
   const [categoryIcon,setCategoryIcon]=useState('sandwich');
+  const [towerScheme,setTowerScheme]=useState<TowerScheme>('letters');
+  const [towerCount,setTowerCount]=useState(30);
 
   const notify=(msg:string)=>{setToast(msg);setError('');};
   const fail=(e:unknown)=>setError(e instanceof Error?e.message:'Não foi possível concluir.');
@@ -285,6 +290,9 @@ export default function Page(){
       api<AdminData>('admin/summary'),api<{reports:ContentReport[]}>('admin/reports')
     ]);
     setAdminData(summary);setReports(queue.reports);
+    const scheme=currentTowerScheme(summary.towers??[]);
+    if(scheme)setTowerScheme(scheme);
+    setTowerCount(summary.towers?.length||30);
   },[]);
   const refresh=useCallback(async(u:Viewer)=>{
     await Promise.all([loadHome(),loadMine(),loadOrders(),loadFavorites(),...(u.role==='admin'?[loadAdmin()]:[])]);
@@ -483,7 +491,9 @@ export default function Page(){
     const url=new URL('/',window.location.origin);
     url.searchParams.set('loja',id);
     const link=url.toString();
-    if(typeof navigator.share==='function'){
+    // Native Android/iOS share sheet is available on HTTPS (secure context).
+    // Call share directly in the user's click, before any other awaited work.
+    if(window.isSecureContext&&typeof navigator.share==='function'){
       try{
         await navigator.share({title:name,text:'Conheça esta loja no Condovery!',url:link});
         return;
@@ -491,9 +501,15 @@ export default function Page(){
         if(e instanceof DOMException&&e.name==='AbortError')return;
       }
     }
+    // HTTP LAN origins cannot invoke the OS share sheet. Provide useful alternatives
+    // instead of silently copying a link.
+    setShareFallback({link,name});
+  }
+  async function copyShopLink(link:string){
     try{
       await navigator.clipboard.writeText(link);
       notify('Link da loja copiado!');
+      setShareFallback(null);
     }catch{
       window.prompt('Copie o link da loja:',link);
     }
@@ -701,6 +717,33 @@ export default function Page(){
         visibility:productForm.visibility,lead_time:productForm.lead_time,option_groups:productForm.option_groups};
       await api(productForm.id?'products/'+productForm.id:'products',{method:productForm.id?'PATCH':'POST',body:payload(b)});
       setEditingProduct(false);await Promise.all([loadMine(),loadHome()]);notify('Produto salvo.');
+    }catch(e){fail(e);}finally{setBusy(false);}
+  }
+  async function deleteProduct(){
+    if(!deleteProductTarget||busy)return;
+    const id=deleteProductTarget.id;
+    setBusy(true);setError('');
+    try{
+      await api('products/'+id,{method:'DELETE',body:payload({confirmation:'EXCLUIR PRODUTO'})});
+      setCart(items=>items.filter(item=>item.product.id!==id));
+      if(selectedProduct?.id===id){setSelectedProduct(null);go('home');}
+      setDeleteProductTarget(null);
+      setEditingProduct(false);
+      await Promise.all([loadMine(),loadHome()]);
+      notify('Produto excluído da loja. O histórico dos pedidos foi preservado.');
+    }catch(e){fail(e);}finally{setBusy(false);}
+  }
+  async function saveTowers(e:React.FormEvent){
+    e.preventDefault();setBusy(true);setError('');
+    try{
+      const r=await api<{towers:string[];message:string}>('admin/towers',{method:'PATCH',body:payload({scheme:towerScheme,count:towerCount})});
+      setAdminData(prev=>prev?{...prev,towers:r.towers,residents:prev.residents.map(resident=>{
+        const current=adminData?.towers.indexOf(resident.tower)??-1;
+        return current>=0?{...resident,tower:r.towers[current]??resident.tower}:resident;
+      })}:prev);
+      setViewer(prev=>prev?{...prev,towers:r.towers}:prev);
+      await loadAdmin();
+      notify(r.message);
     }catch(e){fail(e);}finally{setBusy(false);}
   }
   async function adminAction(target:'users'|'shops',id:string,status:string){
