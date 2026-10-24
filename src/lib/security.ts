@@ -9,7 +9,7 @@ export function safeAppOrigin(req:NextRequest):string {
   const allowed=process.env.APP_URL?.replace(/\/$/,'');
   if(allowed){
     const origin=new URL(allowed).origin;
-    if(process.env.NODE_ENV==='production'&&!origin.startsWith('https://'))throw new Error('APP_URL must use HTTPS in production');
+    if(process.env.NODE_ENV==='production'&&!origin.startsWith('https://')&&!['127.0.0.1','localhost'].includes(new URL(origin).hostname))throw new Error('APP_URL must use HTTPS in production');
     return origin;
   }
   if(process.env.NODE_ENV==='production')throw new Error('APP_URL is required for OAuth.');
