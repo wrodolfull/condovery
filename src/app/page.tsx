@@ -380,12 +380,12 @@ export default function Page(){
 
   if(loading)return <main className="loading-page"><div className="spinner"/><strong>condovery.</strong><span>Preparando sua vizinhança</span></main>;
   if(!viewer&&(authMode==='recover'||authMode==='reset'))return <main className="auth-layout">
-    <div className="auth-aside"><div className="auth-logo">condovery<span>.</span></div><div className="auth-art"><img src="/hero.svg" alt="Lojinha de condomínio"/></div><h1>Seu lugar na vizinhança.</h1><p>Recupere o acesso com segurança.</p></div>
+    <div className="auth-aside"><div className="auth-logo">condovery<span>.</span></div><div className="auth-art"><img src="/hero.svg" alt="Lojinha de condomínio"/></div><h1>Seu condomínio mais perto de você!</h1><p>Produtos, comida e serviços dos seus vizinhos, com tudo organizado em um só lugar.</p></div>
     <section className="auth-card">
       <div className="auth-mobile-logo">condovery<span>.</span></div>
       <div className="welcome-emoji"><ShieldCheck size={28}/></div>
-      <h2>{authMode==='recover'?'Recuperar minha senha':'Criar nova senha'}</h2>
-      <p>{authMode==='recover'?'O Supabase enviará um link de recuperação para o e-mail cadastrado.':'Escolha uma nova senha para sua conta Supabase.'}</p>
+      <h2>{authMode==='recover'?'Recuperar senha':'Criar nova senha'}</h2>
+      <p>{authMode==='recover'?'Informe seu e-mail para receber o link de recuperação.':'Escolha uma nova senha para continuar no Condovery.'}</p>
       {error&&<div className="alert" role="alert">{error}</div>}
       {toast&&<div className="success-banner" role="status">{toast}</div>}
       <form className="form-stack" onSubmit={submitReset}>
@@ -397,12 +397,19 @@ export default function Page(){
     </section>
   </main>;
   if(!viewer)return <main className="auth-layout">
-    <div className="auth-aside"><div className="auth-logo">condovery<span>.</span></div><div className="auth-art"><img src="/hero.svg" alt="Ilustração de uma lojinha de bairro"/></div><h1>Tem coisa boa morando pertinho de você.</h1><p>Descubra, compre e venda dentro do seu condomínio.</p></div>
+    <div className="auth-aside"><div className="auth-logo">condovery<span>.</span></div><div className="auth-art"><img src="/hero.svg" alt="Ilustração de uma lojinha de bairro"/></div><h1>Seu condomínio mais perto de você!</h1><p>Compre dos seus vizinhos. Apoie comércios locais. Receba no seu condomínio.</p></div>
     <section className="auth-card">
       <div className="auth-mobile-logo">condovery<span>.</span></div>
+      <div className="auth-mobile-intro" aria-label="O seu condomínio em um só lugar">
+        <div className="auth-intro-copy"><span>CONDOvery · TUDO DE BOM MORA AQUI</span>
+          <strong>Seu condomínio mais perto de você!</strong>
+          <small>Compre dos seus vizinhos, apoie comércios locais e receba no condomínio.</small>
+        </div>
+        <img src="/hero.svg" alt="" aria-hidden="true"/>
+      </div>
       <div className="welcome-emoji"><ShoppingBag size={28}/></div>
-      <h2>{googleSignup?'Confirme sua residência':authMode==='login'?'Que bom ter você aqui!':'Entre para a vizinhança'}</h2>
-      <p>{googleSignup?'Seu e-mail já foi verificado pelo Google. Informe seu condomínio para solicitar acesso.':authMode==='login'?'Acesse o marketplace exclusivo do seu condomínio.':'Seu cadastro será analisado pela administração.'}</p>
+      <h2>{googleSignup?'Informações do morador':authMode==='login'?'Bem-vindo(a)!':'Cadastrar conta'}</h2>
+      <p>{googleSignup?'Seu e-mail já está confirmado. Informe onde você mora para solicitar acesso.':authMode==='login'?'Acesse sua conta para continuar.':'Crie sua conta e descubra o que seus vizinhos oferecem.'}</p>
       {error&&<div role="alert" className="alert">{error}</div>}
       {toast&&<div className="success-banner">{toast}</div>}
       <form onSubmit={loginOrRegister} className="form-stack">
@@ -415,7 +422,7 @@ export default function Page(){
         </>}
         <label>E-mail<input required readOnly={Boolean(googleSignup)} type="email" autoComplete="email" value={authForm.email} onChange={e=>setAuthForm(s=>({...s,email:e.target.value}))} placeholder="seuemail@exemplo.com"/></label>
         {!googleSignup&&<label>Senha<input required type="password" minLength={authMode==='register'?10:1} autoComplete={authMode==='register'?'new-password':'current-password'} value={authForm.password} onChange={e=>setAuthForm(s=>({...s,password:e.target.value}))} placeholder={authMode==='register'?'Mínimo de 10 caracteres':'Sua senha'}/></label>}
-        <button className="primary-button" type="submit" disabled={busy}>{busy?'Processando...':authMode==='login'?'Entrar':'Solicitar meu acesso'}<ArrowRight size={19}/></button>
+        <button className="primary-button" type="submit" disabled={busy}>{busy?'Processando...':authMode==='login'?'Entrar com e-mail':'Enviar para aprovação'}<ArrowRight size={19}/></button>
       </form>
       {!googleSignup&&googleEnabled&&<>
         <div className="auth-divider"><span>ou continue com</span></div>
@@ -430,7 +437,7 @@ export default function Page(){
     </section>
   </main>;
 
-  if(viewer.status!=='approved')return <main className="pending-screen"><div className="brand">condovery<span>.</span></div><div className="pending-icon"><Clock3 size={42}/></div><h1>Seu cadastro está em análise</h1><p>Para manter a comunidade segura, a administração precisa confirmar que você mora no condomínio antes de liberar a vitrine.</p><div className="pending-detail"><Building2 size={20}/><span>{viewer.condominium_name}<br/><strong>{viewer.tower} · Ap. {viewer.apartment}</strong></span></div><button className="outline-button" onClick={()=>window.location.reload()}>Verificar novamente</button><button className="text-button" onClick={logout}>Sair da conta</button></main>;
+  if(viewer.status!=='approved')return <main className="pending-screen"><div className="brand">condovery<span>.</span></div><div className="pending-icon"><Clock3 size={42}/></div><h1>Cadastro enviado!</h1><p>Agora é só aguardar a aprovação da administração do condomínio. Assim que seu acesso for liberado, você poderá comprar de seus vizinhos.</p><div className="pending-detail"><Building2 size={20}/><span>{viewer.condominium_name}<br/><strong>{viewer.tower} · Ap. {viewer.apartment}</strong></span></div><button className="outline-button" onClick={()=>window.location.reload()}>Verificar novamente</button><button className="text-button" onClick={logout}>Sair da conta</button></main>;
 
   return <div className="app-shell">
     <header className="app-header"><div className="header-inner">
@@ -448,21 +455,21 @@ export default function Page(){
 
     <main className="content">
       {view==='home'&&<>
-        <div className="hello-row"><div><p>Olá, {viewer.name.split(' ')[0]}! <span className="wave">✳</span></p><h1>O que vamos pedir hoje?</h1></div><div className="hello-bag"><ShoppingBasket size={27}/></div></div>
+        <div className="hello-row"><div><p>Olá, {viewer.name.split(' ')[0]}! <span className="wave">✳</span></p><h1>Seu condomínio mais perto de você!</h1></div><div className="hello-bag"><ShoppingBasket size={27}/></div></div>
         <div className="search-container"><Search size={20}/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Busque produtos ou lojas..." aria-label="Buscar produtos ou lojas"/>{query&&<button onClick={()=>setQuery('')} aria-label="Limpar busca"><X size={16}/></button>}</div>
-        {!query&&<section className="hero-banner"><div className="hero-copy"><span className="eyebrow">NOSSO CONDOMÍNIO, NOSSO MARKETPLACE</span><h2>Coisa boa mora <em>bem pertinho.</em></h2><p>Conheça os produtos e talentos dos seus vizinhos.</p><button onClick={()=>go('categories')}>Explorar produtos <ArrowRight size={17}/></button></div><img src="/hero.svg" alt="Ilustração de uma lojinha" /></section>}
-        <SectionHeader title="O que você procura?" action="Ver categorias" onAction={()=>go('categories')}/>
+        {!query&&<section className="hero-banner"><div className="hero-copy"><span className="eyebrow">TUDO DE BOM MORA AQUI</span><h2>Descubra o melhor <em>da sua vizinhança.</em></h2><p>Produtos, comida e serviços de quem mora pertinho de você.</p><button onClick={()=>go('categories')}>Começar a explorar <ArrowRight size={17}/></button></div><img src="/hero.svg" alt="Ilustração de uma lojinha" /></section>}
+        <SectionHeader title="Descubra o que tem por aqui" action="Ver categorias" onAction={()=>go('categories')}/>
         <div className="category-track">
           {home.categories.map(c=><button key={c.id} className="category-card" onClick={()=>{setCategory(c.id);go('categories');}}><div><CategorySymbol name={c.name} icon={c.icon}/></div><span>{c.name}</span></button>)}
         </div>
-        {!query&&featured.length>0&&<><SectionHeader title="Ofertas e destaques" action="Ver tudo" onAction={()=>go('categories')}/><div className="product-track">{featured.map(p=><ProductCard key={p.id} p={p} onClick={()=>openProduct(p)} favorite={favoriteIds.includes(p.id)} onFavorite={toggleFavorite}/>)}</div></>}
-        <SectionHeader title={query?'Resultados da busca':'Feito e vendido por vizinhos'} action={!query?'Ver produtos':undefined} onAction={()=>go('categories')}/>
+        {!query&&featured.length>0&&<><SectionHeader title="Ofertas da semana" action="Ver tudo" onAction={()=>go('categories')}/><div className="product-track">{featured.map(p=><ProductCard key={p.id} p={p} onClick={()=>openProduct(p)} favorite={favoriteIds.includes(p.id)} onFavorite={toggleFavorite}/>)}</div></>}
+        <SectionHeader title={query?'Resultados da busca':'Feito pelos seus vizinhos'} action={!query?'Ver produtos':undefined} onAction={()=>go('categories')}/>
         {filtered.length?<div className="product-grid">{(query?filtered:newest).map(p=><ProductCard key={p.id} p={p} onClick={()=>openProduct(p)} favorite={favoriteIds.includes(p.id)} onFavorite={toggleFavorite}/>)}</div>
           :<Empty title={query?'Nada por aqui ainda':'A vitrine está começando!'} subtitle={query?'Tente outro termo ou explore as categorias.':'As primeiras lojas e produtos vão aparecer aqui assim que forem aprovados.'} action={!query?'Quero vender':undefined} onAction={()=>go('seller')}/>}
         {query&&catalogHasMore&&<button className="outline-button load-more" disabled={catalogLoading} onClick={()=>setCatalogPage(p=>p+1)}>
           {catalogLoading?'Carregando...':'Mostrar mais produtos'} <ArrowRight size={17}/>
         </button>}
-        {!query&&<><SectionHeader title="Lojas da vizinhança" action="Todas as lojas" onAction={()=>{setCategory('');go('categories');}}/>
+        {!query&&<><SectionHeader title="Lojas em destaque" action="Ver todas" onAction={()=>{setCategory('');go('categories');}}/>
           <div className="shops-list">{home.shops.length?home.shops.slice(0,8).map(s=><button className="shop-row" key={s.id} onClick={()=>openShop(s.id)}>
             <div className="shop-logo">{s.cover_image?<img src={s.cover_image} alt=""/>:<Store size={27}/>}</div>
             <div><strong>{s.name}</strong><p>{s.description||'Conheça os produtos dessa loja'}</p><span className={'open-hint'+(!s.is_open?' closed':'')}><span/> {s.is_open?'Aceitando pedidos':'Pausada'}</span></div><ChevronRight size={20}/></button>):
@@ -471,7 +478,7 @@ export default function Page(){
       </>}
 
       {view==='categories'&&<>
-        <div className="page-title"><h1>Explorar</h1><p>Descubra tudo que seus vizinhos oferecem.</p></div>
+        <div className="page-title"><h1>Explorar</h1><p>Descubra produtos, comida e serviços oferecidos por seus vizinhos.</p></div>
         <div className="search-container"><Search size={20}/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Buscar por produto ou loja" aria-label="Buscar"/>{query&&<button onClick={()=>setQuery('')}><X size={16}/></button>}</div>
         <div className="filter-chips"><button className={!category?'chosen':''} onClick={()=>setCategory('')}>Todos</button>{home.categories.map(c=><button key={c.id} className={category===c.id?'chosen':''} onClick={()=>setCategory(c.id)}>{c.name}</button>)}</div>
         <SectionHeader title={categoryName??'Produtos dos vizinhos'}/>
@@ -512,7 +519,7 @@ export default function Page(){
       </>}
 
       {view==='cart'&&<>
-        <div className="page-title"><h1>Meu carrinho</h1><p>Finalize diretamente com o vendedor pelo WhatsApp.</p></div>
+        <div className="page-title"><h1>Meu carrinho</h1><p>Escolha a entrega e finalize diretamente com o vendedor pelo WhatsApp.</p></div>
         {!cart.length?<Empty title="Seu carrinho está vazio" subtitle="Adicione produtos de uma loja para começar." action="Explorar produtos" onAction={()=>go('categories')}/>:
         <div className="checkout-layout"><section className="checkout-main">
           <div className="white-panel"><h2><Store size={19}/> {cartShop?.name??'Sua loja'}</h2>{cart.map((item,index)=><div className="cart-item" key={item.product.id+'-'+index}>
@@ -537,7 +544,7 @@ export default function Page(){
         </aside></div>}
       </>}
 
-      {view==='success'&&lastOrder&&<div className="success-page"><div className="success-icon"><Check size={44}/></div><Pill tone="green">Pedido registrado</Pill><h1>Agora é só conversar com a loja!</h1><p>Seu pedido <strong>#{lastOrder.code}</strong> foi criado. Envie a mensagem para o vendedor pelo WhatsApp para combinar disponibilidade, entrega e pagamento.</p>
+      {view==='success'&&lastOrder&&<div className="success-page"><div className="success-icon"><Check size={44}/></div><Pill tone="green">Pedido registrado</Pill><h1>Seu pedido foi registrado!</h1><p>Seu pedido <strong>#{lastOrder.code}</strong> foi criado. Envie a mensagem para o vendedor pelo WhatsApp para combinar disponibilidade, entrega e pagamento.</p>
         <a className="primary-button" href={lastOrder.whatsapp_url} target="_blank" rel="noopener noreferrer">Abrir conversa no WhatsApp <ArrowRight size={18}/></a>
         <button className="outline-button" onClick={()=>{loadOrders();go('orders');}}>Acompanhar meus pedidos</button><small>Abrir o WhatsApp não significa que o vendedor recebeu ou confirmou o pedido.</small></div>}
 
@@ -551,7 +558,7 @@ export default function Page(){
         {!orders.length?<Empty title="Ainda não fez pedidos?" subtitle="Encontre algo gostoso ou útil vendido pertinho de você." action="Começar a comprar" onAction={()=>go('home')}/>:
         <div className="order-list">{orders.map(o=><article className="order-card" key={o.id}><div className="order-top"><strong>#{o.code} · {o.shop_name}</strong><Pill tone={o.status==='completed'?'green':o.status==='cancelled'?'neutral':'orange'}>{statusLabel[o.status]??o.status}</Pill></div><p>{o.items.map(i=>i.quantity+'× '+i.name).join(' · ')}</p><div className="order-bottom"><small>{new Date(o.created_at).toLocaleDateString('pt-BR')} · {o.fulfillment==='delivery'?'Entrega':'Retirada'}</small><strong>{money(o.total_cents)}</strong></div></article>)}</div>}</>}
 
-      {view==='account'&&<><div className="page-title"><h1>Minha conta</h1><p>Seu cantinho dentro do Condovery.</p></div>
+      {view==='account'&&<><div className="page-title"><h1>Meu perfil</h1><p>Seu endereço, seus pedidos e tudo sobre sua conta.</p></div>
         <div className="account-grid"><div className="white-panel"><div className="account-welcome"><div className="avatar">{viewer.name[0]}</div><div><strong>{viewer.name}</strong><p>{viewer.email}</p></div></div><form onSubmit={saveProfile} className="form-stack">
           <label>Nome<input required value={profile.name} onChange={e=>setProfile(s=>({...s,name:e.target.value}))}/></label>
           <label>WhatsApp<input required type="tel" value={profile.phone} onChange={e=>setProfile(s=>({...s,phone:e.target.value}))}/></label>
@@ -564,7 +571,7 @@ export default function Page(){
         <button onClick={logout}><LogOut size={23}/><span><strong>Sair</strong><small>Encerrar sessão neste dispositivo</small></span><ChevronRight/></button></div></div>
       </>}
 
-      {view==='seller'&&<><button className="back-link" onClick={()=>go('account')}><ArrowLeft size={18}/> Minha conta</button><div className="page-title"><h1>Minha loja</h1><p>Seu negócio, a poucos passos de seus clientes.</p></div>
+      {view==='seller'&&<><button className="back-link" onClick={()=>go('account')}><ArrowLeft size={18}/> Minha conta</button><div className="page-title"><h1>Painel do vendedor</h1><p>Seu negócio, a poucos passos de seus clientes.</p></div>
         {!myShop?<div className="seller-setup white-panel"><div className="setup-illustration"><Store size={38}/></div><h2>Vamos abrir sua lojinha?</h2><p>Cadastre os dados básicos e a administração vai analisar sua solicitação.</p><form onSubmit={saveShop} className="form-stack">
           <label>Nome da loja<input required minLength={3} value={shopForm.name} onChange={e=>setShopForm(s=>({...s,name:e.target.value}))} placeholder="Ex.: Bolos da Gabi"/></label>
           <label>O que você vende?<textarea maxLength={500} value={shopForm.description} onChange={e=>setShopForm(s=>({...s,description:e.target.value}))} rows={3} placeholder="Conte um pouco sobre seus produtos"/></label>
@@ -610,9 +617,9 @@ export default function Page(){
         </>}
       </>}
 
-      {view==='admin'&&viewer.role==='admin'&&<><button className="back-link" onClick={()=>go('account')}><ArrowLeft size={18}/> Minha conta</button><div className="page-title"><h1>Administração</h1><p>Cuide da segurança e organização da sua comunidade.</p></div>
+      {view==='admin'&&viewer.role==='admin'&&<><button className="back-link" onClick={()=>go('account')}><ArrowLeft size={18}/> Minha conta</button><div className="page-title"><h1>Administração do condomínio</h1><p>Gerencie moradores, lojas e categorias da sua comunidade.</p></div>
         {adminData?<><div className="admin-stats"><div><strong>{adminData.stats.residents}</strong><span>Moradores aprovados</span></div><div><strong>{adminData.stats.shops}</strong><span>Lojas ativas</span></div><div><strong>{adminData.stats.orders}</strong><span>Pedidos criados</span></div></div>
-        <section className="admin-section"><SectionHeader title="Moradores"/>
+        <section className="admin-section"><SectionHeader title="Moradores pendentes e cadastrados"/>
           {adminData.residents.length?adminData.residents.map(r=><div className="admin-row" key={r.id}><div><strong>{r.name}</strong><p>{r.email} · {r.tower} / {r.apartment}</p><Pill tone={r.status==='approved'?'green':'orange'}>{statusLabel[r.status]}</Pill></div><div className="inline-actions">{r.status!=='approved'&&<button disabled={busy} onClick={()=>adminAction('users',r.id,'approved')}>Aprovar</button>}{r.status!=='suspended'&&<button disabled={busy} className="danger-text" onClick={()=>adminAction('users',r.id,'suspended')}>Suspender</button>}</div></div>):<p className="muted">Nenhum morador cadastrado ainda.</p>}</section>
         <section className="admin-section"><SectionHeader title="Lojas"/>{adminData.shops.length?adminData.shops.map(s=><div className="admin-row" key={s.id}><div><strong>{s.name}</strong><p>Responsável: {s.owner_name}</p><Pill tone={s.status==='approved'?'green':'orange'}>{statusLabel[s.status]}</Pill></div><div className="inline-actions">{s.status!=='approved'&&<button disabled={busy} onClick={()=>adminAction('shops',s.id,'approved')}>Aprovar</button>}{s.status!=='suspended'&&<button disabled={busy} className="danger-text" onClick={()=>adminAction('shops',s.id,'suspended')}>Suspender</button>}</div></div>):<p className="muted">Nenhuma loja cadastrada.</p>}</section>
         <section className="admin-section white-panel"><h2><LayoutGrid size={20}/> Categorias</h2><div className="filter-chips">{adminData.categories.map(c=><span className="category-tag" key={c.id}>{c.name}</span>)}</div><form className="admin-category-form" onSubmit={createCategory}><input required minLength={2} maxLength={60} value={newCategory} onChange={e=>setNewCategory(e.target.value)} placeholder="Nova categoria"/><select value={categoryIcon} onChange={e=>setCategoryIcon(e.target.value)} aria-label="Ícone"><option value="shopping-bag">Compras</option><option value="cake-slice">Bolos</option><option value="sandwich">Alimentos</option><option value="coffee">Bebidas</option><option value="shirt">Moda</option><option value="sparkles">Beleza</option><option value="gift">Presentes</option></select><button className="outline-button" disabled={busy} type="submit"><Plus size={16}/>Adicionar</button></form></section>
