@@ -14,6 +14,8 @@ try {
   await client.query(migration);
   const unified=await readFile(new URL('../db/003_unified_supabase_auth.sql',import.meta.url),'utf8');
   await client.query(unified);
+  const reviews=await readFile(new URL('../db/004_shop_reviews.sql',import.meta.url),'utf8');
+  await client.query(reviews);
   console.log('Condovery database schema applied successfully.');
 } finally {
   await client.end();

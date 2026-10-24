@@ -76,3 +76,11 @@ com contas reais sem plano de migração, backup e testes de reversão.
 
 A navegação mobile-first se inspira na organização de aplicativos de
 delivery, com componentes e identidade própria do Condovery.
+
+
+## Lojas compartilháveis e avaliações
+
+As lojas podem ser compartilhadas pelo link privado `/?loja=UUID`, que exige
+acesso ao condomínio. Compradores de pedidos concluídos podem avaliar de
+1 a 5 estrelas com comentário de até 200 caracteres. O vendedor modera
+antes da publicação. Consulte [docs/SHOP_REVIEWS.md](docs/SHOP_REVIEWS.md).

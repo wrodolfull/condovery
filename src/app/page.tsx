@@ -2,11 +2,12 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {IllustrationSlot} from '@/components/IllustrationSlot';
+import {RoundedStars} from '@/components/RoundedStars';
 import {artwork,getCategoryArtwork} from '@/lib/artwork';
 import {
   ArrowLeft, ArrowRight, Bell, Building2, CakeSlice, Check, CheckCircle2, ChevronDown, ChevronRight,
   CircleHelp, Clock3, Coffee, Gift, Heart, Home, ImagePlus, LayoutGrid, LogOut, MapPin,
-  Menu, Minus, Package, Plus, Receipt, Search, Settings, ShieldCheck, ShoppingBag, ShoppingBasket,
+  Menu, Minus, Package, Plus, Receipt, Search, Settings, Share2, ShieldCheck, ShoppingBag, ShoppingBasket,
   SlidersHorizontal, Sparkles, Store, Tag, Trash2, Truck, UserRound, Utensils, X, Shirt, Sandwich
 } from 'lucide-react';
 
@@ -14,7 +15,12 @@ type Viewer={id:string;name:string;email:string;phone:string;role:'admin'|'resid
 type Category={id:string;name:string;icon:string};
 type Shop={id:string;name:string;description:string;cover_image:string|null;status?:string;is_open:boolean;delivery_enabled:boolean;pickup_enabled:boolean;lead_time:string;pickup_instructions?:string;whatsapp?:string};
 type Product={id:string;shop_id:string;shop_name?:string;category_id:string;name:string;description:string;price_cents:number;promo_price_cents:number|null;image_url:string|null;stock:number|null;is_available?:boolean;lead_time?:string;is_featured?:boolean};
-type Order={id:string;code:number;status:string;total_cents:number;shop_name:string;buyer_name:string;buyer_phone:string;tower:string;apartment:string;fulfillment:string;delivery_day:string|null;delivery_window:string;delivery_instructions:string[];note:string;items:{name:string;quantity:number;unit_price_cents:number;note:string}[];created_at:string};
+type Order={id:string;code:number;status:string;review_status?:'pending'|'approved'|'rejected'|null;total_cents:number;shop_name:string;buyer_name:string;buyer_phone:string;tower:string;apartment:string;fulfillment:string;delivery_day:string|null;delivery_window:string;delivery_instructions:string[];note:string;items:{name:string;quantity:number;unit_price_cents:number;note:string}[];created_at:string};
+type ReviewStatus='pending'|'approved'|'rejected';
+type PublicReview={id:string;rating:number;description:string;created_at:string};
+type ReviewSummary={average:number|null;count:number};
+type PublicReviews={summary:ReviewSummary;reviews:PublicReview[]};
+type SellerReview={id:string;order_id:string;order_code:number;rating:number;description:string;status:ReviewStatus;created_at:string;moderated_at:string|null};
 type CartItem={product:Product;quantity:number;note:string};
 type HomeData={categories:Category[];shops:Shop[];products:Product[]};
 type AdminData={residents:{id:string;name:string;email:string;tower:string;apartment:string;status:string}[];shops:{id:string;name:string;owner_name:string;status:string}[];stats:{residents:number;shops:number;orders:number};categories:Category[]};
@@ -121,6 +127,12 @@ export default function Page(){
   const [catalogHasMore,setCatalogHasMore]=useState(false);
   const [catalogLoading,setCatalogLoading]=useState(false);
   const [selectedShop,setSelectedShop]=useState<{shop:Shop;products:Product[]}|null>(null);
+  const [shopReviews,setShopReviews]=useState<PublicReviews|null>(null);
+  const [sellerReviews,setSellerReviews]=useState<SellerReview[]>([]);
+  const [reviewOrderId,setReviewOrderId]=useState<string|null>(null);
+  const [reviewRating,setReviewRating]=useState(0);
+  const [reviewText,setReviewText]=useState('');
+  const [sharedShopId,setSharedShopId]=useState<string|null>(null);
   const [selectedProduct,setSelectedProduct]=useState<Product|null>(null);
   const [qty,setQty]=useState(1);
   const [itemNote,setItemNote]=useState('');
@@ -138,7 +150,7 @@ export default function Page(){
   const [myShop,setMyShop]=useState<Shop|null>(null);
   const [myProducts,setMyProducts]=useState<Product[]>([]);
   const [adminData,setAdminData]=useState<AdminData|null>(null);
-  const [sellerTab,setSellerTab]=useState<'orders'|'products'|'settings'>('orders');
+  const [sellerTab,setSellerTab]=useState<'orders'|'products'|'reviews'|'settings'>('orders');
   const [shopForm,setShopForm]=useState({name:'',description:'',whatsapp:'',is_open:true,delivery_enabled:true,pickup_enabled:true,lead_time:'',pickup_instructions:'',cover_image:''});
   const [productForm,setProductForm]=useState({id:'',name:'',description:'',category_id:'',price:'',promo:'',stock:'',image_url:'',is_available:true,lead_time:''});
   const [editingProduct,setEditingProduct]=useState(false);
@@ -149,7 +161,17 @@ export default function Page(){
 
   const notify=(msg:string)=>{setToast(msg);setError('');};
   const fail=(e:unknown)=>setError(e instanceof Error?e.message:'Não foi possível concluir.');
-  const go=(next:View)=>{setError('');setView(next);window.scrollTo({top:0,behavior:'smooth'});};
+  const go=(next:View)=>{
+    setError('');setView(next);
+    if(next!=='shop'){
+      const url=new URL(window.location.href);
+      if(url.searchParams.has('loja')){
+        url.searchParams.delete('loja');
+        window.history.replaceState({},'',url.pathname+url.search);
+      }
+    }
+    window.scrollTo({top:0,behavior:'smooth'});
+  };
   const loadHome=useCallback(async()=>{setHome(await api<HomeData>('home'));},[]);
   const loadFavorites=useCallback(async()=>{
     const result=await api<{ids:string[];products:Product[]}>('favorites');
@@ -172,12 +194,20 @@ export default function Page(){
   const loadSellerOrders=useCallback(async()=>{
     const result=await api<{orders:Order[]}>('orders?scope=seller');setSellerOrders(result.orders);
   },[]);
+  const loadSellerReviews=useCallback(async()=>{
+    const result=await api<{reviews:SellerReview[]}>('shops/mine/reviews');
+    setSellerReviews(result.reviews);
+  },[]);
   const loadAdmin=useCallback(async()=>setAdminData(await api<AdminData>('admin/summary')),[]);
   const refresh=useCallback(async(u:Viewer)=>{
     await Promise.all([loadHome(),loadMine(),loadOrders(),loadFavorites(),...(u.role==='admin'?[loadAdmin()]:[])]);
   },[loadHome,loadMine,loadOrders,loadFavorites,loadAdmin]);
 
   useEffect(()=>{
+    const link=new URLSearchParams(window.location.search).get('loja');
+    if(link&&/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(link)){
+      setSharedShopId(link);
+    }
     api<{google:boolean;passwordRecovery:boolean}>('auth/providers').then(r=>{
       setGoogleEnabled(r.google);setPasswordRecoveryEnabled(r.passwordRecovery);
     }).catch(()=>{});
@@ -219,7 +249,15 @@ export default function Page(){
   },[]);
   useEffect(()=>{try{window.localStorage.setItem('condovery_cart',JSON.stringify(cart));}catch{}},[cart]);
   useEffect(()=>{if(!toast)return;const timer=setTimeout(()=>setToast(''),4000);return()=>clearTimeout(timer);},[toast]);
-  useEffect(()=>{if(view==='seller'&&myShop?.status==='approved')loadSellerOrders().catch(fail);},[view,myShop?.status,loadSellerOrders]);
+  useEffect(()=>{if(view==='seller'&&myShop?.status==='approved'){
+    loadSellerOrders().catch(fail);
+    loadSellerReviews().catch(fail);
+  }},[view,myShop?.status,loadSellerOrders,loadSellerReviews]);
+  useEffect(()=>{
+    if(viewer?.status!=='approved'||!sharedShopId)return;
+    const id=sharedShopId;setSharedShopId(null);
+    openShop(id);
+  },[viewer?.id,viewer?.status,sharedShopId]);
   useEffect(()=>{
     if(view!=='orders'||viewer?.status!=='approved')return;
     let active=true;
@@ -318,7 +356,57 @@ export default function Page(){
     setViewer(null);setGoogleSignup(null);setHome(emptyHome);setFavoriteIds([]);setFavoriteProducts([]);setCart([]);setMyShop(null);setOrders([]);go('home');
   }
   async function openShop(id:string){
-    setBusy(true);try{setSelectedShop(await api<{shop:Shop;products:Product[]}>('shops/'+id));go('shop');}catch(e){fail(e);}finally{setBusy(false);}
+    setBusy(true);
+    try{
+      const [data,reviews]=await Promise.all([
+        api<{shop:Shop;products:Product[]}>('shops/'+id),
+        api<PublicReviews>('shops/'+id+'/reviews')
+      ]);
+      setSelectedShop(data);setShopReviews(reviews);go('shop');
+      const url=new URL(window.location.href);
+      url.searchParams.set('loja',id);
+      window.history.replaceState({},'',url.pathname+url.search);
+    }catch(e){fail(e);}finally{setBusy(false);}
+  }
+  async function shareShop(id:string,name:string){
+    const url=new URL('/',window.location.origin);
+    url.searchParams.set('loja',id);
+    const link=url.toString();
+    if(typeof navigator.share==='function'){
+      try{
+        await navigator.share({title:name,text:'Conheça esta loja no Condovery!',url:link});
+        return;
+      }catch(e){
+        if(e instanceof DOMException&&e.name==='AbortError')return;
+      }
+    }
+    try{
+      await navigator.clipboard.writeText(link);
+      notify('Link da loja copiado!');
+    }catch{
+      window.prompt('Copie o link da loja:',link);
+    }
+  }
+  async function sendReview(e:React.FormEvent){
+    e.preventDefault();
+    if(!reviewOrderId)return;
+    setBusy(true);setError('');
+    try{
+      await api('orders/'+reviewOrderId+'/review',{
+        method:'POST',body:payload({rating:reviewRating,description:reviewText.trim()})
+      });
+      setReviewOrderId(null);setReviewRating(0);setReviewText('');
+      await loadOrders(orderFilter);
+      notify('Avaliação enviada! Ela será publicada após aprovação da loja.');
+    }catch(e){fail(e);}finally{setBusy(false);}
+  }
+  async function moderateReview(id:string,status:'approved'|'rejected'){
+    setBusy(true);setError('');
+    try{
+      await api('shops/mine/reviews/'+id,{method:'PATCH',body:payload({status})});
+      await loadSellerReviews();
+      notify(status==='approved'?'Avaliação publicada.':'Avaliação não publicada.');
+    }catch(e){fail(e);}finally{setBusy(false);}
   }
   function openProduct(p:Product){setSelectedProduct(p);setQty(1);setItemNote('');go('product');}
   function addToCart(){
@@ -570,11 +658,38 @@ export default function Page(){
       {view==='shop'&&selectedShop&&<>
         <button className="back-link" onClick={()=>go('home')}><ArrowLeft size={18}/> Voltar às lojas</button>
         <div className="shop-cover">{selectedShop.shop.cover_image?<img src={selectedShop.shop.cover_image} alt={'Capa '+selectedShop.shop.name}/>:<div className="shop-cover-fallback"><Store size={62}/></div>}</div>
-        <div className="shop-head"><div><h1>{selectedShop.shop.name}</h1><p>{selectedShop.shop.description}</p></div><Pill tone={selectedShop.shop.is_open?'green':'neutral'}>{selectedShop.shop.is_open?'Aceitando pedidos':'Pausada'}</Pill></div>
+        <div className="shop-head"><div><h1>{selectedShop.shop.name}</h1><p>{selectedShop.shop.description}</p></div>
+          <div className="shop-actions">
+            <Pill tone={selectedShop.shop.is_open?'green':'neutral'}>{selectedShop.shop.is_open?'Aceitando pedidos':'Pausada'}</Pill>
+            <button className="shop-share-button" onClick={()=>shareShop(selectedShop.shop.id,selectedShop.shop.name)}>
+              <Share2 size={17}/> Compartilhar loja
+            </button>
+          </div>
+        </div>
+        <div className="shop-rating" aria-label="Avaliação da loja">
+          {shopReviews?.summary.count?<><RoundedStars value={shopReviews.summary.average??0} size={22}/>
+            <strong>{(shopReviews.summary.average??0).toLocaleString('pt-BR',{minimumFractionDigits:1,maximumFractionDigits:1})} de 5</strong>
+            <span>({shopReviews.summary.count} {shopReviews.summary.count===1?'avaliação':'avaliações'})</span></>:
+            <><RoundedStars value={0} size={22}/><span>Sem avaliação</span></>}
+        </div>
         <div className="shop-benefits"><span><Truck size={17}/> {selectedShop.shop.delivery_enabled?'Entrega disponível':'Sem entrega'}</span>{selectedShop.shop.pickup_enabled&&<span><ShoppingBag size={17}/> Retirada</span>}{selectedShop.shop.lead_time&&<span><Clock3 size={17}/>{selectedShop.shop.lead_time}</span>}</div>
         <SectionHeader title="Produtos da loja"/>
         <div className="product-grid">{selectedShop.products.map(p=><ProductCard key={p.id} p={{...p,shop_name:selectedShop.shop.name}} onClick={()=>openProduct({...p,shop_name:selectedShop.shop.name})} favorite={favoriteIds.includes(p.id)} onFavorite={toggleFavorite}/>)}</div>
         {!selectedShop.products.length&&<Empty title="Loja sem produtos no momento" subtitle="Em breve, novidades por aqui."/>}
+        <section className="shop-reviews-section">
+          <div className="section-heading"><h2>Avaliações dos moradores</h2></div>
+          {shopReviews?.reviews.length?<div className="public-reviews-list">
+            {shopReviews.reviews.map(review=><article key={review.id} className="public-review-card">
+              <div className="review-card-header"><RoundedStars value={review.rating} size={19}/>
+                <small>{new Date(review.created_at).toLocaleDateString('pt-BR')}</small></div>
+              <p>{review.description}</p><small>Compra verificada · Morador do condomínio</small>
+            </article>)}
+          </div>:<div className="shop-reviews-empty">
+            <RoundedStars value={0} size={24}/>
+            <strong>Sem avaliação</strong>
+            <span>As avaliações dos compradores aparecerão aqui após moderação.</span>
+          </div>}
+        </section>
       </>}
 
       {view==='product'&&selectedProduct&&<>
@@ -644,6 +759,30 @@ export default function Page(){
             <Pill tone={o.status==='completed'?'green':o.status==='cancelled'?'neutral':'orange'}>{statusLabel[o.status]??o.status}</Pill></div>
           <p>{o.items.map(i=>i.quantity+'× '+i.name).join(' · ')}</p><OrderProgress status={o.status}/>
           <div className="order-bottom"><small>{new Date(o.created_at).toLocaleDateString('pt-BR')} · {o.fulfillment==='delivery'?'Entrega':'Retirada'}</small><strong>{money(o.total_cents)}</strong></div>
+          {o.status==='completed'&&(!o.review_status?
+            <div className="review-order-action">
+              {reviewOrderId===o.id?<form className="review-form" onSubmit={sendReview}>
+                <h3>Como foi comprar nesta loja?</h3>
+                <p>Avalie sua experiência. A loja vai moderar antes da publicação.</p>
+                <RoundedStars value={reviewRating} onChange={setReviewRating} size={31} label="Escolha de 1 a 5 estrelas"/>
+                <label className="field-label">Conte um pouquinho sobre sua compra
+                  <textarea rows={3} maxLength={200} minLength={1} required value={reviewText}
+                    placeholder="Como foi a experiência? (até 200 caracteres)"
+                    onChange={e=>setReviewText(e.target.value)}/>
+                </label>
+                <div className="review-form-footer"><small>{reviewText.length}/200 caracteres</small>
+                  <button className="outline-button" type="button" onClick={()=>setReviewOrderId(null)}>Cancelar</button>
+                  <button className="primary-button" type="submit" disabled={busy||!reviewRating||!reviewText.trim()}>
+                    Enviar avaliação <ArrowRight size={16}/>
+                  </button></div>
+              </form>:<button className="review-order-button" onClick={()=>{
+                setReviewOrderId(o.id);setReviewRating(0);setReviewText('');
+              }}><RoundedStars value={0} size={18}/> Avaliar esta compra <ChevronRight size={16}/></button>}
+            </div>:
+            <p className="review-status-note"><CheckCircle2 size={15}/>
+              {o.review_status==='pending'?'Avaliação enviada · Aguardando moderação':
+              o.review_status==='approved'?'Sua avaliação está publicada':'Avaliação não publicada pela loja'}
+            </p>)}
         </article>)}</div>:
         <Empty art="emptyOrders" title={orderFilter==='all'?'Ainda não fez pedidos?':'Nenhum pedido neste filtro'}
           subtitle={orderFilter==='all'?'Encontre algo gostoso ou útil vendido pertinho de você.':'Experimente outra situação para consultar seus pedidos.'}
@@ -674,10 +813,23 @@ export default function Page(){
           <label>WhatsApp para pedidos<input required type="tel" value={shopForm.whatsapp} onChange={e=>setShopForm(s=>({...s,whatsapp:e.target.value}))} placeholder="(19) 99999-9999"/></label>
           <button className="primary-button" disabled={busy} type="submit">Solicitar abertura <ArrowRight size={18}/></button>
         </form></div>:<>
-          <div className="seller-overview"><div><strong>{myShop.name}</strong><p>Seu painel de vendas</p></div><Pill tone={myShop.status==='approved'?'green':'orange'}>{statusLabel[myShop.status??'pending']}</Pill></div>
+          <div className="seller-overview"><div><strong>{myShop.name}</strong><p>Seu painel de vendas</p></div>
+            <div className="seller-overview-actions">
+              <Pill tone={myShop.status==='approved'?'green':'orange'}>{statusLabel[myShop.status??'pending']}</Pill>
+              {myShop.status==='approved'&&<button className="shop-share-button" onClick={()=>shareShop(myShop.id,myShop.name)}>
+                <Share2 size={16}/> Compartilhar loja</button>}
+            </div></div>
           {myShop.status!=='approved'&&<div className="info-banner"><Clock3 size={19}/> Sua loja ainda não foi aprovada. Você poderá publicar produtos após a aprovação.</div>}
           <div className="seller-metrics"><div><small>Pedidos aguardando</small><strong>{sellerOrders.filter(o=>o.status==='awaiting_confirmation').length}</strong></div><div><small>Vendas concluídas</small><strong>{money(sellerOrders.filter(o=>o.status==='completed').reduce((n,o)=>n+o.total_cents,0))}</strong></div></div>
-          <div className="seller-tabs"><button className={sellerTab==='orders'?'active':''} onClick={()=>{setSellerTab('orders');loadSellerOrders().catch(fail);}}>Pedidos</button><button className={sellerTab==='products'?'active':''} onClick={()=>setSellerTab('products')}>Produtos</button><button className={sellerTab==='settings'?'active':''} onClick={()=>setSellerTab('settings')}>Configurações</button></div>
+          <div className="seller-tabs">
+            <button className={sellerTab==='orders'?'active':''} onClick={()=>{setSellerTab('orders');loadSellerOrders().catch(fail);}}>Pedidos</button>
+            <button className={sellerTab==='products'?'active':''} onClick={()=>setSellerTab('products')}>Produtos</button>
+            <button className={sellerTab==='reviews'?'active':''} onClick={()=>{setSellerTab('reviews');loadSellerReviews().catch(fail);}}>
+              Avaliações {sellerReviews.filter(r=>r.status==='pending').length>0&&
+                <span className="review-pending-counter">{sellerReviews.filter(r=>r.status==='pending').length}</span>}
+            </button>
+            <button className={sellerTab==='settings'?'active':''} onClick={()=>setSellerTab('settings')}>Configurações</button>
+          </div>
           {sellerTab==='orders'&&<>{sellerOrders.length?<div className="order-list">{sellerOrders.map(o=><article className="order-card" key={o.id}>
             <div className="order-top"><strong>Pedido #{o.code}</strong><Pill tone={o.status==='completed'?'green':'orange'}>{statusLabel[o.status]??o.status}</Pill></div>
             <p><strong>{o.buyer_name}</strong> · {o.fulfillment==='delivery'?o.tower+' · Ap. '+o.apartment:'Retirada'}</p><p>{o.items.map(i=>i.quantity+'× '+i.name).join(' · ')}</p>
@@ -686,6 +838,33 @@ export default function Page(){
             <div className="order-bottom"><strong>{money(o.total_cents)}</strong><div className="inline-actions">{o.status==='awaiting_confirmation'&&<><button disabled={busy} onClick={()=>updateStatus(o.id,'confirmed')}>Confirmar</button><button className="danger-text" disabled={busy} onClick={()=>updateStatus(o.id,'cancelled')}>Cancelar</button></>}
               {o.status==='confirmed'&&<><button disabled={busy} onClick={()=>updateStatus(o.id,'completed')}>Concluir</button><button className="danger-text" disabled={busy} onClick={()=>updateStatus(o.id,'cancelled')}>Cancelar</button></>}</div></div>
           </article>)}</div>:<Empty title="Sem pedidos ainda" subtitle="Quando moradores comprarem na sua loja, os pedidos aparecerão aqui."/>}</>}
+          {sellerTab==='reviews'&&<>
+            <div className="section-heading"><h2>Moderar avaliações</h2></div>
+            <p className="muted moderation-help">Somente avaliações de compras concluídas entram nesta lista. Apenas as aprovadas aparecem publicamente e contam para a média da loja.</p>
+            {myShop.status!=='approved'?<div className="info-banner">Sua loja precisa estar aprovada para moderar avaliações.</div>:
+              sellerReviews.length?<div className="seller-review-list">
+                {sellerReviews.map(r=><article className="seller-review-card" key={r.id}>
+                  <div className="review-card-header">
+                    <div><strong>Pedido #{r.order_code}</strong>
+                      <RoundedStars value={r.rating} size={20}/></div>
+                    <Pill tone={r.status==='approved'?'green':r.status==='pending'?'orange':'neutral'}>
+                      {r.status==='pending'?'Aguardando moderação':r.status==='approved'?'Publicada':'Rejeitada'}
+                    </Pill>
+                  </div>
+                  <p>{r.description}</p>
+                  <small>{new Date(r.created_at).toLocaleDateString('pt-BR')}</small>
+                  {r.status==='pending'&&<div className="moderation-actions">
+                    <button className="primary-button" disabled={busy} onClick={()=>moderateReview(r.id,'approved')}>
+                      <Check size={17}/> Aprovar e publicar
+                    </button>
+                    <button className="outline-button" disabled={busy} onClick={()=>moderateReview(r.id,'rejected')}>
+                      Não publicar
+                    </button>
+                  </div>}
+                </article>)}
+              </div>:<Empty title="Sem avaliações até agora"
+                subtitle="Quando alguém avaliar uma compra concluída, você poderá moderar o comentário por aqui."/>}
+          </>}
           {sellerTab==='products'&&<><div className="section-heading"><h2>Seus produtos</h2><button className="mini-primary" disabled={myShop.status!=='approved'} onClick={()=>editProduct()}><Plus size={17}/>Adicionar</button></div>
             {editingProduct?<form className="white-panel form-stack product-editor" onSubmit={saveProduct}>
               <div className="section-heading"><h2>{productForm.id?'Editar produto':'Novo produto'}</h2><button type="button" onClick={()=>setEditingProduct(false)}><X size={19}/></button></div>

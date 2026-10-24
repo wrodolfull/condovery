@@ -14,7 +14,8 @@ async function verify(page,scene,width) {
     const root=document.documentElement;
     const important=['.app-header','.header-inner','.content','.bottom-nav',
       '.floating-cart','.hero-banner','.weekly-offer-banner','.auth-card',
-      '.auth-mobile-intro','.white-panel','.checkout-layout','.order-card'];
+      '.auth-mobile-intro','.white-panel','.checkout-layout','.order-card',
+      '.shop-actions','.shop-rating','.shop-reviews-section','.review-form','.seller-review-card'];
     const elements=important.flatMap(selector=>Array.from(document.querySelectorAll(selector))
       .filter(el=>getComputedStyle(el).display!=='none')
       .map(el=>{const r=el.getBoundingClientRect();return {selector,left:r.left,right:r.right};}));
@@ -25,7 +26,7 @@ async function verify(page,scene,width) {
     throw new Error('Horizontal overflow at '+width+'px ['+scene+']: '+JSON.stringify(data));
   }
   checked++;
-  if(['login','home','explore','orders'].includes(scene)){
+  if(['login','home','explore','shop','seller-reviews','orders'].includes(scene)){
     await page.screenshot({path:'artifacts/visual/'+width+'-'+scene+'.png',fullPage:true});
   }
 }
@@ -46,6 +47,16 @@ try{
     await nav('Explorar').click();
     await page.locator('.explore-category-track').waitFor({state:'visible'});
     await verify(page,'explore',width);
+    await page.locator('.shops-list .shop-row').first().click();
+    await page.locator('.shop-rating').waitFor({state:'visible'});
+    await verify(page,'shop',width);
+    const shareId=new URL(page.url()).searchParams.get('loja');
+    if(!shareId)throw Error('Store profile must expose shareable URL');
+    const shared=await context.newPage();
+    await shared.goto(origin+'/?loja='+shareId,{waitUntil:'domcontentloaded'});
+    await shared.locator('.shop-rating').waitFor({state:'visible',timeout:15000});
+    await verify(shared,'shop-link',width);
+    await shared.close();
     await nav('Pedidos').click();
     await page.locator('.order-filters').waitFor({state:'visible'});
     await verify(page,'orders',width);
@@ -64,6 +75,23 @@ try{
     await page.locator('.checkout-layout').waitFor({state:'visible'});
     await verify(page,'cart',width);
     await context.close();
+    if(width===390){
+      const sellerContext=await browser.newContext({viewport:{width,height:820},deviceScaleFactor:1});
+      const sellerPage=await sellerContext.newPage();
+      await sellerPage.goto(origin,{waitUntil:'domcontentloaded'});
+      await sellerPage.locator('.auth-card').waitFor({state:'visible'});
+      await sellerPage.locator('.auth-card input[type="email"]').fill('seller-smoke@example.com');
+      await sellerPage.locator('.auth-card input[type="password"]').fill('TestPassword789!');
+      await sellerPage.getByRole('button',{name:'Entrar com e-mail'}).click();
+      await sellerPage.locator('.hero-banner').waitFor({state:'visible',timeout:15000});
+      await sellerPage.locator('.bottom-nav').getByRole('button',{name:'Conta'}).click();
+      await sellerPage.locator('.account-shortcuts button').first().click();
+      await sellerPage.locator('.seller-tabs').waitFor({state:'visible'});
+      await sellerPage.locator('.seller-tabs button').filter({hasText:'Avaliações'}).click();
+      await sellerPage.locator('.seller-review-card').first().waitFor({state:'visible'});
+      await verify(sellerPage,'seller-reviews',width);
+      await sellerContext.close();
+    }
   }
   console.log('Responsive visual QA PASS: '+checked+' views checked at '+widths.join(', ')+'px');
 }finally{

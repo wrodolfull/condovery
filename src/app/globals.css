@@ -801,3 +801,67 @@ img{height:auto}
 .order-filters button.selected,.order-filters button[aria-pressed="true"]{
   background:var(--ink);color:#fff;border-color:var(--ink)
 }
+
+
+/* Verified store reviews: rounded, playful stars and responsive moderation */
+.rounded-stars{display:inline-flex;align-items:center;gap:4px;flex-shrink:0}
+.star-static,.star-choice{display:inline-grid;place-items:center;color:#c9c5b8}
+.star-static.filled,.star-choice.filled{color:#ffc52c}
+.star-choice{min-width:39px;min-height:42px;border:0;padding:4px;border-radius:12px;background:#fff7e5;cursor:pointer;
+  transition:transform .18s ease,background-color .18s ease,color .18s ease}
+.star-choice:hover,.star-choice:focus-visible{transform:translateY(-3px) rotate(-5deg);background:#fff0bb}
+.star-choice:active{transform:scale(.9)}
+.shop-actions,.seller-overview-actions{display:flex;align-items:flex-end;flex-wrap:wrap;justify-content:flex-end;gap:9px}
+.shop-share-button{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:39px;
+  border:1px solid #ead7bf;border-radius:999px;background:#fff6df;padding:9px 13px;color:#5d4325;font-size:12px;font-weight:800}
+.shop-share-button:hover{background:#ffeed1}
+.shop-rating{display:flex;flex-wrap:wrap;align-items:center;gap:9px;margin:14px 0 6px;padding:14px 0;
+  border-top:1px solid #e8e2d7;border-bottom:1px solid #e8e2d7}
+.shop-rating strong{font-size:15px;font-weight:900;letter-spacing:-.3px}
+.shop-rating>span{font-size:12px;color:#797368}
+.shop-reviews-section{margin-top:32px}
+.public-reviews-list,.seller-review-list{display:grid;grid-template-columns:1fr;gap:12px}
+.public-review-card,.seller-review-card{min-width:0;background:#fffdfa;border:1px solid #ebe3d5;
+  border-radius:19px;padding:16px 17px}
+.public-review-card>p,.seller-review-card>p{font-size:13px;line-height:1.6;overflow-wrap:anywhere;margin:9px 0}
+.public-review-card>small,.seller-review-card>small,.review-card-header small{font-size:11px;color:#877f70}
+.review-card-header{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px}
+.review-card-header>div{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.shop-reviews-empty{display:flex;align-items:center;flex-direction:column;gap:8px;text-align:center;padding:29px 15px;
+  background:#fffdfa;border:1px dashed #ded8c9;border-radius:22px}
+.shop-reviews-empty span{font-size:12px;color:#898175}
+.review-order-action{border-top:1px solid #f0e8df;margin-top:13px;padding-top:12px}
+.review-order-button{background:#fff6dd;color:#594427;border:1px solid #f7e5bc;border-radius:15px;min-height:45px;
+  display:flex;align-items:center;gap:8px;padding:7px 12px;font-size:12px;font-weight:800;max-width:100%;flex-wrap:wrap}
+.review-order-button .rounded-stars{gap:1px}
+.review-order-button .rounded-stars svg{height:15px;width:15px}
+.review-form{display:flex;flex-direction:column;gap:13px}
+.review-form h3{font-size:19px}
+.review-form>p{font-size:12px;color:#6d695f}
+.review-form .interactive{align-self:flex-start}
+.review-form .field-label textarea{width:100%;max-width:100%}
+.review-form-footer{display:flex;align-items:center;justify-content:flex-end;gap:9px;flex-wrap:wrap}
+.review-form-footer>small{margin-right:auto;color:#817a6d}
+.review-form-footer .outline-button,.review-form-footer .primary-button{min-height:43px;padding:9px 14px}
+.review-status-note{display:flex;align-items:center;gap:7px;margin-top:11px!important;border-radius:11px;
+  background:#f6f5ee;padding:10px 12px;color:#6e695e!important;font-size:12px!important}
+.review-status-note svg{flex-shrink:0;color:#41916a}
+.review-pending-counter{background:#e8653d;color:#fff;border-radius:99px;padding:2px 6px;font-size:10px;font-weight:900}
+.moderation-help{font-size:12px;max-width:600px;margin:0 0 19px}
+.seller-review-card .review-card-header>div{display:flex;flex-direction:column;align-items:flex-start;gap:6px}
+.seller-review-card .review-card-header .pill{white-space:normal;text-align:center}
+.moderation-actions{display:flex;flex-wrap:wrap;gap:9px;margin:15px 0 0}
+.moderation-actions button{min-height:44px}
+@media(max-width:599px){
+  .shop-head{align-items:flex-start;flex-wrap:wrap}
+  .shop-actions{align-items:center;justify-content:flex-start}
+  .seller-overview{align-items:flex-start;flex-wrap:wrap}
+  .seller-overview-actions{justify-content:flex-start;align-items:center}
+  .shop-rating{gap:7px}
+  .shop-rating .rounded-stars{gap:2px}
+  .seller-tabs{max-width:100%;overflow-x:auto;overflow-y:hidden;white-space:nowrap;scrollbar-width:none}
+  .seller-tabs button{white-space:nowrap;flex-shrink:0;padding-inline:13px}
+  .review-form-footer .primary-button{flex:1 1 auto}
+  .review-form-footer .outline-button{flex:0 0 auto}
+}
+@media(prefers-reduced-motion:reduce){.star-choice{transition:none}.star-choice:hover{transform:none}}
