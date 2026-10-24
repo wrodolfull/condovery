@@ -825,8 +825,9 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
     if(method==='DELETE'){
       z.object({confirmation:z.literal('EXCLUIR PRODUTO')}).parse(await body(req));
       await transaction(async tx=>{
-        await tx.query("UPDATE products SET is_available=false,visibility='hidden',deleted_at=now() WHERE id=$1 AND shop_id=$2 AND condominium_id=$3 AND deleted_at IS NULL",
+        const removed=await tx.query("UPDATE products SET is_available=false,visibility='hidden',deleted_at=now() WHERE id=$1 AND shop_id=$2 AND condominium_id=$3 AND deleted_at IS NULL RETURNING id",
           [parts[1],shop.id,u.condominium_id]);
+        if(!removed.rowCount)bad('Produto não encontrado.',404);
         await tx.query("DELETE FROM favorites WHERE product_id=$1 AND condominium_id=$2",[parts[1],u.condominium_id]);
         await tx.query("DELETE FROM content_reports WHERE target_type='product' AND target_id=$1 AND condominium_id=$2 AND status='open'",
           [parts[1],u.condominium_id]);
