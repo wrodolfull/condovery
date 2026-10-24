@@ -1165,6 +1165,24 @@ export default function Page(){
         </button>}</div></div>
       </>}
 
+      {deleteProductTarget&&view==='seller'&&<div className="account-delete-overlay" role="presentation"
+        onClick={()=>!busy&&setDeleteProductTarget(null)}>
+        <section className="account-delete-dialog" role="dialog" aria-modal="true" aria-labelledby="delete-product-title"
+          onClick={event=>event.stopPropagation()}>
+          <button type="button" className="account-delete-close" aria-label="Cancelar exclusão de produto"
+            disabled={busy} onClick={()=>setDeleteProductTarget(null)}><X size={20}/></button>
+          <h2 id="delete-product-title">Excluir produto?</h2>
+          <p>O produto <strong>{deleteProductTarget.name}</strong> sairá da vitrine e da sua lista de produtos.
+            Esta ação não poderá ser desfeita. Os pedidos anteriores continuarão no histórico.</p>
+          {error&&<p className="account-delete-error" role="alert">{error}</p>}
+          <div className="product-delete-dialog-actions">
+            <button type="button" className="outline-button" disabled={busy}
+              onClick={()=>setDeleteProductTarget(null)}>Cancelar</button>
+            <button type="button" className="account-delete-submit" disabled={busy} onClick={deleteProduct}>
+              {busy?'Excluindo...':'Excluir produto'}</button>
+          </div>
+        </section>
+      </div>}
       {showDeleteShop&&myShop&&view==='seller'&&<div className="account-delete-overlay" role="presentation"
         onClick={()=>!busy&&setShowDeleteShop(false)}>
         <section className="account-delete-dialog" role="dialog" aria-modal="true" aria-labelledby="delete-shop-title"
@@ -1315,7 +1333,7 @@ export default function Page(){
           </>}
           {sellerTab==='products'&&<><div className="section-heading"><h2>Seus produtos</h2><button className="mini-primary" disabled={myShop.status!=='approved'} onClick={()=>editProduct()}><Plus size={17}/>Adicionar</button></div>
             {editingProduct?<form className="white-panel form-stack product-editor" onSubmit={saveProduct}>
-              <div className="section-heading"><h2>{productForm.id?'Editar produto':'Novo produto'}</h2><button type="button" onClick={()=>setEditingProduct(false)}><X size={19}/></button></div>
+              <div className="section-heading"><h2>{productForm.id?'Editar produto':'Novo produto'}</h2><button type="button" className="product-editor-close" aria-label="Fechar editor do produto" title="Fechar" onClick={()=>setEditingProduct(false)}><X size={20}/></button></div>
               <label>Foto do produto<div className="image-upload">{productForm.image_url?<img src={productForm.image_url} alt="Prévia do produto"/>:<ImagePlus size={29}/>}<span>Selecionar foto (até 10 MB)</span><input aria-label="Enviar foto do produto" type="file" accept="image/jpeg,image/png,image/webp" onChange={e=>{const f=e.target.files?.[0];e.target.value='';choosePhoto(f,'product');}}/></div></label>
               <label>Nome<input required minLength={2} maxLength={100} value={productForm.name} onChange={e=>setProductForm(s=>({...s,name:e.target.value}))}/></label>
               <label>Descrição<textarea rows={3} maxLength={600} value={productForm.description} onChange={e=>setProductForm(s=>({...s,description:e.target.value}))}/></label>
@@ -1363,7 +1381,13 @@ export default function Page(){
                   <option value="hidden">Oculto — só você vê</option>
                 </select>
               </label>
-              <button className="primary-button" disabled={busy} type="submit">{busy?'Salvando...':'Salvar produto'}<Check size={18}/></button>
+              <div className="product-editor-footer">
+                {productForm.id&&<button type="button" disabled={busy} className="product-delete-button"
+                  onClick={()=>setDeleteProductTarget(myProducts.find(p=>p.id===productForm.id)??null)}>
+                  <Trash2 size={17}/> Excluir produto
+                </button>}
+                <button className="primary-button" disabled={busy} type="submit">{busy?'Salvando...':'Salvar produto'}<Check size={18}/></button>
+              </div>
             </form>:myProducts.length?<div className="seller-product-list">
               {myProducts.map(p=><article className={'seller-product-item'+(p.visibility==='unavailable'?' is-unavailable':'')} key={p.id}>
                 <button className="seller-product-edit" onClick={()=>editProduct(p)}>
@@ -1379,6 +1403,8 @@ export default function Page(){
                     onClick={()=>changeProductVisibility(p.id,v)}>
                       {v==='available'?'Disponível':v==='unavailable'?'Indisponível':'Oculto'}
                   </button>)}
+                  <button type="button" className="product-list-delete" aria-label={'Excluir '+p.name}
+                    disabled={busy} onClick={()=>setDeleteProductTarget(p)}><Trash2 size={15}/> Excluir</button>
                 </div>
               </article>)}
             </div>:<Empty title="Seu catálogo está vazio" subtitle="Adicione o primeiro produto para começar a vender."/>}</>}
@@ -1416,6 +1442,25 @@ export default function Page(){
         <section className="admin-section"><SectionHeader title="Moradores cadastrados"/>
           {adminData.residents.length?adminData.residents.map(r=><div className="admin-row" key={r.id}><div><strong>{r.name}</strong><p>{r.email} · {r.tower} / {r.apartment}</p><Pill tone={r.status==='approved'?'green':'orange'}>{statusLabel[r.status]}</Pill></div><div className="inline-actions">{r.status==='suspended'&&<button disabled={busy} onClick={()=>adminAction('users',r.id,'approved')}>Reativar</button>}{r.status!=='suspended'&&<button disabled={busy} className="danger-text" onClick={()=>adminAction('users',r.id,'suspended')}>Suspender</button>}</div></div>):<p className="muted">Nenhum morador cadastrado ainda.</p>}</section>
         <section className="admin-section"><SectionHeader title="Lojas"/>{adminData.shops.length?adminData.shops.map(s=><div className="admin-row" key={s.id}><div><strong>{s.name}</strong><p>Responsável: {s.owner_name}</p><Pill tone={s.status==='approved'?'green':'orange'}>{statusLabel[s.status]}</Pill></div><div className="inline-actions">{s.status==='suspended'&&<button disabled={busy} onClick={()=>adminAction('shops',s.id,'approved')}>Reativar</button>}{s.status!=='suspended'&&<button disabled={busy} className="danger-text" onClick={()=>adminAction('shops',s.id,'suspended')}>Suspender</button>}</div></div>):<p className="muted">Nenhuma loja cadastrada.</p>}</section>
+        <section className="admin-section white-panel">
+          <h2><LayoutGrid size={20}/> Torres do condomínio</h2>
+          <p className="muted">Defina como os moradores identificam as torres. Letras: A até AD. Números: 1 até 30. A alteração por posição mantém os moradores em sua torre correspondente.</p>
+          <form className="form-stack tower-settings" onSubmit={saveTowers}>
+            <div className="field-grid">
+              <label>Identificação<select value={towerScheme} onChange={event=>setTowerScheme(event.target.value as TowerScheme)}>
+                <option value="letters">Letras (A, B, C...)</option>
+                <option value="numbers">Números (1, 2, 3...)</option>
+              </select></label>
+              <label>Quantidade de torres<input type="number" min="1" max="30" required
+                value={towerCount} onChange={event=>setTowerCount(Number(event.target.value))}/></label>
+            </div>
+            <p className="muted tower-preview">Prévia: {Number.isInteger(towerCount)&&towerCount>=1&&towerCount<=30?
+              towerLabels(towerScheme,towerCount).join(' · '):'Informe de 1 a 30 torres.'}</p>
+            <small>Se houver moradores em torres que seriam removidas, a alteração será bloqueada. Cadastros existentes são ajustados quando a numeração muda para letras, e vice-versa.</small>
+            <button type="submit" className="outline-button" disabled={busy||towerCount<1||towerCount>30||!Number.isInteger(towerCount)}>
+              Salvar configuração das torres</button>
+          </form>
+        </section>
         <section className="admin-section white-panel"><h2><LayoutGrid size={20}/> Categorias</h2><div className="filter-chips">{adminData.categories.map(c=><span className="category-tag" key={c.id}>{c.name}</span>)}</div><form className="admin-category-form" onSubmit={createCategory}><input required minLength={2} maxLength={60} value={newCategory} onChange={e=>setNewCategory(e.target.value)} placeholder="Nova categoria de alimentação"/><select value={categoryIcon} onChange={e=>setCategoryIcon(e.target.value)} aria-label="Ícone"><option value="cake-slice">Bolos</option><option value="sandwich">Alimentos</option><option value="coffee">Bebidas</option><option value="pizza">Lanches</option><option value="ice-cream-cone">Sobremesas</option><option value="shopping-basket">Mercadinho</option></select><button className="outline-button" disabled={busy} type="submit"><Plus size={16}/>Adicionar</button></form></section>
                 <section className="admin-section white-panel">
           <h2><ShieldCheck size={20}/> Denúncias de conteúdo
@@ -1460,6 +1505,24 @@ export default function Page(){
 </section>
         </>:<Empty title="Carregando administração" subtitle="Confira sua conexão e tente novamente." action="Recarregar" onAction={()=>loadAdmin().catch(fail)}/>}
       </>}
+      {shareFallback&&<div className="share-fallback-overlay" role="presentation"
+        onClick={()=>setShareFallback(null)}>
+        <section className="share-fallback-dialog" role="dialog" aria-modal="true" aria-label="Compartilhar loja"
+          onClick={event=>event.stopPropagation()}>
+          <div className="share-fallback-heading"><div><h2>Compartilhar loja</h2>
+            <p>{shareFallback.name}</p></div>
+            <button type="button" aria-label="Fechar opções de compartilhamento" onClick={()=>setShareFallback(null)}><X size={19}/></button>
+          </div>
+          {!window.isSecureContext&&<p className="share-hint">O painel de compartilhamento do celular requer HTTPS.
+            Neste endereço local, escolha WhatsApp ou copie o link.</p>}
+          <div className="share-fallback-actions">
+            <a href={'https://wa.me/?text='+encodeURIComponent('Conheça esta loja no Condovery! '+shareFallback.link)}
+              target="_blank" rel="noopener noreferrer" onClick={()=>setShareFallback(null)}>
+              <MessageCircle size={20}/> Enviar pelo WhatsApp</a>
+            <button type="button" onClick={()=>copyShopLink(shareFallback.link)}><Share2 size={20}/> Copiar link</button>
+          </div>
+        </section>
+      </div>}
       {reportTarget&&<div className="report-overlay" role="presentation" onClick={()=>setReportTarget(null)}>
         <section className="report-dialog" role="dialog" aria-modal="true" aria-label="Denunciar conteúdo" onClick={e=>e.stopPropagation()}>
           <button className="report-close" aria-label="Fechar denúncia" onClick={()=>setReportTarget(null)}><X size={21}/></button>
