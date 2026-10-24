@@ -930,3 +930,24 @@ img{height:auto}
  .order-contact .outline-button{width:100%;justify-content:center}
  .product-visibility-actions button{padding:8px 9px;font-size:10px}
 }
+
+
+/* Regras de convivência e denúncias — compactas, mobile-first */
+.community-agreement{display:flex;align-items:flex-start;gap:11px;padding:14px;border-radius:16px;
+  background:#fff5df;border:1px solid #f1dfb7;font-size:12px;line-height:1.5;font-weight:650;color:#5e4c30}
+.community-agreement input{flex:0 0 18px;min-width:18px;min-height:18px;margin-top:2px;accent-color:#FC6741}
+.report-trigger{border:none;background:transparent;color:#766e63;font-size:12px;text-decoration:underline;
+  text-underline-offset:3px;padding:9px;min-height:42px;cursor:pointer}
+.report-overlay{position:fixed;inset:0;z-index:100;background:rgba(30,25,22,.6);
+  display:flex;justify-content:center;align-items:center;padding:20px}
+.report-dialog{position:relative;background:#fffdfa;border-radius:22px;padding:23px;width:min(100%,440px);
+  max-height:calc(100dvh - 40px);overflow:auto;box-shadow:0 18px 65px rgba(0,0,0,.2)}
+.report-dialog h2{font-size:23px;margin:0 36px 6px 0}
+.report-dialog>p{color:#81766b;font-size:13px;margin-bottom:17px;overflow-wrap:anywhere}
+.report-close{position:absolute;right:13px;top:13px;border:0;background:#f2eee7;border-radius:50%;
+  width:39px;height:39px;display:grid;place-items:center}
+.content-report-list{display:grid;gap:11px;margin-top:15px}
+.content-report{display:grid;gap:8px;border:1px solid #eee0d1;border-radius:16px;padding:13px;min-width:0}
+.content-report strong,.content-report p{overflow-wrap:anywhere}
+.content-report small{color:#9c5832;font-weight:750}
+.content-report .danger-text{border:0;border-radius:12px;padding:10px 13px;background:#fff0ec;min-height:42px}
