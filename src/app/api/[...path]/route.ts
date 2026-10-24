@@ -10,6 +10,7 @@ import { oauthCookie,randomToken,safeAppOrigin } from '@/lib/security';
 import { violatesCommunityLanguage } from '@/lib/content-policy';
 import {processAccountDeletionJob} from '@/lib/account-deletion';
 import {processShopDeletionJob} from '@/lib/shop-deletion';
+import {towerLabels,currentTowerScheme} from '@/lib/towers';
 import {IMAGE_MIME_TYPES, imageSizeIsAllowed} from '@/lib/image-limits';
 
 export const runtime='nodejs';
@@ -497,7 +498,7 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
   approved(u);
   if(path==='favorites'&&method==='GET'){
     const r=await query(
-      "SELECT p.id,p.shop_id,p.category_id,p.name,p.description,p.price_cents,p.promo_price_cents,p.image_url,p.stock,p.visibility,p.lead_time,p.is_featured,p.option_groups,s.name AS shop_name,s.is_open FROM favorites f JOIN products p ON p.id=f.product_id AND p.condominium_id=f.condominium_id JOIN categories c ON c.id=p.category_id AND c.condominium_id=p.condominium_id AND c.is_active=true JOIN shops s ON s.id=p.shop_id AND s.condominium_id=f.condominium_id WHERE f.condominium_id=$1 AND f.user_id=$2 AND p.visibility<>'hidden' AND s.status='approved' ORDER BY f.created_at DESC LIMIT 150",
+      "SELECT p.id,p.shop_id,p.category_id,p.name,p.description,p.price_cents,p.promo_price_cents,p.image_url,p.stock,p.visibility,p.lead_time,p.is_featured,p.option_groups,s.name AS shop_name,s.is_open FROM favorites f JOIN products p ON p.id=f.product_id AND p.condominium_id=f.condominium_id JOIN categories c ON c.id=p.category_id AND c.condominium_id=p.condominium_id AND c.is_active=true JOIN shops s ON s.id=p.shop_id AND s.condominium_id=f.condominium_id WHERE f.condominium_id=$1 AND f.user_id=$2 AND p.visibility<>'hidden' AND p.deleted_at IS NULL AND s.status='approved' ORDER BY f.created_at DESC LIMIT 150",
       [u.condominium_id,u.id]
     );
     return out({ids:r.rows.map(row=>row.id),products:r.rows});
@@ -505,7 +506,7 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
   if(path==='favorites'&&method==='POST'){
     const b=z.object({product_id:z.string().uuid()}).parse(await body(req));
     const valid=await query(
-      "SELECT p.id FROM products p JOIN categories c ON c.id=p.category_id AND c.condominium_id=p.condominium_id AND c.is_active=true JOIN shops s ON s.id=p.shop_id AND s.condominium_id=p.condominium_id WHERE p.id=$1 AND p.condominium_id=$2 AND p.visibility<>'hidden' AND s.status='approved'",
+      "SELECT p.id FROM products p JOIN categories c ON c.id=p.category_id AND c.condominium_id=p.condominium_id AND c.is_active=true JOIN shops s ON s.id=p.shop_id AND s.condominium_id=p.condominium_id WHERE p.id=$1 AND p.condominium_id=$2 AND p.visibility<>'hidden' AND p.deleted_at IS NULL AND s.status='approved'",
       [b.product_id,u.condominium_id]
     );
     if(!valid.rowCount)bad('Produto indisponível.',404);
@@ -531,7 +532,7 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
     if(category&&!uuid(category))bad('Categoria inválida.');
     const escaped='%'+search.replace(/[%_\\]/g,'')+'%';
     const result=await query(
-      "SELECT p.id,p.shop_id,p.category_id,p.name,p.description,p.price_cents,p.promo_price_cents,p.image_url,p.stock,p.visibility,p.lead_time,p.is_featured,p.option_groups,s.name AS shop_name,s.is_open FROM products p JOIN categories c ON c.id=p.category_id AND c.condominium_id=p.condominium_id AND c.is_active=true JOIN shops s ON s.id=p.shop_id AND s.condominium_id=p.condominium_id WHERE p.condominium_id=$1 AND p.visibility<>'hidden' AND s.status='approved' AND ($2::uuid IS NULL OR p.category_id=$2::uuid) AND ($3::text='' OR p.name ILIKE $3 ESCAPE '\\' OR s.name ILIKE $3 ESCAPE '\\') ORDER BY p.created_at DESC,p.id DESC LIMIT $4 OFFSET $5",
+      "SELECT p.id,p.shop_id,p.category_id,p.name,p.description,p.price_cents,p.promo_price_cents,p.image_url,p.stock,p.visibility,p.lead_time,p.is_featured,p.option_groups,s.name AS shop_name,s.is_open FROM products p JOIN categories c ON c.id=p.category_id AND c.condominium_id=p.condominium_id AND c.is_active=true JOIN shops s ON s.id=p.shop_id AND s.condominium_id=p.condominium_id WHERE p.condominium_id=$1 AND p.visibility<>'hidden' AND p.deleted_at IS NULL AND s.status='approved' AND ($2::uuid IS NULL OR p.category_id=$2::uuid) AND ($3::text='' OR p.name ILIKE $3 ESCAPE '\\' OR s.name ILIKE $3 ESCAPE '\\') ORDER BY p.created_at DESC,p.id DESC LIMIT $4 OFFSET $5",
       [u.condominium_id,category,search?escaped:'',limit+1,page*limit]
     );
     return out({products:result.rows.slice(0,limit),hasMore:result.rows.length>limit,page});
@@ -540,7 +541,7 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
     const [categories,shops,products]=await Promise.all([
       query('SELECT id,name,icon FROM categories WHERE condominium_id=$1 AND is_active=true ORDER BY sort_order,name',[u.condominium_id]),
       query("SELECT id,name,description,cover_image,logo_image,is_open,delivery_enabled,pickup_enabled,delivery_fee_cents,lead_time FROM shops WHERE condominium_id=$1 AND status='approved' ORDER BY is_open DESC,created_at DESC LIMIT 100",[u.condominium_id]),
-      query("SELECT p.id,p.shop_id,p.category_id,p.name,p.description,p.price_cents,p.promo_price_cents,p.image_url,p.stock,p.visibility,p.lead_time,p.is_featured,p.option_groups,s.name AS shop_name,s.is_open FROM products p JOIN categories c ON c.id=p.category_id AND c.condominium_id=p.condominium_id AND c.is_active=true JOIN shops s ON s.id=p.shop_id WHERE p.condominium_id=$1 AND s.condominium_id=$1 AND p.visibility<>'hidden' AND s.status='approved' ORDER BY p.is_featured DESC,p.created_at DESC LIMIT 48",[u.condominium_id])
+      query("SELECT p.id,p.shop_id,p.category_id,p.name,p.description,p.price_cents,p.promo_price_cents,p.image_url,p.stock,p.visibility,p.lead_time,p.is_featured,p.option_groups,s.name AS shop_name,s.is_open FROM products p JOIN categories c ON c.id=p.category_id AND c.condominium_id=p.condominium_id AND c.is_active=true JOIN shops s ON s.id=p.shop_id WHERE p.condominium_id=$1 AND s.condominium_id=$1 AND p.visibility<>'hidden' AND p.deleted_at IS NULL AND s.status='approved' ORDER BY p.is_featured DESC,p.created_at DESC LIMIT 48",[u.condominium_id])
     ]);
     return out({categories:categories.rows,shops:shops.rows,products:products.rows});
   }
@@ -639,7 +640,7 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
     if(method==='GET'){
       const r=await query("SELECT * FROM shops WHERE condominium_id=$1 AND owner_id=$2 AND status<>'deleted'",[u.condominium_id,u.id]);
       const shop=r.rows[0]??null;
-      const products=shop?(await query('SELECT * FROM products WHERE condominium_id=$1 AND shop_id=$2 ORDER BY created_at DESC',[u.condominium_id,shop.id])).rows:[];
+      const products=shop?(await query('SELECT * FROM products WHERE condominium_id=$1 AND shop_id=$2 AND deleted_at IS NULL ORDER BY created_at DESC',[u.condominium_id,shop.id])).rows:[];
       return out({shop,products});
     }
     if(method==='DELETE'){
@@ -721,7 +722,7 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
     if(!uuid(parts[1]))bad('Loja inválida.');
     const s=await query("SELECT id,name,description,cover_image,logo_image,is_open,delivery_enabled,pickup_enabled,delivery_fee_cents,lead_time,pickup_instructions FROM shops WHERE id=$1 AND condominium_id=$2 AND status='approved'",[parts[1],u.condominium_id]);
     if(!s.rowCount)bad('Loja não encontrada.',404);
-    const p=await query("SELECT id,shop_id,category_id,name,description,price_cents,promo_price_cents,image_url,stock,visibility,lead_time,option_groups FROM products p WHERE shop_id=$1 AND condominium_id=$2 AND visibility<>'hidden' AND EXISTS (SELECT 1 FROM categories c WHERE c.id=p.category_id AND c.condominium_id=p.condominium_id AND c.is_active=true) ORDER BY created_at DESC",[parts[1],u.condominium_id]);
+    const p=await query("SELECT id,shop_id,category_id,name,description,price_cents,promo_price_cents,image_url,stock,visibility,lead_time,option_groups FROM products p WHERE shop_id=$1 AND condominium_id=$2 AND visibility<>'hidden' AND deleted_at IS NULL AND EXISTS (SELECT 1 FROM categories c WHERE c.id=p.category_id AND c.condominium_id=p.condominium_id AND c.is_active=true) ORDER BY created_at DESC",[parts[1],u.condominium_id]);
     return out({shop:s.rows[0],products:p.rows});
   }
   if((path==='media'||path==='media/profile')&&method==='POST'){
@@ -805,11 +806,11 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
     const shop=await shopOwned(u,true);
     const b=z.object({visibility:z.enum(['available','unavailable','hidden'])}).parse(await body(req));
     const updated=await query(
-      'UPDATE products SET visibility=$1,is_available=($1=\'available\') WHERE id=$2 AND condominium_id=$3 AND shop_id=$4 AND moderation_blocked=false RETURNING *',
+      'UPDATE products SET visibility=$1,is_available=($1=\'available\') WHERE id=$2 AND condominium_id=$3 AND shop_id=$4 AND moderation_blocked=false AND deleted_at IS NULL RETURNING *',
       [b.visibility,parts[1],u.condominium_id,shop.id]
     );
     if(!updated.rowCount){
-      const exists=await query('SELECT moderation_blocked FROM products WHERE id=$1 AND condominium_id=$2 AND shop_id=$3',
+      const exists=await query('SELECT moderation_blocked FROM products WHERE id=$1 AND condominium_id=$2 AND shop_id=$3 AND deleted_at IS NULL',
         [parts[1],u.condominium_id,shop.id]);
       if(exists.rows[0]?.moderation_blocked)bad('Este produto foi bloqueado pela administração.',403);
       bad('Produto não encontrado.',404);
@@ -819,10 +820,18 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
   if(parts[0]==='products'&&parts[1]&&['PATCH','DELETE'].includes(method)){
     if(!uuid(parts[1]))bad('Produto inválido.');
     const shop=await shopOwned(u,true);
-    const owned=await query('SELECT id,moderation_blocked FROM products WHERE id=$1 AND shop_id=$2 AND condominium_id=$3',[parts[1],shop.id,u.condominium_id]);
+    const owned=await query('SELECT id,moderation_blocked FROM products WHERE id=$1 AND shop_id=$2 AND condominium_id=$3 AND deleted_at IS NULL',[parts[1],shop.id,u.condominium_id]);
     if(!owned.rowCount)bad('Produto não encontrado.',404);
     if(method==='DELETE'){
-      await query("UPDATE products SET is_available=false,visibility='hidden' WHERE id=$1 AND shop_id=$2",[parts[1],shop.id]);
+      z.object({confirmation:z.literal('EXCLUIR PRODUTO')}).parse(await body(req));
+      await transaction(async tx=>{
+        const removed=await tx.query("UPDATE products SET is_available=false,visibility='hidden',deleted_at=now() WHERE id=$1 AND shop_id=$2 AND condominium_id=$3 AND deleted_at IS NULL RETURNING id",
+          [parts[1],shop.id,u.condominium_id]);
+        if(!removed.rowCount)bad('Produto não encontrado.',404);
+        await tx.query("DELETE FROM favorites WHERE product_id=$1 AND condominium_id=$2",[parts[1],u.condominium_id]);
+        await tx.query("DELETE FROM content_reports WHERE target_type='product' AND target_id=$1 AND condominium_id=$2 AND status='open'",
+          [parts[1],u.condominium_id]);
+      });
       return out({ok:true});
     }
     if(owned.rows[0].moderation_blocked)bad('Este produto está bloqueado pela administração.',403);
@@ -839,7 +848,7 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
     const cat=await query('SELECT id FROM categories WHERE id=$1 AND condominium_id=$2 AND is_active=true',[b.category_id,u.condominium_id]);
     if(!cat.rowCount)bad('Categoria inválida.');
     const r=await query(
-      'UPDATE products SET name=$1,description=$2,category_id=$3,price_cents=$4,promo_price_cents=$5,stock=$6,image_url=$7,is_available=$8,lead_time=$9,visibility=$13,option_groups=$14::jsonb WHERE id=$10 AND shop_id=$11 AND condominium_id=$12 RETURNING *',
+      'UPDATE products SET name=$1,description=$2,category_id=$3,price_cents=$4,promo_price_cents=$5,stock=$6,image_url=$7,is_available=$8,lead_time=$9,visibility=$13,option_groups=$14::jsonb WHERE id=$10 AND shop_id=$11 AND condominium_id=$12 AND deleted_at IS NULL RETURNING *',
       [b.name,b.description,b.category_id,b.price_cents,b.promo_price_cents,b.stock,imagePath(b.image_url),
         (b.visibility??(b.is_available===false?'hidden':'available'))==='available',b.lead_time,parts[1],shop.id,u.condominium_id,
         b.visibility??(b.is_available===false?'hidden':'available'),JSON.stringify(b.option_groups)]
@@ -888,7 +897,7 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
       const ids=[...new Set(b.items.map(i=>i.id))];
       const dbItems=await tx.query(
         "SELECT * FROM products WHERE id=ANY($1::uuid[]) AND condominium_id=$2 AND shop_id=$3 "+
-        "AND is_available=true AND visibility='available' AND moderation_blocked=false AND EXISTS (SELECT 1 FROM categories c WHERE c.id=products.category_id AND c.condominium_id=products.condominium_id AND c.is_active=true) ORDER BY id FOR UPDATE",
+        "AND is_available=true AND visibility='available' AND moderation_blocked=false AND deleted_at IS NULL AND EXISTS (SELECT 1 FROM categories c WHERE c.id=products.category_id AND c.condominium_id=products.condominium_id AND c.is_active=true) ORDER BY id FOR UPDATE",
         [ids,u.condominium_id,shop.id]
       );
       if(dbItems.rows.length!==ids.length)bad('Um ou mais produtos estão indisponíveis.');
@@ -997,7 +1006,7 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
       query("SELECT (SELECT count(*)::int FROM users WHERE condominium_id=$1 AND status='approved') AS residents, (SELECT count(*)::int FROM shops WHERE condominium_id=$1 AND status='approved') AS shops,(SELECT count(*)::int FROM orders WHERE condominium_id=$1) AS orders",[u.condominium_id]),
       query('SELECT id,name,icon FROM categories WHERE condominium_id=$1 AND is_active=true ORDER BY sort_order,name',[u.condominium_id])
     ]);
-    return out({residents:residents.rows,shops:shops.rows,stats:stats.rows[0],categories:categories.rows});
+    return out({residents:residents.rows,shops:shops.rows,stats:stats.rows[0],categories:categories.rows,towers:u.towers});
   }
   if(path==='reports'&&method==='POST'){
     const b=z.object({
@@ -1009,7 +1018,7 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
       ?await query("SELECT id,owner_id FROM shops WHERE id=$1 AND condominium_id=$2 AND status='approved'",
         [b.target_id,u.condominium_id])
       :await query("SELECT p.id,s.owner_id FROM products p JOIN shops s ON s.id=p.shop_id AND s.condominium_id=p.condominium_id "+
-        "WHERE p.id=$1 AND p.condominium_id=$2 AND p.visibility<>'hidden' AND s.status='approved'",
+        "WHERE p.id=$1 AND p.condominium_id=$2 AND p.visibility<>'hidden' AND p.deleted_at IS NULL AND s.status='approved'",
         [b.target_id,u.condominium_id]);
     if(!target.rowCount)bad('Conteúdo não encontrado.',404);
     if(target.rows[0].owner_id===u.id)bad('Não é possível denunciar sua própria loja.',400);
@@ -1040,7 +1049,7 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
     admin(u);
     if(!uuid(parts[2]))bad('Produto inválido.');
     const updated=await query(
-      "UPDATE products SET moderation_blocked=false WHERE id=$1 AND condominium_id=$2 AND moderation_blocked=true RETURNING id",
+      "UPDATE products SET moderation_blocked=false WHERE id=$1 AND condominium_id=$2 AND moderation_blocked=true AND deleted_at IS NULL RETURNING id",
       [parts[2],u.condominium_id]
     );
     if(!updated.rowCount)bad('Produto não encontrado ou não está bloqueado.',404);
@@ -1061,7 +1070,7 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
       if(b.action==='hide_product'){
         if(r.target_type!=='product')bad('Esta denúncia não é de um produto.');
         await tx.query(
-          "UPDATE products SET visibility='hidden',is_available=false,moderation_blocked=true WHERE id=$1 AND condominium_id=$2",
+          "UPDATE products SET visibility='hidden',is_available=false,moderation_blocked=true WHERE id=$1 AND condominium_id=$2 AND deleted_at IS NULL",
           [r.target_id,u.condominium_id]
         );
       }
@@ -1109,6 +1118,37 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
       const r=await query('INSERT INTO categories(condominium_id,name,icon) VALUES($1,$2,$3) RETURNING *',[u.condominium_id,b.name,b.icon]);
       return out({category:r.rows[0]},201);
     }catch(e:unknown){if((e as {code?:string}).code==='23505')bad('Categoria já existente.',409);throw e;}
+  }
+  if(path==='admin/towers'&&method==='PATCH'){
+    admin(u);
+    const input=z.object({scheme:z.enum(['letters','numbers']),count:z.number().int().min(1).max(30)}).parse(await body(req));
+    const updated=await transaction(async tx=>{
+      const locked=await tx.query('SELECT towers FROM condominiums WHERE id=$1 FOR UPDATE',[u.condominium_id]);
+      if(!locked.rowCount)bad('Condomínio não encontrado.',404);
+      const old:string[]=locked.rows[0].towers;
+      if(!Array.isArray(old)||!old.every(value=>typeof value==='string')||!currentTowerScheme(old))
+        bad('Configuração de torres personalizada. Ajuste os endereços existentes antes de alterar.',409);
+      const next=towerLabels(input.scheme,input.count);
+      const removed=old.slice(input.count);
+      if(removed.length){
+        const occupied=await tx.query(
+          "SELECT COUNT(*)::int AS n FROM users WHERE condominium_id=$1 AND role='resident' AND status<>'deleted' AND tower=ANY($2::text[])",
+          [u.condominium_id,removed]
+        );
+        if(occupied.rows[0].n>0)bad('Existem moradores em torres que seriam removidas. Mantenha a quantidade atual ou maior.',409);
+      }
+      // Preserve residents' building position when changing from numbers to letters.
+      // The configured identifiers are never inferred from apartment numbers.
+      for(let i=0;i<Math.min(old.length,next.length);i++){
+        if(old[i]!==next[i])await tx.query(
+          "UPDATE users SET tower=$1 WHERE condominium_id=$2 AND role='resident' AND status<>'deleted' AND tower=$3",
+          [next[i],u.condominium_id,old[i]]
+        );
+      }
+      await tx.query('UPDATE condominiums SET towers=$1::jsonb WHERE id=$2',[JSON.stringify(next),u.condominium_id]);
+      return next;
+    });
+    return out({towers:updated,message:'Identificação das torres atualizada.'});
   }
   if(path==='admin/invite'&&method==='POST'){
     admin(u);

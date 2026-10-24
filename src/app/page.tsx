@@ -6,6 +6,7 @@ import {RoundedStars} from '@/components/RoundedStars';
 import {ImageCropper,type ImageKind} from '@/components/ImageCropper';
 import {clientUUID} from '@/lib/client-uuid';
 import {parseMoneyInput} from '@/lib/money-input';
+import {towerLabels,currentTowerScheme,type TowerScheme} from '@/lib/towers';
 import {artwork,getCategoryArtwork} from '@/lib/artwork';
 import {IMAGE_MIME_TYPES, imageSizeIsAllowed} from '@/lib/image-limits';
 import {selectedOptions, extrasTotal, arrivalInstructionOptions, toggleArrivalInstruction, type OptionGroup, type Selection} from '@/lib/orders';
@@ -53,7 +54,7 @@ function MoneyInput({cents,onValue}:{cents:number;onValue:(value:number)=>void})
     }} onBlur={()=>setFocused(false)}/>;
 }
 type HomeData={categories:Category[];shops:Shop[];products:Product[]};
-type AdminData={residents:{id:string;name:string;email:string;tower:string;apartment:string;status:string}[];shops:{id:string;name:string;owner_name:string;status:string}[];stats:{residents:number;shops:number;orders:number};categories:Category[]};
+type AdminData={towers:string[];residents:{id:string;name:string;email:string;tower:string;apartment:string;status:string}[];shops:{id:string;name:string;owner_name:string;status:string}[];stats:{residents:number;shops:number;orders:number};categories:Category[]};
 type View='home'|'categories'|'favorites'|'orders'|'account'|'shop'|'product'|'cart'|'success'|'seller'|'admin';
 const money=(n:number)=>new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(n/100);
 const price=(p:Product)=>p.promo_price_cents??p.price_cents;
@@ -203,6 +204,7 @@ export default function Page(){
   const [reviewRating,setReviewRating]=useState(0);
   const [reviewText,setReviewText]=useState('');
   const [sharedShopId,setSharedShopId]=useState<string|null>(null);
+  const [shareFallback,setShareFallback]=useState<{link:string;name:string}|null>(null);
   const [selectedProduct,setSelectedProduct]=useState<Product|null>(null);
   const [qty,setQty]=useState(1);
   const [itemNote,setItemNote]=useState('');
@@ -230,6 +232,7 @@ export default function Page(){
   const [shopForm,setShopForm]=useState({name:'',description:'',whatsapp:'',is_open:true,delivery_enabled:true,delivery_fee_cents:0,pickup_enabled:true,lead_time:'',pickup_instructions:'',cover_image:'',logo_image:''});
   const [productForm,setProductForm]=useState({id:'',name:'',description:'',category_id:'',price:'',promo:'',stock:'',image_url:'',visibility:'available' as Product['visibility'],lead_time:'',option_groups:[] as OptionGroup[]});
   const [editingProduct,setEditingProduct]=useState(false);
+  const [deleteProductTarget,setDeleteProductTarget]=useState<Product|null>(null);
   const [profile,setProfile]=useState({name:'',phone:'',tower:'',apartment:'',avatar_image:''});
   const [invite,setInvite]=useState('');
   const [customCode,setCustomCode]=useState('');
@@ -240,6 +243,8 @@ export default function Page(){
   const [reportDetails,setReportDetails]=useState('');
   const [newCategory,setNewCategory]=useState('');
   const [categoryIcon,setCategoryIcon]=useState('sandwich');
+  const [towerScheme,setTowerScheme]=useState<TowerScheme>('letters');
+  const [towerCount,setTowerCount]=useState(30);
 
   const notify=(msg:string)=>{setToast(msg);setError('');};
   const fail=(e:unknown)=>setError(e instanceof Error?e.message:'Não foi possível concluir.');
@@ -285,6 +290,9 @@ export default function Page(){
       api<AdminData>('admin/summary'),api<{reports:ContentReport[]}>('admin/reports')
     ]);
     setAdminData(summary);setReports(queue.reports);
+    const scheme=currentTowerScheme(summary.towers??[]);
+    if(scheme)setTowerScheme(scheme);
+    setTowerCount(summary.towers?.length||30);
   },[]);
   const refresh=useCallback(async(u:Viewer)=>{
     await Promise.all([loadHome(),loadMine(),loadOrders(),loadFavorites(),...(u.role==='admin'?[loadAdmin()]:[])]);
@@ -483,7 +491,9 @@ export default function Page(){
     const url=new URL('/',window.location.origin);
     url.searchParams.set('loja',id);
     const link=url.toString();
-    if(typeof navigator.share==='function'){
+    // Native Android/iOS share sheet is available on HTTPS (secure context).
+    // Call share directly in the user's click, before any other awaited work.
+    if(window.isSecureContext&&typeof navigator.share==='function'){
       try{
         await navigator.share({title:name,text:'Conheça esta loja no Condovery!',url:link});
         return;
@@ -491,9 +501,15 @@ export default function Page(){
         if(e instanceof DOMException&&e.name==='AbortError')return;
       }
     }
+    // HTTP LAN origins cannot invoke the OS share sheet. Provide useful alternatives
+    // instead of silently copying a link.
+    setShareFallback({link,name});
+  }
+  async function copyShopLink(link:string){
     try{
       await navigator.clipboard.writeText(link);
       notify('Link da loja copiado!');
+      setShareFallback(null);
     }catch{
       window.prompt('Copie o link da loja:',link);
     }
@@ -639,7 +655,7 @@ export default function Page(){
       setMyShop(result.shop);
       setShopForm(current=>({...current,is_open:result.shop.is_open}));
       await loadHome();
-      notify(result.shop.is_open?'Loja reaberta e aceitando pedidos.':'Loja pausada. Novos pedidos estão bloqueados.');
+      notify(result.shop.is_open?'Loja aberta e aceitando pedidos.':'Loja fechada. Novos pedidos estão bloqueados.');
     }catch(e){fail(e);}finally{setBusy(false);}
   }
   async function deleteShop(e:React.FormEvent){
@@ -701,6 +717,34 @@ export default function Page(){
         visibility:productForm.visibility,lead_time:productForm.lead_time,option_groups:productForm.option_groups};
       await api(productForm.id?'products/'+productForm.id:'products',{method:productForm.id?'PATCH':'POST',body:payload(b)});
       setEditingProduct(false);await Promise.all([loadMine(),loadHome()]);notify('Produto salvo.');
+    }catch(e){fail(e);}finally{setBusy(false);}
+  }
+  async function deleteProduct(){
+    if(!deleteProductTarget||busy)return;
+    const id=deleteProductTarget.id;
+    setBusy(true);setError('');
+    try{
+      await api('products/'+id,{method:'DELETE',body:payload({confirmation:'EXCLUIR PRODUTO'})});
+      setCart(items=>items.filter(item=>item.product.id!==id));
+      if(selectedProduct?.id===id){setSelectedProduct(null);go('home');}
+      setDeleteProductTarget(null);
+      setEditingProduct(false);
+      setSelectedShop(prev=>prev?{...prev,products:prev.products.filter(p=>p.id!==id)}:null);
+      await Promise.all([loadMine(),loadHome(),loadFavorites()]);
+      notify('Produto excluído da loja. O histórico dos pedidos foi preservado.');
+    }catch(e){fail(e);}finally{setBusy(false);}
+  }
+  async function saveTowers(e:React.FormEvent){
+    e.preventDefault();setBusy(true);setError('');
+    try{
+      const r=await api<{towers:string[];message:string}>('admin/towers',{method:'PATCH',body:payload({scheme:towerScheme,count:towerCount})});
+      setAdminData(prev=>prev?{...prev,towers:r.towers,residents:prev.residents.map(resident=>{
+        const current=adminData?.towers.indexOf(resident.tower)??-1;
+        return current>=0?{...resident,tower:r.towers[current]??resident.tower}:resident;
+      })}:prev);
+      setViewer(prev=>prev?{...prev,towers:r.towers}:prev);
+      await loadAdmin();
+      notify(r.message);
     }catch(e){fail(e);}finally{setBusy(false);}
   }
   async function adminAction(target:'users'|'shops',id:string,status:string){
@@ -882,7 +926,7 @@ export default function Page(){
         {!query&&<><SectionHeader title="Lojas em destaque" action="Ver todas" onAction={()=>{setCategory('');go('categories');}}/>
           <div className="shops-list">{home.shops.length?home.shops.slice(0,8).map(s=><button className="shop-row" key={s.id} onClick={()=>openShop(s.id)}>
             <ShopLogo src={s.logo_image??s.cover_image} name={s.name}/>
-            <div><strong>{s.name}</strong><p>{s.description||'Conheça os produtos dessa loja'}</p><span className={'open-hint'+(!s.is_open?' closed':'')}><span/> {s.is_open?'Aceitando pedidos':'Pausada'}</span></div><ChevronRight size={20}/></button>):
+            <div><strong>{s.name}</strong><p>{s.description||'Conheça os produtos dessa loja'}</p><span className={'open-hint'+(!s.is_open?' closed':'')}><span/> {s.is_open?'Aceitando pedidos':'Fechada'}</span></div><ChevronRight size={20}/></button>):
             <Empty art="emptyShops" title="Nenhuma loja publicada" subtitle="Seja a primeira pessoa a abrir uma loja no condomínio." action="Criar minha loja" onAction={()=>go('seller')}/>}</div>
         </>}
       </>}
@@ -918,7 +962,7 @@ export default function Page(){
         <div className="shop-profile-photo"><ShopLogo src={selectedShop.shop.logo_image} name={selectedShop.shop.name}/></div>
         <div className="shop-head"><div><h1>{selectedShop.shop.name}</h1><p>{selectedShop.shop.description}</p></div>
           <div className="shop-actions">
-            <Pill tone={selectedShop.shop.is_open?'green':'neutral'}>{selectedShop.shop.is_open?'Aceitando pedidos':'Pausada'}</Pill>
+            <Pill tone={selectedShop.shop.is_open?'green':'neutral'}>{selectedShop.shop.is_open?'Aceitando pedidos':'Fechada'}</Pill>
             <button className="shop-share-button" onClick={()=>shareShop(selectedShop.shop.id,selectedShop.shop.name)}>
               <Share2 size={17}/> Compartilhar loja
             </button>
@@ -1122,6 +1166,24 @@ export default function Page(){
         </button>}</div></div>
       </>}
 
+      {deleteProductTarget&&view==='seller'&&<div className="account-delete-overlay" role="presentation"
+        onClick={()=>!busy&&setDeleteProductTarget(null)}>
+        <section className="account-delete-dialog" role="dialog" aria-modal="true" aria-labelledby="delete-product-title"
+          onClick={event=>event.stopPropagation()}>
+          <button type="button" className="account-delete-close" aria-label="Cancelar exclusão de produto"
+            disabled={busy} onClick={()=>setDeleteProductTarget(null)}><X size={20}/></button>
+          <h2 id="delete-product-title">Excluir produto?</h2>
+          <p>O produto <strong>{deleteProductTarget.name}</strong> sairá da vitrine e da sua lista de produtos.
+            Esta ação não poderá ser desfeita. Os pedidos anteriores continuarão no histórico.</p>
+          {error&&<p className="account-delete-error" role="alert">{error}</p>}
+          <div className="product-delete-dialog-actions">
+            <button type="button" className="outline-button" disabled={busy}
+              onClick={()=>setDeleteProductTarget(null)}>Cancelar</button>
+            <button type="button" className="account-delete-submit" disabled={busy} onClick={deleteProduct}>
+              {busy?'Excluindo...':'Excluir produto'}</button>
+          </div>
+        </section>
+      </div>}
       {showDeleteShop&&myShop&&view==='seller'&&<div className="account-delete-overlay" role="presentation"
         onClick={()=>!busy&&setShowDeleteShop(false)}>
         <section className="account-delete-dialog" role="dialog" aria-modal="true" aria-labelledby="delete-shop-title"
@@ -1196,19 +1258,19 @@ export default function Page(){
         </form></div>:<>
           <div className="seller-overview"><div><strong>{myShop.name}</strong><p>Seu painel de vendas</p></div>
             <div className="seller-overview-actions">
-              <Pill tone={myShop.status==='approved'&&myShop.is_open?'green':'orange'}>{myShop.status==='approved'&&!myShop.is_open?'Pausada':statusLabel[myShop.status??'pending']}</Pill>
+              <Pill tone={myShop.status==='approved'&&myShop.is_open?'green':'orange'}>{myShop.status==='approved'&&!myShop.is_open?'Fechada':statusLabel[myShop.status??'pending']}</Pill>
               {myShop.status==='approved'&&<>
                 <button className="outline-button seller-pause-button" disabled={busy} type="button" onClick={toggleShopOpen}>
                   {myShop.is_open?<PauseCircle size={17}/>:<PlayCircle size={17}/>}
-                  {myShop.is_open?'Pausar loja':'Reabrir loja'}</button>
+                  {myShop.is_open?'Fechar loja':'Abrir loja'}</button>
                 <button className="shop-share-button" onClick={()=>shareShop(myShop.id,myShop.name)}>
                   <Share2 size={16}/> Compartilhar loja</button>
               </>}
             </div></div>
           <div className={'seller-activation'+(myShop.status==='approved'?(myShop.is_open?' approved':' paused'):myShop.status==='suspended'?' suspended':'')}>
             <div className="activation-symbol">{myShop.status==='approved'?<CheckCircle2 size={28}/>:<Clock3 size={28}/>}</div>
-            <div><strong>{myShop.status==='approved'?(myShop.is_open?'Sua loja está ativa!':'Sua loja está pausada'):myShop.status==='suspended'?'Loja suspensa':'Ativando sua loja'}</strong>
-              <p>{myShop.status==='approved'?(!myShop.is_open?'A loja está pausada e não recebe novos pedidos. Reabra quando quiser.':myProducts.length?'Sua loja está pronta para receber pedidos.':'Agora adicione seus produtos para começar a vender.'):
+            <div><strong>{myShop.status==='approved'?(myShop.is_open?'Sua loja está ativa!':'Sua loja está fechada'):myShop.status==='suspended'?'Loja suspensa':'Ativando sua loja'}</strong>
+              <p>{myShop.status==='approved'?(!myShop.is_open?'A loja está fechada e não recebe novos pedidos. Abra quando quiser.':myProducts.length?'Sua loja está pronta para receber pedidos.':'Agora adicione seus produtos para começar a vender.'):
                 myShop.status==='suspended'?'Fale com a administração do condomínio.':'Sua loja ficará disponível automaticamente.'}</p>
             </div>
           </div>
@@ -1272,7 +1334,7 @@ export default function Page(){
           </>}
           {sellerTab==='products'&&<><div className="section-heading"><h2>Seus produtos</h2><button className="mini-primary" disabled={myShop.status!=='approved'} onClick={()=>editProduct()}><Plus size={17}/>Adicionar</button></div>
             {editingProduct?<form className="white-panel form-stack product-editor" onSubmit={saveProduct}>
-              <div className="section-heading"><h2>{productForm.id?'Editar produto':'Novo produto'}</h2><button type="button" onClick={()=>setEditingProduct(false)}><X size={19}/></button></div>
+              <div className="section-heading"><h2>{productForm.id?'Editar produto':'Novo produto'}</h2><button type="button" className="product-editor-close" aria-label="Fechar editor do produto" title="Fechar" onClick={()=>setEditingProduct(false)}><X size={20}/></button></div>
               <label>Foto do produto<div className="image-upload">{productForm.image_url?<img src={productForm.image_url} alt="Prévia do produto"/>:<ImagePlus size={29}/>}<span>Selecionar foto (até 10 MB)</span><input aria-label="Enviar foto do produto" type="file" accept="image/jpeg,image/png,image/webp" onChange={e=>{const f=e.target.files?.[0];e.target.value='';choosePhoto(f,'product');}}/></div></label>
               <label>Nome<input required minLength={2} maxLength={100} value={productForm.name} onChange={e=>setProductForm(s=>({...s,name:e.target.value}))}/></label>
               <label>Descrição<textarea rows={3} maxLength={600} value={productForm.description} onChange={e=>setProductForm(s=>({...s,description:e.target.value}))}/></label>
@@ -1320,7 +1382,13 @@ export default function Page(){
                   <option value="hidden">Oculto — só você vê</option>
                 </select>
               </label>
-              <button className="primary-button" disabled={busy} type="submit">{busy?'Salvando...':'Salvar produto'}<Check size={18}/></button>
+              <div className="product-editor-footer">
+                {productForm.id&&<button type="button" disabled={busy} className="product-delete-button"
+                  onClick={()=>setDeleteProductTarget(myProducts.find(p=>p.id===productForm.id)??null)}>
+                  <Trash2 size={17}/> Excluir produto
+                </button>}
+                <button className="primary-button" disabled={busy} type="submit">{busy?'Salvando...':'Salvar produto'}<Check size={18}/></button>
+              </div>
             </form>:myProducts.length?<div className="seller-product-list">
               {myProducts.map(p=><article className={'seller-product-item'+(p.visibility==='unavailable'?' is-unavailable':'')} key={p.id}>
                 <button className="seller-product-edit" onClick={()=>editProduct(p)}>
@@ -1336,6 +1404,8 @@ export default function Page(){
                     onClick={()=>changeProductVisibility(p.id,v)}>
                       {v==='available'?'Disponível':v==='unavailable'?'Indisponível':'Oculto'}
                   </button>)}
+                  <button type="button" className="product-list-delete" aria-label={'Excluir '+p.name}
+                    disabled={busy} onClick={()=>setDeleteProductTarget(p)}><Trash2 size={15}/> Excluir</button>
                 </div>
               </article>)}
             </div>:<Empty title="Seu catálogo está vazio" subtitle="Adicione o primeiro produto para começar a vender."/>}</>}
@@ -1348,7 +1418,7 @@ export default function Page(){
             <label>Foto de capa<div className="image-upload">{shopForm.cover_image?<img src={shopForm.cover_image} alt="Capa"/>:<ImagePlus size={30}/>}<span>Enviar foto de capa</span><input aria-label="Enviar foto de capa" type="file" accept="image/jpeg,image/png,image/webp" onChange={e=>{const f=e.target.files?.[0];e.target.value='';choosePhoto(f,'cover');}}/></div></label>
             <label>Prazo de preparo<input maxLength={100} value={shopForm.lead_time} onChange={e=>setShopForm(s=>({...s,lead_time:e.target.value}))} placeholder="Ex.: Até 2 horas"/></label>
             <label>Orientações para retirada<textarea rows={2} maxLength={250} value={shopForm.pickup_instructions} onChange={e=>setShopForm(s=>({...s,pickup_instructions:e.target.value}))}/></label>
-            <p className="muted seller-pause-note">Para abrir ou pausar as vendas imediatamente, use o botão {myShop.is_open?'Pausar loja':'Reabrir loja'} no topo deste painel.</p>
+            <p className="muted seller-pause-note">Para abrir ou fechar a loja imediatamente, use o botão {myShop.is_open?'Fechar loja':'Abrir loja'} no topo deste painel.</p>
             <label className="check-label"><input type="checkbox" checked={shopForm.delivery_enabled} onChange={e=>setShopForm(s=>({...s,delivery_enabled:e.target.checked}))}/> Oferecer entrega</label>
             {shopForm.delivery_enabled&&<label>Taxa de entrega (R$)
               <MoneyInput cents={shopForm.delivery_fee_cents}
@@ -1373,6 +1443,25 @@ export default function Page(){
         <section className="admin-section"><SectionHeader title="Moradores cadastrados"/>
           {adminData.residents.length?adminData.residents.map(r=><div className="admin-row" key={r.id}><div><strong>{r.name}</strong><p>{r.email} · {r.tower} / {r.apartment}</p><Pill tone={r.status==='approved'?'green':'orange'}>{statusLabel[r.status]}</Pill></div><div className="inline-actions">{r.status==='suspended'&&<button disabled={busy} onClick={()=>adminAction('users',r.id,'approved')}>Reativar</button>}{r.status!=='suspended'&&<button disabled={busy} className="danger-text" onClick={()=>adminAction('users',r.id,'suspended')}>Suspender</button>}</div></div>):<p className="muted">Nenhum morador cadastrado ainda.</p>}</section>
         <section className="admin-section"><SectionHeader title="Lojas"/>{adminData.shops.length?adminData.shops.map(s=><div className="admin-row" key={s.id}><div><strong>{s.name}</strong><p>Responsável: {s.owner_name}</p><Pill tone={s.status==='approved'?'green':'orange'}>{statusLabel[s.status]}</Pill></div><div className="inline-actions">{s.status==='suspended'&&<button disabled={busy} onClick={()=>adminAction('shops',s.id,'approved')}>Reativar</button>}{s.status!=='suspended'&&<button disabled={busy} className="danger-text" onClick={()=>adminAction('shops',s.id,'suspended')}>Suspender</button>}</div></div>):<p className="muted">Nenhuma loja cadastrada.</p>}</section>
+        <section className="admin-section white-panel">
+          <h2><LayoutGrid size={20}/> Torres do condomínio</h2>
+          <p className="muted">Defina como os moradores identificam as torres. Letras: A até AD. Números: 1 até 30. A alteração por posição mantém os moradores em sua torre correspondente.</p>
+          <form className="form-stack tower-settings" onSubmit={saveTowers}>
+            <div className="field-grid">
+              <label>Identificação<select value={towerScheme} onChange={event=>setTowerScheme(event.target.value as TowerScheme)}>
+                <option value="letters">Letras (A, B, C...)</option>
+                <option value="numbers">Números (1, 2, 3...)</option>
+              </select></label>
+              <label>Quantidade de torres<input type="number" min="1" max="30" required
+                value={towerCount} onChange={event=>setTowerCount(Number(event.target.value))}/></label>
+            </div>
+            <p className="muted tower-preview">Prévia: {Number.isInteger(towerCount)&&towerCount>=1&&towerCount<=30?
+              towerLabels(towerScheme,towerCount).join(' · '):'Informe de 1 a 30 torres.'}</p>
+            <small>Se houver moradores em torres que seriam removidas, a alteração será bloqueada. Cadastros existentes são ajustados quando a numeração muda para letras, e vice-versa.</small>
+            <button type="submit" className="outline-button" disabled={busy||towerCount<1||towerCount>30||!Number.isInteger(towerCount)}>
+              Salvar configuração das torres</button>
+          </form>
+        </section>
         <section className="admin-section white-panel"><h2><LayoutGrid size={20}/> Categorias</h2><div className="filter-chips">{adminData.categories.map(c=><span className="category-tag" key={c.id}>{c.name}</span>)}</div><form className="admin-category-form" onSubmit={createCategory}><input required minLength={2} maxLength={60} value={newCategory} onChange={e=>setNewCategory(e.target.value)} placeholder="Nova categoria de alimentação"/><select value={categoryIcon} onChange={e=>setCategoryIcon(e.target.value)} aria-label="Ícone"><option value="cake-slice">Bolos</option><option value="sandwich">Alimentos</option><option value="coffee">Bebidas</option><option value="pizza">Lanches</option><option value="ice-cream-cone">Sobremesas</option><option value="shopping-basket">Mercadinho</option></select><button className="outline-button" disabled={busy} type="submit"><Plus size={16}/>Adicionar</button></form></section>
                 <section className="admin-section white-panel">
           <h2><ShieldCheck size={20}/> Denúncias de conteúdo
@@ -1417,6 +1506,24 @@ export default function Page(){
 </section>
         </>:<Empty title="Carregando administração" subtitle="Confira sua conexão e tente novamente." action="Recarregar" onAction={()=>loadAdmin().catch(fail)}/>}
       </>}
+      {shareFallback&&<div className="share-fallback-overlay" role="presentation"
+        onClick={()=>setShareFallback(null)}>
+        <section className="share-fallback-dialog" role="dialog" aria-modal="true" aria-label="Compartilhar loja"
+          onClick={event=>event.stopPropagation()}>
+          <div className="share-fallback-heading"><div><h2>Compartilhar loja</h2>
+            <p>{shareFallback.name}</p></div>
+            <button type="button" aria-label="Fechar opções de compartilhamento" onClick={()=>setShareFallback(null)}><X size={19}/></button>
+          </div>
+          {!window.isSecureContext&&<p className="share-hint">O painel de compartilhamento do celular requer HTTPS.
+            Neste endereço local, escolha WhatsApp ou copie o link.</p>}
+          <div className="share-fallback-actions">
+            <a href={'https://wa.me/?text='+encodeURIComponent('Conheça esta loja no Condovery! '+shareFallback.link)}
+              target="_blank" rel="noopener noreferrer" onClick={()=>setShareFallback(null)}>
+              <MessageCircle size={20}/> Enviar pelo WhatsApp</a>
+            <button type="button" onClick={()=>copyShopLink(shareFallback.link)}><Share2 size={20}/> Copiar link</button>
+          </div>
+        </section>
+      </div>}
       {reportTarget&&<div className="report-overlay" role="presentation" onClick={()=>setReportTarget(null)}>
         <section className="report-dialog" role="dialog" aria-modal="true" aria-label="Denunciar conteúdo" onClick={e=>e.stopPropagation()}>
           <button className="report-close" aria-label="Fechar denúncia" onClick={()=>setReportTarget(null)}><X size={21}/></button>

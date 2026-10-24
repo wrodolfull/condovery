@@ -25,11 +25,14 @@ assert.ok(invite);
 await request('home',{expected:401});
 const condo=(await request('public/condominium',{method:'POST',body:{invite}})).data;
 assert.equal(condo.name,process.env.BOOTSTRAP_CONDO_NAME);
-assert.ok(condo.towers.includes('Torre 1'));
+assert.equal(condo.towers.length,30);
+const firstTower=condo.towers[0],secondTower=condo.towers[1];
+assert.equal(firstTower,'Torre A');
+assert.equal(condo.towers[29],'Torre AD');
 const buyerEmail='buyer-smoke@example.com';
 const sellerEmail='seller-smoke@example.com';
 for(const [name,email,apt] of [['Buyer Test',buyerEmail,'101'],['Seller Test',sellerEmail,'102']]){
-  await request('auth/register',{method:'POST',body:{name,email,phone:'11999991234',password:pass,invite,tower:'Torre 1',apartment:apt},expected:201});
+  await request('auth/register',{method:'POST',body:{name,email,phone:'11999991234',password:pass,invite,tower:firstTower,apartment:apt},expected:201});
 }
 // Supabase Email Confirmations must precede normal login; the test stub
 // simulates clicking the verification link sent by Auth.
@@ -334,7 +337,7 @@ try{
 const googleSignup=await request('auth/register-google',{
   method:'POST',expected:201,
   cookie:'condovery_google_signup='+pending,
-  body:{invite,name:'Google Resident',phone:'11911111111',tower:'Torre 1',apartment:'103'}
+  body:{invite,name:'Google Resident',phone:'11911111111',tower:firstTower,apartment:'103'}
 });
 assert.ok(googleSignup.cookie?.includes('condovery_session='));
 await request('home',{cookie:googleSignup.cookie});
@@ -362,10 +365,10 @@ assert.equal((await request('favorites',{cookie:buyerCookie})).data.ids.length,0
 
 // Changing address does not trigger approval, although suspension remains possible.
 await request('me',{method:'PATCH',cookie:googleSignup.cookie,
-  body:{name:'Google Resident',phone:'11911111111',tower:'Torre 2',apartment:'202'}});
+  body:{name:'Google Resident',phone:'11911111111',tower:secondTower,apartment:'202'}});
 const newProfile=(await request('me',{cookie:googleSignup.cookie})).data.viewer;
 assert.equal(newProfile.status,'approved');
-assert.equal(newProfile.tower,'Torre 2');
+assert.equal(newProfile.tower,secondTower);
 await request('home',{cookie:googleSignup.cookie});
 
 // A buyer can flag inappropriate words or images; only administrators can take action.
@@ -458,7 +461,7 @@ const deletionEmails=['delete-seller-smoke@example.com','delete-buyer-smoke@exam
 for(const [index,email] of deletionEmails.entries()){
   await request('auth/register',{method:'POST',expected:201,body:{
     name:index===0?'Seller Leaving':'Buyer Leaving',email,phone:'11911112222',
-    password:pass,invite:chosen,tower:'Torre 1',apartment:String(510+index)
+    password:pass,invite:chosen,tower:firstTower,apartment:String(510+index)
   }});
   const verified=await fetch('http://127.0.0.1:3333/__test/confirm?email='+encodeURIComponent(email));
   assert.equal(verified.status,200);
@@ -524,7 +527,7 @@ console.log('Account deletion PASS: password, confirmation, unfinished orders, p
 // and permission to start a replacement shop without deleting the resident account.
 for(const [email,apt] of [['lifecycle-seller@example.com','622'],['lifecycle-buyer@example.com','623']]){
   await request('auth/register',{method:'POST',expected:201,body:{
-    name:'Shop Lifecycle Test',email,phone:'11999998888',password:pass,invite:chosen,tower:'Torre 1',apartment:apt
+    name:'Shop Lifecycle Test',email,phone:'11999998888',password:pass,invite:chosen,tower:firstTower,apartment:apt
   }});
   const verification=await fetch('http://127.0.0.1:3333/__test/confirm?email='+encodeURIComponent(email));
   assert.equal(verification.status,200);
@@ -582,6 +585,21 @@ const deniedSelf=await request('orders/'+selfOrder.id+'/review',{
   body:{rating:5,description:'Não devo avaliar a própria loja'}
 });
 assert.match(deniedSelf.data.error,/própria loja/i);
+// Seller product deletion leaves existing order items and prices intact.
+await request('products/'+selfProduct.id,{method:'DELETE',cookie:lifecycleBuyer,
+  body:{confirmation:'EXCLUIR PRODUTO'},expected:404});
+await request('products/'+selfProduct.id,{method:'DELETE',cookie:lifecycleSeller,
+  body:{confirmation:'NÃO EXCLUIR'},expected:400});
+await request('products/'+selfProduct.id,{method:'DELETE',cookie:lifecycleSeller,
+  body:{confirmation:'EXCLUIR PRODUTO'}});
+assert.equal((await request('shops/mine',{cookie:lifecycleSeller})).data.products.some(p=>p.id===selfProduct.id),false);
+assert.equal((await request('catalog',{cookie:lifecycleBuyer})).data.products.some(p=>p.id===selfProduct.id),false);
+await request('products/'+selfProduct.id+'/visibility',{method:'PATCH',cookie:lifecycleSeller,
+  body:{visibility:'available'},expected:404});
+await request('orders/quote',{method:'POST',cookie:lifecycleBuyer,expected:400,body:{
+  shop_id:replacement.id,items:[{id:selfProduct.id,quantity:1}],fulfillment:'pickup'
+}});
+
 
 const historyDB=new pg.Client({connectionString:process.env.DATABASE_URL});
 await historyDB.connect();
@@ -596,3 +614,22 @@ try{
   assert.ok(cleanup.rows[0].finished_at);
 }finally{await historyDB.end();}
 console.log('Shop lifecycle PASS: pause/reopen, blocked pending orders, confirmation, archive, historical orders and recreation.');
+
+await request('admin/towers',{method:'PATCH',cookie:lifecycleBuyer,
+  body:{scheme:'letters',count:30},expected:403});
+await request('admin/towers',{method:'PATCH',cookie:adminCookie,
+  body:{scheme:'letters',count:31},expected:400});
+await request('admin/towers',{method:'PATCH',cookie:adminCookie,
+  body:{scheme:'letters',count:1},expected:409});
+const numericTowers=await request('admin/towers',{method:'PATCH',cookie:adminCookie,
+  body:{scheme:'numbers',count:30}});
+assert.equal(numericTowers.data.towers[0],'Torre 1');
+assert.equal(numericTowers.data.towers[29],'Torre 30');
+assert.equal((await request('me',{cookie:newLogin.cookie})).data.viewer.tower,'Torre 1');
+const newLetters=await request('admin/towers',{method:'PATCH',cookie:adminCookie,
+  body:{scheme:'letters',count:30}});
+assert.equal(newLetters.data.towers[29],'Torre AD');
+assert.equal((await request('me',{cookie:newLogin.cookie})).data.viewer.tower,'Torre A');
+assert.equal((await request('orders',{cookie:lifecycleSeller})).data.orders.some(order=>order.id===selfOrder.id),true);
+console.log('Tower management PASS: 30 alphabetic/numeric labels, safe resident remapping and permissions.');
+

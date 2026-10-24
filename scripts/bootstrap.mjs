@@ -44,7 +44,16 @@ try{
   await db.query('BEGIN');
   const slug=process.env.BOOTSTRAP_CONDO_SLUG.trim().toLowerCase();
   const inviteHash=crypto.createHash('sha256').update(process.env.BOOTSTRAP_INVITE_CODE.trim()).digest('hex');
-  const towers=Array.from({length:23},(_,i)=>'Torre '+(i+1));
+  // New condominiums may use letters or numbers. Existing addresses are never overwritten.
+  const format=process.env.BOOTSTRAP_TOWER_FORMAT==='numbers'?'numbers':'letters';
+  const count=Number(process.env.BOOTSTRAP_TOWER_COUNT??30);
+  if(!Number.isInteger(count)||count<1||count>30)throw new Error('BOOTSTRAP_TOWER_COUNT must be from 1 to 30.');
+  const towers=Array.from({length:count},(_,i)=>{
+    if(format==='numbers')return 'Torre '+(i+1);
+    let n=i+1,label='';
+    while(n>0){n--;label=String.fromCharCode(65+n%26)+label;n=Math.floor(n/26);}
+    return 'Torre '+label;
+  });
   const condo=await db.query(
     'INSERT INTO condominiums(name,slug,invite_code_hash,towers) VALUES($1,$2,$3,$4::jsonb) ON CONFLICT(slug) DO UPDATE SET name=EXCLUDED.name RETURNING id',
     [process.env.BOOTSTRAP_CONDO_NAME,slug,inviteHash,JSON.stringify(towers)]
