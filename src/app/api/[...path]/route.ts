@@ -599,21 +599,27 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
     const shop=await shopOwned(u,true);
     const b=z.object({visibility:z.enum(['available','unavailable','hidden'])}).parse(await body(req));
     const updated=await query(
-      'UPDATE products SET visibility=$1,is_available=($1=\'available\') WHERE id=$2 AND condominium_id=$3 AND shop_id=$4 RETURNING *',
+      'UPDATE products SET visibility=$1,is_available=($1=\'available\') WHERE id=$2 AND condominium_id=$3 AND shop_id=$4 AND moderation_blocked=false RETURNING *',
       [b.visibility,parts[1],u.condominium_id,shop.id]
     );
-    if(!updated.rowCount)bad('Produto não encontrado.',404);
+    if(!updated.rowCount){
+      const exists=await query('SELECT moderation_blocked FROM products WHERE id=$1 AND condominium_id=$2 AND shop_id=$3',
+        [parts[1],u.condominium_id,shop.id]);
+      if(exists.rows[0]?.moderation_blocked)bad('Este produto foi bloqueado pela administração.',403);
+      bad('Produto não encontrado.',404);
+    }
     return out({product:updated.rows[0]});
   }
   if(parts[0]==='products'&&parts[1]&&['PATCH','DELETE'].includes(method)){
     if(!uuid(parts[1]))bad('Produto inválido.');
     const shop=await shopOwned(u,true);
-    const owned=await query('SELECT id FROM products WHERE id=$1 AND shop_id=$2 AND condominium_id=$3',[parts[1],shop.id,u.condominium_id]);
+    const owned=await query('SELECT id,moderation_blocked FROM products WHERE id=$1 AND shop_id=$2 AND condominium_id=$3',[parts[1],shop.id,u.condominium_id]);
     if(!owned.rowCount)bad('Produto não encontrado.',404);
     if(method==='DELETE'){
       await query("UPDATE products SET is_available=false,visibility='hidden' WHERE id=$1 AND shop_id=$2",[parts[1],shop.id]);
       return out({ok:true});
     }
+    if(owned.rows[0].moderation_blocked)bad('Este produto está bloqueado pela administração.',403);
     const b=z.object({name:z.string().trim().min(2).max(100),description:z.string().max(600),
       category_id:z.string().uuid(),price_cents:z.number().int().min(1).max(10_000_000),
       promo_price_cents:z.number().int().min(1).max(10_000_000).nullable(),
@@ -777,13 +783,24 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
     admin(u);
     const items=await query(
       "SELECT r.id,r.target_type,r.target_id,r.reason,r.details,r.status,r.created_at, "+
-      "COALESCE(s.name,p.name) AS target_name FROM content_reports r "+
+      "COALESCE(s.name,p.name) AS target_name,COALESCE(p.moderation_blocked,false) AS product_blocked FROM content_reports r "+
       "LEFT JOIN shops s ON r.target_type='shop' AND s.id=r.target_id AND s.condominium_id=r.condominium_id "+
       "LEFT JOIN products p ON r.target_type='product' AND p.id=r.target_id AND p.condominium_id=r.condominium_id "+
       "WHERE r.condominium_id=$1 ORDER BY CASE WHEN r.status='open' THEN 0 ELSE 1 END,r.created_at DESC LIMIT 150",
       [u.condominium_id]
     );
     return out({reports:items.rows});
+  }
+  if(parts[0]==='admin'&&parts[1]==='products'&&parts[2]&&parts[3]==='unblock'&&method==='PATCH'){
+    admin(u);
+    if(!uuid(parts[2]))bad('Produto inválido.');
+    const updated=await query(
+      "UPDATE products SET moderation_blocked=false WHERE id=$1 AND condominium_id=$2 AND moderation_blocked=true RETURNING id",
+      [parts[2],u.condominium_id]
+    );
+    if(!updated.rowCount)bad('Produto não encontrado ou não está bloqueado.',404);
+    // Leave visibility hidden; the owner can republish after revising content.
+    return out({ok:true});
   }
   if(parts[0]==='admin'&&parts[1]==='reports'&&parts[2]&&method==='PATCH'){
     admin(u);
@@ -799,7 +816,7 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
       if(b.action==='hide_product'){
         if(r.target_type!=='product')bad('Esta denúncia não é de um produto.');
         await tx.query(
-          "UPDATE products SET visibility='hidden',is_available=false WHERE id=$1 AND condominium_id=$2",
+          "UPDATE products SET visibility='hidden',is_available=false,moderation_blocked=true WHERE id=$1 AND condominium_id=$2",
           [r.target_id,u.condominium_id]
         );
       }
