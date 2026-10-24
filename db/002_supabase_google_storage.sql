@@ -37,6 +37,16 @@ BEGIN
   END IF;
 END $;
 
+CREATE TABLE IF NOT EXISTS public.favorites (
+  condominium_id uuid NOT NULL REFERENCES public.condominiums(id),
+  user_id uuid NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+  product_id uuid NOT NULL REFERENCES public.products(id) ON DELETE CASCADE,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY(user_id,product_id)
+);
+CREATE INDEX IF NOT EXISTS favorites_by_condo_idx
+  ON public.favorites(condominium_id,user_id,created_at DESC);
+
 -- Indexes aligned with marketplace listing and account workflows.
 CREATE INDEX IF NOT EXISTS categories_condo_sort_idx ON public.categories(condominium_id, sort_order, name);
 CREATE INDEX IF NOT EXISTS shops_condo_active_idx ON public.shops(condominium_id, is_open, created_at DESC)
@@ -54,7 +64,7 @@ BEGIN
  IF EXISTS (SELECT 1 FROM pg_namespace WHERE nspname='auth') THEN
    FOREACH tbl IN ARRAY ARRAY[
     'condominiums','users','sessions','login_attempts','categories',
-    'shops','products','media_assets','orders','order_items',
+    'shops','products','media_assets','orders','order_items','favorites',
     'google_oauth_flows','google_signup_pending'
    ] LOOP
      EXECUTE format('ALTER TABLE public.%I ENABLE ROW LEVEL SECURITY',tbl);
