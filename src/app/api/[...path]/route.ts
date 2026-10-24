@@ -235,10 +235,10 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
   approved(u);
   if(path==='favorites'&&method==='GET'){
     const r=await query(
-      "SELECT f.product_id FROM favorites f JOIN products p ON p.id=f.product_id AND p.condominium_id=f.condominium_id JOIN shops s ON s.id=p.shop_id WHERE f.condominium_id=$1 AND f.user_id=$2 AND p.is_available=true AND s.status='approved' ORDER BY f.created_at DESC",
+      "SELECT p.id,p.shop_id,p.category_id,p.name,p.description,p.price_cents,p.promo_price_cents,p.image_url,p.stock,p.lead_time,p.is_featured,s.name AS shop_name,s.is_open FROM favorites f JOIN products p ON p.id=f.product_id AND p.condominium_id=f.condominium_id JOIN shops s ON s.id=p.shop_id AND s.condominium_id=f.condominium_id WHERE f.condominium_id=$1 AND f.user_id=$2 AND p.is_available=true AND s.status='approved' ORDER BY f.created_at DESC LIMIT 150",
       [u.condominium_id,u.id]
     );
-    return out({ids:r.rows.map(row=>row.product_id)});
+    return out({ids:r.rows.map(row=>row.id),products:r.rows});
   }
   if(path==='favorites'&&method==='POST'){
     const b=z.object({product_id:z.string().uuid()}).parse(await body(req));
