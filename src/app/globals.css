@@ -450,3 +450,20 @@ body {background:var(--bg);letter-spacing:-.08px}
   .hero-banner button{padding:10px 12px}
   .bottom-nav button{min-width:55px}
 }
+
+/* Product actions and catalog pagination */
+.product-card{position:relative}
+.product-open{display:flex;flex-direction:column;width:100%;height:100%;border:0;padding:0;background:transparent;text-align:left;color:inherit;border-radius:inherit;overflow:hidden}
+.product-open .product-photo{width:100%}
+.product-open .product-meta{width:100%}
+.favorite-heart{position:absolute;top:10px;right:10px;width:35px;height:35px;border:0;border-radius:50%;display:grid;place-items:center;background:rgba(255,255,255,.95);color:#585650;box-shadow:0 2px 11px rgba(43,30,10,.13)}
+.favorite-heart.is-favorite{color:#ed6043}
+.favorite-heart:active{transform:scale(.93)}
+.load-more{display:flex;margin:26px auto 16px;border-radius:999px}
+.loading-inline{padding:25px;display:flex;align-items:center;justify-content:center;gap:10px;color:#6c655b;font-weight:700}
+.loading-inline .spinner{width:24px;height:24px;border-width:3px}
+@media(max-width:380px){
+  .bottom-nav{left:10px;right:10px;padding:8px 6px}
+  .bottom-nav button{min-width:48px;font-size:9px}
+  .bottom-nav button.active>svg{padding:5px 10px}
+}
