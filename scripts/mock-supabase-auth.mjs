@@ -34,6 +34,18 @@ const server=http.createServer(async(req,res)=>{
     const u={id:crypto.randomUUID(),email:body.email,password:body.password,confirmed:body.email_confirm===true,name:body.user_metadata?.name};
     users.set(u.email,u);return send(res,200,userOut(u));
   }
+  if(url.pathname.startsWith('/auth/v1/admin/users/')&&req.method==='GET'){
+    const id=url.pathname.split('/').at(-1);
+    const u=[...users.values()].find(x=>x.id===id);
+    return u?send(res,200,userOut(u)):send(res,404,{code:'user_not_found',msg:'not found'});
+  }
+  if(url.pathname.startsWith('/auth/v1/admin/users/')&&req.method==='DELETE'){
+    const id=url.pathname.split('/').at(-1);
+    const u=[...users.values()].find(x=>x.id===id);
+    if(!u)return send(res,404,{code:'user_not_found',msg:'not found'});
+    users.delete(u.email);recovery.delete(u.email);
+    return send(res,200,userOut(u));
+  }
   if(url.pathname.startsWith('/auth/v1/admin/users/')&&req.method==='PUT'){
     const id=url.pathname.split('/').at(-1);
     const u=[...users.values()].find(x=>x.id===id);
