@@ -412,7 +412,7 @@ export default function Page(){
     <section className="auth-card">
       <div className="auth-mobile-logo">condovery<span>.</span></div>
       <div className="auth-mobile-intro" aria-label="O seu condomínio em um só lugar">
-        <div className="auth-intro-copy"><span>CONDOvery · TUDO DE BOM MORA AQUI</span>
+        <div className="auth-intro-copy"><span>CONDOVERY · TUDO DE BOM MORA AQUI</span>
           <strong>Seu condomínio mais perto de você!</strong>
           <small>Compre dos seus vizinhos, apoie comércios locais e receba no condomínio.</small>
         </div>
