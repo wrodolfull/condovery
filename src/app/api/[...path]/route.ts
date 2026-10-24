@@ -233,11 +233,28 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
     return out({ok:true});
   }
   approved(u);
+  if(path==='catalog'&&method==='GET'){
+    const pageText=req.nextUrl.searchParams.get('page')??'0';
+    const limitText=req.nextUrl.searchParams.get('limit')??'24';
+    const page=Number(pageText),limit=Number(limitText);
+    if(!Number.isInteger(page)||page<0||page>250||!Number.isInteger(limit)||limit<1||limit>48){
+      bad('Paginação inválida.');
+    }
+    const search=clean(req.nextUrl.searchParams.get('search'),100);
+    const category=req.nextUrl.searchParams.get('category')||null;
+    if(category&&!uuid(category))bad('Categoria inválida.');
+    const escaped='%'+search.replace(/[\\%_]/g,'\\  if(path==='home'&&method==='GET'){')+'%';
+    const result=await query(
+      "SELECT p.id,p.shop_id,p.category_id,p.name,p.description,p.price_cents,p.promo_price_cents,p.image_url,p.stock,p.lead_time,p.is_featured,s.name AS shop_name,s.is_open FROM products p JOIN shops s ON s.id=p.shop_id AND s.condominium_id=p.condominium_id WHERE p.condominium_id=$1 AND p.is_available=true AND s.status='approved' AND ($2::uuid IS NULL OR p.category_id=$2::uuid) AND ($3::text='' OR p.name ILIKE $3 ESCAPE '\\' OR s.name ILIKE $3 ESCAPE '\\') ORDER BY p.created_at DESC,p.id DESC LIMIT $4 OFFSET $5",
+      [u.condominium_id,category,search?escaped:'',limit+1,page*limit]
+    );
+    return out({products:result.rows.slice(0,limit),hasMore:result.rows.length>limit,page});
+  }
   if(path==='home'&&method==='GET'){
     const [categories,shops,products]=await Promise.all([
       query('SELECT id,name,icon FROM categories WHERE condominium_id=$1 ORDER BY sort_order,name',[u.condominium_id]),
       query("SELECT id,name,description,cover_image,is_open,delivery_enabled,pickup_enabled,lead_time FROM shops WHERE condominium_id=$1 AND status='approved' ORDER BY is_open DESC,created_at DESC LIMIT 100",[u.condominium_id]),
-      query("SELECT p.id,p.shop_id,p.category_id,p.name,p.description,p.price_cents,p.promo_price_cents,p.image_url,p.stock,p.lead_time,p.is_featured,s.name AS shop_name,s.is_open FROM products p JOIN shops s ON s.id=p.shop_id WHERE p.condominium_id=$1 AND s.condominium_id=$1 AND p.is_available=true AND s.status='approved' ORDER BY p.is_featured DESC,p.created_at DESC LIMIT 240",[u.condominium_id])
+      query("SELECT p.id,p.shop_id,p.category_id,p.name,p.description,p.price_cents,p.promo_price_cents,p.image_url,p.stock,p.lead_time,p.is_featured,s.name AS shop_name,s.is_open FROM products p JOIN shops s ON s.id=p.shop_id WHERE p.condominium_id=$1 AND s.condominium_id=$1 AND p.is_available=true AND s.status='approved' ORDER BY p.is_featured DESC,p.created_at DESC LIMIT 48",[u.condominium_id])
     ]);
     return out({categories:categories.rows,shops:shops.rows,products:products.rows});
   }
