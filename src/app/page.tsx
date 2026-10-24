@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {IllustrationSlot} from '@/components/IllustrationSlot';
 import {RoundedStars} from '@/components/RoundedStars';
+import {ImageCropper,type ImageKind} from '@/components/ImageCropper';
 import {artwork,getCategoryArtwork} from '@/lib/artwork';
 import {IMAGE_MIME_TYPES, imageSizeIsAllowed} from '@/lib/image-limits';
 import {selectedOptions, extrasTotal, arrivalInstructionOptions, toggleArrivalInstruction, type OptionGroup, type Selection} from '@/lib/orders';
@@ -11,7 +12,7 @@ import {
   CircleHelp, Clock3, Coffee, Gift, Heart, Home, ImagePlus, LayoutGrid, LogOut, MapPin,
   Menu, MessageCircle, Minus, Package, Plus, Receipt, Search, Settings, Share2, ShieldCheck, ShoppingBag, ShoppingBasket,
   SlidersHorizontal, Sparkles, Store, Tag, Trash2, Truck, UserRound, Utensils, X, Shirt, Sandwich,
-  Pizza, IceCreamCone, Wrench, HeartPulse, House, Smartphone
+  Pizza, IceCreamCone, Wrench, HeartPulse, House, Smartphone, PauseCircle, PlayCircle
 } from 'lucide-react';
 
 type Viewer={id:string;name:string;email:string;phone:string;avatar_image:string|null;role:'admin'|'resident';status:'pending'|'approved'|'suspended';tower:string;apartment:string;condominium_name:string;towers:string[]};
@@ -218,6 +219,9 @@ export default function Page(){
   const [ordersLoading,setOrdersLoading]=useState(false);
   const [sellerOrders,setSellerOrders]=useState<Order[]>([]);
   const [myShop,setMyShop]=useState<Shop|null>(null);
+  const [showDeleteShop,setShowDeleteShop]=useState(false);
+  const [shopDeleteConfirmation,setShopDeleteConfirmation]=useState('');
+  const [cropRequest,setCropRequest]=useState<{file:File;kind:ImageKind}|null>(null);
   const [myProducts,setMyProducts]=useState<Product[]>([]);
   const [adminData,setAdminData]=useState<AdminData|null>(null);
   const [sellerTab,setSellerTab]=useState<'orders'|'products'|'reviews'|'settings'>('orders');
@@ -622,6 +626,42 @@ export default function Page(){
       }
       await loadMine();await loadHome();
     }catch(e){fail(e);}finally{setBusy(false);}
+  }
+  async function toggleShopOpen(){
+    if(!myShop||myShop.status!=='approved')return;
+    setBusy(true);setError('');
+    try{
+      const result=await api<{shop:Shop}>('shops/mine/status',{
+        method:'PATCH',body:payload({is_open:!myShop.is_open})
+      });
+      setMyShop(result.shop);
+      setShopForm(current=>({...current,is_open:result.shop.is_open}));
+      await loadHome();
+      notify(result.shop.is_open?'Loja reaberta e aceitando pedidos.':'Loja pausada. Novos pedidos estão bloqueados.');
+    }catch(e){fail(e);}finally{setBusy(false);}
+  }
+  async function deleteShop(e:React.FormEvent){
+    e.preventDefault();
+    if(shopDeleteConfirmation!=='EXCLUIR LOJA')return;
+    setBusy(true);setError('');
+    try{
+      const oldId=myShop?.id;
+      const result=await api<{message:string}>('shops/mine',{
+        method:'DELETE',body:payload({confirmation:shopDeleteConfirmation})
+      });
+      setShowDeleteShop(false);setShopDeleteConfirmation('');
+      setMyShop(null);setMyProducts([]);setSellerOrders([]);setSellerReviews([]);
+      setShopForm({name:'',description:'',whatsapp:'',is_open:true,delivery_enabled:true,delivery_fee_cents:0,pickup_enabled:true,lead_time:'',pickup_instructions:'',cover_image:'',logo_image:''});
+      setCart(items=>items.filter(item=>item.product.shop_id!==oldId));
+      if(selectedShop?.shop.id===oldId)setSelectedShop(null);
+      await loadHome();go('account');notify(result.message);
+    }catch(e){fail(e);}finally{setBusy(false);}
+  }
+  function choosePhoto(file:File|undefined,kind:ImageKind){
+    if(!file)return;
+    if(!IMAGE_MIME_TYPES.some(type=>type===file.type)){setError('Imagem deve ser JPG, PNG ou WebP.');return;}
+    if(!imageSizeIsAllowed(file.size)){setError('A imagem deve ter no máximo 10 MB.');return;}
+    setError('');setCropRequest({file,kind});
   }
   async function upload(file:File,kind:'product'|'cover'|'logo'|'avatar'){
     setBusy(true);setError('');
@@ -1058,7 +1098,7 @@ export default function Page(){
           <label className="simple-photo-uploader"><ImagePlus size={18}/>
             {profile.avatar_image?'Trocar foto de perfil':'Adicionar foto de perfil'}
             <input aria-label="Enviar foto de perfil" type="file" accept="image/jpeg,image/png,image/webp"
-              disabled={busy} onChange={e=>{const file=e.target.files?.[0];if(file)upload(file,'avatar');}}/>
+              disabled={busy} onChange={e=>{const file=e.target.files?.[0];e.target.value='';choosePhoto(file,'avatar');}}/>
           </label><form onSubmit={saveProfile} className="form-stack">
           <label>Nome<input required value={profile.name} onChange={e=>setProfile(s=>({...s,name:e.target.value}))}/></label>
           <label>WhatsApp<input required type="tel" value={profile.phone} onChange={e=>setProfile(s=>({...s,phone:e.target.value}))}/></label>
@@ -1141,7 +1181,7 @@ export default function Page(){
             <label className="simple-photo-uploader"><ImagePlus size={17}/>
               Adicionar foto da loja
               <input type="file" accept="image/jpeg,image/png,image/webp" disabled={busy}
-                onChange={e=>{const file=e.target.files?.[0];if(file)upload(file,'logo');}}/>
+                onChange={e=>{const file=e.target.files?.[0];e.target.value='';choosePhoto(file,'logo');}}/>
             </label>
           </div>}
           <div className="seller-metrics"><div><small>Pedidos aguardando</small><strong>{sellerOrders.filter(o=>o.status==='awaiting_confirmation').length}</strong></div><div><small>Vendas concluídas</small><strong>{money(sellerOrders.filter(o=>o.status==='completed').reduce((n,o)=>n+o.total_cents,0))}</strong></div></div>
@@ -1198,7 +1238,7 @@ export default function Page(){
           {sellerTab==='products'&&<><div className="section-heading"><h2>Seus produtos</h2><button className="mini-primary" disabled={myShop.status!=='approved'} onClick={()=>editProduct()}><Plus size={17}/>Adicionar</button></div>
             {editingProduct?<form className="white-panel form-stack product-editor" onSubmit={saveProduct}>
               <div className="section-heading"><h2>{productForm.id?'Editar produto':'Novo produto'}</h2><button type="button" onClick={()=>setEditingProduct(false)}><X size={19}/></button></div>
-              <label>Foto do produto<div className="image-upload">{productForm.image_url?<img src={productForm.image_url} alt="Prévia do produto"/>:<ImagePlus size={29}/>}<span>Selecionar foto (até 10 MB)</span><input aria-label="Enviar foto do produto" type="file" accept="image/jpeg,image/png,image/webp" onChange={e=>{const f=e.target.files?.[0];if(f)upload(f,'product');}}/></div></label>
+              <label>Foto do produto<div className="image-upload">{productForm.image_url?<img src={productForm.image_url} alt="Prévia do produto"/>:<ImagePlus size={29}/>}<span>Selecionar foto (até 10 MB)</span><input aria-label="Enviar foto do produto" type="file" accept="image/jpeg,image/png,image/webp" onChange={e=>{const f=e.target.files?.[0];e.target.value='';choosePhoto(f,'product');}}/></div></label>
               <label>Nome<input required minLength={2} maxLength={100} value={productForm.name} onChange={e=>setProductForm(s=>({...s,name:e.target.value}))}/></label>
               <label>Descrição<textarea rows={3} maxLength={600} value={productForm.description} onChange={e=>setProductForm(s=>({...s,description:e.target.value}))}/></label>
               <label>Categoria<select required value={productForm.category_id} onChange={e=>setProductForm(s=>({...s,category_id:e.target.value}))}><option value="">Selecione</option>{home.categories.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></label>
@@ -1269,8 +1309,8 @@ export default function Page(){
             <label>Descrição<textarea rows={3} maxLength={500} value={shopForm.description} onChange={e=>setShopForm(s=>({...s,description:e.target.value}))}/></label>
             <label>WhatsApp<input required value={shopForm.whatsapp} onChange={e=>setShopForm(s=>({...s,whatsapp:e.target.value}))}/></label>
             <button type="button" className="outline-button" onClick={testShopWhatsApp}><MessageCircle size={17}/> Testar número no WhatsApp</button>
-            <label>Foto de perfil da loja<div className="image-upload">{shopForm.logo_image?<img src={shopForm.logo_image} alt="Perfil da loja"/>:<ImagePlus size={30}/>}<span>Adicionar foto da loja</span><input aria-label="Enviar foto do perfil da loja" type="file" accept="image/jpeg,image/png,image/webp" disabled={busy} onChange={e=>{const file=e.target.files?.[0];if(file)upload(file,'logo');}}/></div></label>
-            <label>Foto de capa<div className="image-upload">{shopForm.cover_image?<img src={shopForm.cover_image} alt="Capa"/>:<ImagePlus size={30}/>}<span>Enviar foto de capa</span><input aria-label="Enviar foto de capa" type="file" accept="image/jpeg,image/png,image/webp" onChange={e=>{const f=e.target.files?.[0];if(f)upload(f,'cover');}}/></div></label>
+            <label>Foto de perfil da loja<div className="image-upload">{shopForm.logo_image?<img src={shopForm.logo_image} alt="Perfil da loja"/>:<ImagePlus size={30}/>}<span>Adicionar foto da loja</span><input aria-label="Enviar foto do perfil da loja" type="file" accept="image/jpeg,image/png,image/webp" disabled={busy} onChange={e=>{const file=e.target.files?.[0];e.target.value='';choosePhoto(file,'logo');}}/></div></label>
+            <label>Foto de capa<div className="image-upload">{shopForm.cover_image?<img src={shopForm.cover_image} alt="Capa"/>:<ImagePlus size={30}/>}<span>Enviar foto de capa</span><input aria-label="Enviar foto de capa" type="file" accept="image/jpeg,image/png,image/webp" onChange={e=>{const f=e.target.files?.[0];e.target.value='';choosePhoto(f,'cover');}}/></div></label>
             <label>Prazo de preparo<input maxLength={100} value={shopForm.lead_time} onChange={e=>setShopForm(s=>({...s,lead_time:e.target.value}))} placeholder="Ex.: Até 2 horas"/></label>
             <label>Orientações para retirada<textarea rows={2} maxLength={250} value={shopForm.pickup_instructions} onChange={e=>setShopForm(s=>({...s,pickup_instructions:e.target.value}))}/></label>
             <label className="check-label"><input type="checkbox" checked={shopForm.is_open} onChange={e=>setShopForm(s=>({...s,is_open:e.target.checked}))}/> Loja aceitando pedidos</label>
@@ -1352,6 +1392,10 @@ export default function Page(){
         </section>
       </div>}
     </main>
+
+    {cropRequest&&<ImageCropper file={cropRequest.file} kind={cropRequest.kind}
+      onCancel={()=>setCropRequest(null)}
+      onApply={cropped=>{const kind=cropRequest.kind;setCropRequest(null);void upload(cropped,kind);}}/>}
 
     {cartCount>0&&view!=='cart'&&view!=='success'&&<button className="floating-cart" onClick={()=>go('cart')}><ShoppingBag size={19}/><span>{cartCount} {cartCount===1?'item':'itens'}</span><strong>{money(cartTotal)}</strong><ArrowRight size={18}/></button>}
     <nav className="bottom-nav" aria-label="Navegação principal">{bottomNav.map(([target,Icon,label])=><button key={target} className={view===target?'active':''} onClick={()=>go(target)}><Icon size={22} strokeWidth={view===target?2.4:1.8}/><span>{label}</span></button>)}</nav>
