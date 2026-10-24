@@ -65,16 +65,27 @@ const product=await request('products',{method:'POST',cookie:sellerCookie,body:{
 const productId=product.data.product.id;
 const visible=(await request('home',{cookie:buyerCookie})).data;
 assert.ok(visible.products.find(p=>p.id===productId));
-const created=await request('orders',{method:'POST',cookie:buyerCookie,body:{
+const checkoutKey=crypto.randomUUID();
+const checkoutBody={
   shop_id:shopId,items:[{id:productId,quantity:2}],fulfillment:'delivery',
-  delivery_window:'18h–20h',instructions:['Não tocar a campainha']
-},expected:201});
+  delivery_window:'18h–20h',instructions:['Não tocar a campainha'],
+  client_order_key:checkoutKey
+};
+const created=await request('orders',{method:'POST',cookie:buyerCookie,body:checkoutBody,expected:201});
+const retry=await request('orders',{method:'POST',cookie:buyerCookie,body:checkoutBody,expected:200});
+assert.equal(retry.data.order.id,created.data.order.id);
+assert.equal(retry.data.whatsapp_url,created.data.whatsapp_url);
+const contact=(await request('orders/'+created.data.order.id+'/whatsapp',{cookie:buyerCookie})).data;
+assert.match(contact.whatsapp_url,/^https:\/\/wa\.me\/55/);
+assert.ok(decodeURIComponent(contact.whatsapp_url).includes('Não tocar a campainha'));
+await request('orders/'+created.data.order.id+'/whatsapp',{cookie:sellerCookie,expected:404});
 const orderId=created.data.order.id;
 assert.match(created.data.whatsapp_url,/^https:\/\/wa\.me\/55/);
 assert.equal(created.data.order.status,'awaiting_confirmation');
 await request('orders/'+orderId,{method:'PATCH',cookie:buyerCookie,body:{status:'confirmed'},expected:404});
 await request('orders/'+orderId,{method:'PATCH',cookie:sellerCookie,body:{status:'confirmed'}});
 await request('orders/'+orderId,{method:'PATCH',cookie:sellerCookie,body:{status:'completed'}});
+await request('orders/'+orderId+'/whatsapp',{cookie:buyerCookie,expected:404});
 const final=(await request('orders',{cookie:buyerCookie})).data.orders.find(o=>o.id===orderId);
 assert.equal(final.status,'completed');
 assert.equal(final.total_cents,5000);
@@ -163,6 +174,39 @@ await request('products/'+productId,{method:'PATCH',cookie:sellerCookie,body:{
   category_id:sellerHome.categories[0].id,stock:4,image_url:null,lead_time:'Disponível hoje',
   is_available:true
 }});
+
+const visibilityUrl='products/'+productId+'/visibility';
+await request(visibilityUrl,{method:'PATCH',cookie:buyerCookie,body:{visibility:'hidden'},expected:404});
+await request(visibilityUrl,{method:'PATCH',cookie:sellerCookie,body:{visibility:'unavailable'}});
+const homeUnavailable=(await request('home',{cookie:buyerCookie})).data;
+assert.equal(homeUnavailable.products.find(p=>p.id===productId).visibility,'unavailable');
+const catalogUnavailable=(await request('catalog?search=bolo',{cookie:buyerCookie})).data;
+assert.equal(catalogUnavailable.products.find(p=>p.id===productId).visibility,'unavailable');
+const shopUnavailable=(await request('shops/'+shopId,{cookie:buyerCookie})).data;
+assert.equal(shopUnavailable.products.find(p=>p.id===productId).visibility,'unavailable');
+await request('orders',{method:'POST',cookie:buyerCookie,body:{
+  shop_id:shopId,items:[{id:productId,quantity:1}],fulfillment:'pickup'
+},expected:400});
+await request(visibilityUrl,{method:'PATCH',cookie:sellerCookie,body:{visibility:'hidden'}});
+const hiddenHome=(await request('home',{cookie:buyerCookie})).data;
+assert.equal(hiddenHome.products.find(p=>p.id===productId),undefined);
+const hiddenShop=(await request('shops/'+shopId,{cookie:buyerCookie})).data;
+assert.equal(hiddenShop.products.find(p=>p.id===productId),undefined);
+const hiddenOwner=(await request('shops/mine',{cookie:sellerCookie})).data;
+assert.equal(hiddenOwner.products.find(p=>p.id===productId).visibility,'hidden');
+await request(visibilityUrl,{method:'PATCH',cookie:sellerCookie,body:{visibility:'available'}});
+assert.equal((await request('home',{cookie:buyerCookie})).data.products.find(p=>p.id===productId).visibility,'available');
+await request(visibilityUrl,{method:'PATCH',cookie:sellerCookie,body:{visibility:'unknown'},expected:400});
+const dbCheck=new pg.Client({connectionString:process.env.DATABASE_URL});
+await dbCheck.connect();
+try {
+  const cols=await dbCheck.query(
+    "SELECT table_name,column_name FROM information_schema.columns WHERE table_schema='public' AND (table_name='shops' AND column_name='logo_image' OR table_name='users' AND column_name='avatar_image')"
+  );
+  assert.equal(cols.rowCount,2);
+}finally{await dbCheck.end();}
+console.log('Shop activation, product states and idempotent WhatsApp ordering PASS.');
+
 console.log('Verified reviews smoke PASS: eligibility, single review, moderation, average and privacy.');
 console.log('Integration smoke PASS: invite -> approval -> shop -> product -> WhatsApp order -> completed.');
 

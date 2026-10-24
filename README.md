@@ -84,3 +84,7 @@ As lojas podem ser compartilhadas pelo link privado `/?loja=UUID`, que exige
 acesso ao condomínio. Compradores de pedidos concluídos podem avaliar de
 1 a 5 estrelas com comentário de até 200 caracteres. O vendedor modera
 antes da publicação. Consulte [docs/SHOP_REVIEWS.md](docs/SHOP_REVIEWS.md).
+
+## Ativação de loja, fotos e disponibilidade
+
+Um único login permite comprar e vender. A loja exige aprovação administrativa e WhatsApp válido. Produtos têm os estados disponível, indisponível (visível em cinza) e oculto (somente vendedor). A nova gestão inclui fotos de perfil pessoal e da loja. O pedido fica registrado antes do WhatsApp, com opção de reabrir a conversa. Veja [docs/SELLER_ONBOARDING.md](docs/SELLER_ONBOARDING.md).
