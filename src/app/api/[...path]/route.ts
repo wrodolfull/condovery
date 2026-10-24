@@ -394,10 +394,12 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
     if(!storageConfigured())bad('Serviço de remoção de identidade indisponível.',503);
     // Password accounts require reauthentication; Google-only sessions must be recent.
     const identity=await storageAdmin().auth.admin.getUserById(authId);
-    if(identity.error||!identity.data.user)bad('Não foi possível confirmar sua identidade. Tente novamente.',502);
-    if(identity.data.user.identities?.some(item=>item.provider==='email')){
-      if(!input.password)bad('Informe sua senha atual para confirmar a exclusão.',400);
-      const verified=await passwordAuthClient().auth.signInWithPassword({email,password:input.password});
+    const currentIdentity=identity.data.user;
+    if(identity.error||!currentIdentity)throw new ApiError(502,'Não foi possível confirmar sua identidade. Tente novamente.');
+    if(currentIdentity.identities?.some(item=>item.provider==='email')){
+      const currentPassword=input.password;
+      if(!currentPassword)throw new ApiError(400,'Informe sua senha atual para confirmar a exclusão.');
+      const verified=await passwordAuthClient().auth.signInWithPassword({email,password:currentPassword});
       if(verified.error||verified.data.user?.id!==authId)bad('Senha incorreta. Conta não excluída.',401);
     }else{
       const cookie=req.cookies.get('condovery_session')?.value;
