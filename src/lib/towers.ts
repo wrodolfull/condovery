@@ -13,6 +13,7 @@ export function towerLabels(scheme:TowerScheme,count:number):string[]{
   return Array.from({length:count},(_,i)=>towerLabel(scheme,i));
 }
 export function currentTowerScheme(towers:string[]):TowerScheme|null{
+  if(towers.length===0||towers.length>30)return null;
   if(towers.every((value,index)=>value===towerLabel('letters',index)))return 'letters';
   if(towers.every((value,index)=>value===towerLabel('numbers',index)))return 'numbers';
   return null;
