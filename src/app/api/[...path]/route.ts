@@ -387,6 +387,74 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
     ]);
     return out({categories:categories.rows,shops:shops.rows,products:products.rows});
   }
+  if(path==='shops/mine/reviews'&&method==='GET'){
+    const shop=await shopOwned(u,true);
+    const result=await query(
+      "SELECT rv.id,rv.order_id,o.code AS order_code,rv.rating,rv.description,rv.status,rv.created_at,rv.moderated_at "+
+      "FROM shop_reviews rv JOIN orders o ON o.id=rv.order_id AND o.condominium_id=rv.condominium_id "+
+      "WHERE rv.condominium_id=$1 AND rv.shop_id=$2 ORDER BY CASE WHEN rv.status='pending' THEN 0 ELSE 1 END,rv.created_at DESC LIMIT 100",
+      [u.condominium_id,shop.id]
+    );
+    return out({reviews:result.rows,pending:result.rows.filter(r=>r.status==='pending').length});
+  }
+  if(parts[0]==='shops'&&parts[1]==='mine'&&parts[2]==='reviews'&&parts[3]&&method==='PATCH'){
+    if(!uuid(parts[3]))bad('Avaliação inválida.');
+    const shop=await shopOwned(u,true);
+    const b=z.object({status:z.enum(['approved','rejected'])}).parse(await body(req));
+    const updated=await query(
+      "UPDATE shop_reviews SET status=$1,moderated_by=$2,moderated_at=now() "+
+      "WHERE id=$3 AND condominium_id=$4 AND shop_id=$5 AND status='pending' RETURNING id,status",
+      [b.status,u.id,parts[3],u.condominium_id,shop.id]
+    );
+    if(!updated.rowCount)bad('Avaliação não encontrada ou já moderada.',409);
+    return out({review:updated.rows[0]});
+  }
+  if(parts[0]==='orders'&&parts[1]&&parts[2]==='review'&&method==='POST'){
+    if(!uuid(parts[1]))bad('Pedido inválido.');
+    const b=z.object({
+      rating:z.number().int().min(1).max(5),
+      description:z.string().trim().min(1).max(200)
+    }).parse(await body(req));
+    const inserted=await query(
+      "INSERT INTO shop_reviews(condominium_id,shop_id,order_id,buyer_id,rating,description) "+
+      "SELECT o.condominium_id,o.shop_id,o.id,o.buyer_id,$3,$4 FROM orders o "+
+      "JOIN shops s ON s.id=o.shop_id AND s.condominium_id=o.condominium_id "+
+      "WHERE o.id=$1 AND o.condominium_id=$5 AND o.buyer_id=$2 AND o.status='completed' "+
+      "AND s.owner_id<>$2 AND s.status='approved' "+
+      "ON CONFLICT (order_id) DO NOTHING RETURNING id,status",
+      [parts[1],u.id,b.rating,b.description,u.condominium_id]
+    );
+    if(!inserted.rowCount){
+      const duplicate=await query('SELECT id FROM shop_reviews WHERE order_id=$1 AND condominium_id=$2 AND buyer_id=$3',
+        [parts[1],u.condominium_id,u.id]);
+      if(duplicate.rowCount)bad('Este pedido já foi avaliado.',409);
+      bad('Somente o comprador de um pedido concluído pode avaliar.',403);
+    }
+    return out({review:inserted.rows[0]},201);
+  }
+  if(parts[0]==='shops'&&parts[1]&&parts[2]==='reviews'&&method==='GET'){
+    if(!uuid(parts[1]))bad('Loja inválida.');
+    const shop=await query(
+      "SELECT id FROM shops WHERE id=$1 AND condominium_id=$2 AND status='approved'",
+      [parts[1],u.condominium_id]
+    );
+    if(!shop.rowCount)bad('Loja não encontrada.',404);
+    const [totals,list]=await Promise.all([
+      query(
+        "SELECT count(*)::int AS count,round(avg(rating)::numeric,1)::float AS average FROM shop_reviews "+
+        "WHERE condominium_id=$1 AND shop_id=$2 AND status='approved'",
+        [u.condominium_id,parts[1]]
+      ),
+      query(
+        "SELECT id,rating,description,created_at FROM shop_reviews "+
+        "WHERE condominium_id=$1 AND shop_id=$2 AND status='approved' ORDER BY created_at DESC LIMIT 30",
+        [u.condominium_id,parts[1]]
+      )
+    ]);
+    return out({summary:{
+      average:totals.rows[0].average??null,count:totals.rows[0].count
+    },reviews:list.rows});
+  }
   if(path==='shops/mine'){
     if(method==='GET'){
       const r=await query('SELECT * FROM shops WHERE condominium_id=$1 AND owner_id=$2',[u.condominium_id,u.id]);
@@ -561,7 +629,7 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
     let shopId:string|undefined;
     if(seller){const sh=await shopOwned(u);shopId=sh.id;}
     const r=await query(
-      "SELECT o.*,s.name AS shop_name,bu.name AS buyer_name,bu.tower,bu.apartment,bu.phone AS buyer_phone,COALESCE(json_agg(json_build_object('name',i.name_snapshot,'quantity',i.quantity,'unit_price_cents',i.unit_price_cents,'note',i.note)) FILTER (WHERE i.id IS NOT NULL),'[]'::json) AS items FROM orders o JOIN shops s ON s.id=o.shop_id JOIN users bu ON bu.id=o.buyer_id LEFT JOIN order_items i ON i.order_id=o.id WHERE o.condominium_id=$1 AND "+(seller?'o.shop_id=$2':'o.buyer_id=$2')+(status?' AND o.status=$3':'')+" GROUP BY o.id,s.name,bu.id ORDER BY o.created_at DESC LIMIT 100",
+      "SELECT o.*,(SELECT rv.status FROM shop_reviews rv WHERE rv.order_id=o.id AND rv.condominium_id=o.condominium_id) AS review_status,s.name AS shop_name,bu.name AS buyer_name,bu.tower,bu.apartment,bu.phone AS buyer_phone,COALESCE(json_agg(json_build_object('name',i.name_snapshot,'quantity',i.quantity,'unit_price_cents',i.unit_price_cents,'note',i.note)) FILTER (WHERE i.id IS NOT NULL),'[]'::json) AS items FROM orders o JOIN shops s ON s.id=o.shop_id JOIN users bu ON bu.id=o.buyer_id LEFT JOIN order_items i ON i.order_id=o.id WHERE o.condominium_id=$1 AND "+(seller?'o.shop_id=$2':'o.buyer_id=$2')+(status?' AND o.status=$3':'')+" GROUP BY o.id,s.name,bu.id ORDER BY o.created_at DESC LIMIT 100",
       [...[u.condominium_id,seller?shopId:u.id],...(status?[status]:[])]
     );
     // Buyers do not need to see delivery address of someone else; shop owner sees only data for their own orders.
