@@ -40,9 +40,9 @@ reais antes de admitir moradores.
 
 - Login, cadastro, recuperação de senha (Supabase Auth) e login Google;
 - Cadastro imediato de moradores e lojas; administração mantém suspensão e reativação;
-- Catálogo com categorias, ofertas, produtos e busca paginada;
+- Catálogo de alimentação (bolos, pães, refeições, bebidas, lanches, sobremesas e mercadinho), ofertas e busca paginada;
 - Favoritos por morador e condomínio;
-- Cadastro de lojas, produtos, fotos, preço, estoque e horário orientativo;
+- Cadastro de lojas, produtos, fotos de origem de até 10 MB, preço, estoque e horário orientativo;
 - Carrinho de uma loja por vez, observações e preferências de entrega;
 - Registro de pedidos antes do link WhatsApp, com confirmação manual
   do vendedor, conclusão e cancelamento;
@@ -51,6 +51,12 @@ reais antes de admitir moradores.
 Não há gateway de pagamento, disparo automático de WhatsApp, notificações
 push ou rastreamento de entrega. Abrir o WhatsApp não comprova pagamento,
 envio da mensagem ou confirmação de venda.
+
+## Categorias de alimentação e limite das imagens
+
+As categorias antigas fora de alimentação são desativadas na migração `010_food_only_categories.sql` sem excluir produtos ou históricos de pedidos. Elas não aparecem na vitrine e não podem ser selecionadas em produtos novos. Se já houver produtos vinculados a categorias desativadas, os vendedores poderão movê-los para categorias alimentícias. O administrador pode criar novas categorias de alimentação.
+
+Imagens JPG/PNG/WebP de até 10 MiB são aceitas na seleção. No navegador, fontes acima de 4 MB são reduzidas a WebP antes de atravessar a API (para respeitar o limite de 4,5 MB das Vercel Functions). No servidor, há validação independente de formato/tamanho e conversão para WebP otimizado com até 960 px. No Supabase, mantenha o bucket `condovery-media` privado e confirme os limites global e por bucket.
 
 ## Testes
 

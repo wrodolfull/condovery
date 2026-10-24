@@ -9,6 +9,7 @@ import { passwordAuthClient,emailConfigured,recoveryConfigured,googleAuthClient,
 import { oauthCookie,randomToken,safeAppOrigin } from '@/lib/security';
 import { violatesCommunityLanguage } from '@/lib/content-policy';
 import {processAccountDeletionJob} from '@/lib/account-deletion';
+import {IMAGE_MIME_TYPES, imageSizeIsAllowed} from '@/lib/image-limits';
 
 export const runtime='nodejs';
 export const dynamic='force-dynamic';
@@ -495,7 +496,7 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
   approved(u);
   if(path==='favorites'&&method==='GET'){
     const r=await query(
-      "SELECT p.id,p.shop_id,p.category_id,p.name,p.description,p.price_cents,p.promo_price_cents,p.image_url,p.stock,p.visibility,p.lead_time,p.is_featured,p.option_groups,s.name AS shop_name,s.is_open FROM favorites f JOIN products p ON p.id=f.product_id AND p.condominium_id=f.condominium_id JOIN shops s ON s.id=p.shop_id AND s.condominium_id=f.condominium_id WHERE f.condominium_id=$1 AND f.user_id=$2 AND p.visibility<>'hidden' AND s.status='approved' ORDER BY f.created_at DESC LIMIT 150",
+      "SELECT p.id,p.shop_id,p.category_id,p.name,p.description,p.price_cents,p.promo_price_cents,p.image_url,p.stock,p.visibility,p.lead_time,p.is_featured,p.option_groups,s.name AS shop_name,s.is_open FROM favorites f JOIN products p ON p.id=f.product_id AND p.condominium_id=f.condominium_id JOIN categories c ON c.id=p.category_id AND c.condominium_id=p.condominium_id AND c.is_active=true JOIN shops s ON s.id=p.shop_id AND s.condominium_id=f.condominium_id WHERE f.condominium_id=$1 AND f.user_id=$2 AND p.visibility<>'hidden' AND s.status='approved' ORDER BY f.created_at DESC LIMIT 150",
       [u.condominium_id,u.id]
     );
     return out({ids:r.rows.map(row=>row.id),products:r.rows});
@@ -503,7 +504,7 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
   if(path==='favorites'&&method==='POST'){
     const b=z.object({product_id:z.string().uuid()}).parse(await body(req));
     const valid=await query(
-      "SELECT p.id FROM products p JOIN shops s ON s.id=p.shop_id AND s.condominium_id=p.condominium_id WHERE p.id=$1 AND p.condominium_id=$2 AND p.visibility<>'hidden' AND s.status='approved'",
+      "SELECT p.id FROM products p JOIN categories c ON c.id=p.category_id AND c.condominium_id=p.condominium_id AND c.is_active=true JOIN shops s ON s.id=p.shop_id AND s.condominium_id=p.condominium_id WHERE p.id=$1 AND p.condominium_id=$2 AND p.visibility<>'hidden' AND s.status='approved'",
       [b.product_id,u.condominium_id]
     );
     if(!valid.rowCount)bad('Produto indisponível.',404);
@@ -529,16 +530,16 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
     if(category&&!uuid(category))bad('Categoria inválida.');
     const escaped='%'+search.replace(/[%_\\]/g,'')+'%';
     const result=await query(
-      "SELECT p.id,p.shop_id,p.category_id,p.name,p.description,p.price_cents,p.promo_price_cents,p.image_url,p.stock,p.visibility,p.lead_time,p.is_featured,p.option_groups,s.name AS shop_name,s.is_open FROM products p JOIN shops s ON s.id=p.shop_id AND s.condominium_id=p.condominium_id WHERE p.condominium_id=$1 AND p.visibility<>'hidden' AND s.status='approved' AND ($2::uuid IS NULL OR p.category_id=$2::uuid) AND ($3::text='' OR p.name ILIKE $3 ESCAPE '\\' OR s.name ILIKE $3 ESCAPE '\\') ORDER BY p.created_at DESC,p.id DESC LIMIT $4 OFFSET $5",
+      "SELECT p.id,p.shop_id,p.category_id,p.name,p.description,p.price_cents,p.promo_price_cents,p.image_url,p.stock,p.visibility,p.lead_time,p.is_featured,p.option_groups,s.name AS shop_name,s.is_open FROM products p JOIN categories c ON c.id=p.category_id AND c.condominium_id=p.condominium_id AND c.is_active=true JOIN shops s ON s.id=p.shop_id AND s.condominium_id=p.condominium_id WHERE p.condominium_id=$1 AND p.visibility<>'hidden' AND s.status='approved' AND ($2::uuid IS NULL OR p.category_id=$2::uuid) AND ($3::text='' OR p.name ILIKE $3 ESCAPE '\\' OR s.name ILIKE $3 ESCAPE '\\') ORDER BY p.created_at DESC,p.id DESC LIMIT $4 OFFSET $5",
       [u.condominium_id,category,search?escaped:'',limit+1,page*limit]
     );
     return out({products:result.rows.slice(0,limit),hasMore:result.rows.length>limit,page});
   }
   if(path==='home'&&method==='GET'){
     const [categories,shops,products]=await Promise.all([
-      query('SELECT id,name,icon FROM categories WHERE condominium_id=$1 ORDER BY sort_order,name',[u.condominium_id]),
+      query('SELECT id,name,icon FROM categories WHERE condominium_id=$1 AND is_active=true ORDER BY sort_order,name',[u.condominium_id]),
       query("SELECT id,name,description,cover_image,logo_image,is_open,delivery_enabled,pickup_enabled,delivery_fee_cents,lead_time FROM shops WHERE condominium_id=$1 AND status='approved' ORDER BY is_open DESC,created_at DESC LIMIT 100",[u.condominium_id]),
-      query("SELECT p.id,p.shop_id,p.category_id,p.name,p.description,p.price_cents,p.promo_price_cents,p.image_url,p.stock,p.visibility,p.lead_time,p.is_featured,p.option_groups,s.name AS shop_name,s.is_open FROM products p JOIN shops s ON s.id=p.shop_id WHERE p.condominium_id=$1 AND s.condominium_id=$1 AND p.visibility<>'hidden' AND s.status='approved' ORDER BY p.is_featured DESC,p.created_at DESC LIMIT 48",[u.condominium_id])
+      query("SELECT p.id,p.shop_id,p.category_id,p.name,p.description,p.price_cents,p.promo_price_cents,p.image_url,p.stock,p.visibility,p.lead_time,p.is_featured,p.option_groups,s.name AS shop_name,s.is_open FROM products p JOIN categories c ON c.id=p.category_id AND c.condominium_id=p.condominium_id AND c.is_active=true JOIN shops s ON s.id=p.shop_id WHERE p.condominium_id=$1 AND s.condominium_id=$1 AND p.visibility<>'hidden' AND s.status='approved' ORDER BY p.is_featured DESC,p.created_at DESC LIMIT 48",[u.condominium_id])
     ]);
     return out({categories:categories.rows,shops:shops.rows,products:products.rows});
   }
@@ -645,7 +646,7 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
     if(!uuid(parts[1]))bad('Loja inválida.');
     const s=await query("SELECT id,name,description,cover_image,logo_image,is_open,delivery_enabled,pickup_enabled,delivery_fee_cents,lead_time,pickup_instructions FROM shops WHERE id=$1 AND condominium_id=$2 AND status='approved'",[parts[1],u.condominium_id]);
     if(!s.rowCount)bad('Loja não encontrada.',404);
-    const p=await query("SELECT id,shop_id,category_id,name,description,price_cents,promo_price_cents,image_url,stock,visibility,lead_time,option_groups FROM products WHERE shop_id=$1 AND condominium_id=$2 AND visibility<>'hidden' ORDER BY created_at DESC",[parts[1],u.condominium_id]);
+    const p=await query("SELECT id,shop_id,category_id,name,description,price_cents,promo_price_cents,image_url,stock,visibility,lead_time,option_groups FROM products p WHERE shop_id=$1 AND condominium_id=$2 AND visibility<>'hidden' AND EXISTS (SELECT 1 FROM categories c WHERE c.id=p.category_id AND c.condominium_id=p.condominium_id AND c.is_active=true) ORDER BY created_at DESC",[parts[1],u.condominium_id]);
     return out({shop:s.rows[0],products:p.rows});
   }
   if((path==='media'||path==='media/profile')&&method==='POST'){
@@ -655,8 +656,8 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
     const input=form.get('file');
     if(!(input instanceof File))throw new ApiError(400,'Selecione uma imagem.');
     const file:File=input;
-    if(!['image/jpeg','image/png','image/webp'].includes(file.type))bad('Imagem deve ser JPG, PNG ou WebP.');
-    if(file.size<1||file.size>8_000_000)bad('A imagem deve ter no máximo 8 MB.');
+    if(!IMAGE_MIME_TYPES.some(type=>type===file.type))bad('Imagem deve ser JPG, PNG ou WebP.');
+    if(!imageSizeIsAllowed(file.size))bad('A imagem deve ter no máximo 10 MB.');
     const buffer=Buffer.from(await file.arrayBuffer());
     const jpg=buffer[0]===255&&buffer[1]===216&&buffer[2]===255;
     const png=buffer.subarray(0,8).equals(Buffer.from([137,80,78,71,13,10,26,10]));
@@ -714,7 +715,7 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
     if(violatesCommunityLanguage(...b.option_groups.flatMap(g=>[g.name,...g.options.map(o=>o.name)])))
       bad('Revise as opções de personalização: linguagem imprópria não é permitida.');
     if(b.promo_price_cents!=null&&b.promo_price_cents>=b.price_cents)bad('O preço promocional deve ser menor que o original.');
-    const category=await query('SELECT id FROM categories WHERE id=$1 AND condominium_id=$2',[b.category_id,u.condominium_id]);
+    const category=await query('SELECT id FROM categories WHERE id=$1 AND condominium_id=$2 AND is_active=true',[b.category_id,u.condominium_id]);
     if(!category.rowCount)bad('Categoria inválida.');
     const r=await query(
       'INSERT INTO products(condominium_id,shop_id,category_id,name,description,price_cents,promo_price_cents,stock,image_url,is_available,visibility,lead_time,option_groups) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13::jsonb) RETURNING *',
@@ -760,7 +761,7 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
     if(violatesCommunityLanguage(...b.option_groups.flatMap(g=>[g.name,...g.options.map(o=>o.name)])))
       bad('Revise as opções de personalização: linguagem imprópria não é permitida.');
     if(b.promo_price_cents!=null&&b.promo_price_cents>=b.price_cents)bad('Preço promocional inválido.');
-    const cat=await query('SELECT id FROM categories WHERE id=$1 AND condominium_id=$2',[b.category_id,u.condominium_id]);
+    const cat=await query('SELECT id FROM categories WHERE id=$1 AND condominium_id=$2 AND is_active=true',[b.category_id,u.condominium_id]);
     if(!cat.rowCount)bad('Categoria inválida.');
     const r=await query(
       'UPDATE products SET name=$1,description=$2,category_id=$3,price_cents=$4,promo_price_cents=$5,stock=$6,image_url=$7,is_available=$8,lead_time=$9,visibility=$13,option_groups=$14::jsonb WHERE id=$10 AND shop_id=$11 AND condominium_id=$12 RETURNING *',
@@ -812,7 +813,7 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
       const ids=[...new Set(b.items.map(i=>i.id))];
       const dbItems=await tx.query(
         "SELECT * FROM products WHERE id=ANY($1::uuid[]) AND condominium_id=$2 AND shop_id=$3 "+
-        "AND is_available=true AND visibility='available' AND moderation_blocked=false ORDER BY id FOR UPDATE",
+        "AND is_available=true AND visibility='available' AND moderation_blocked=false AND EXISTS (SELECT 1 FROM categories c WHERE c.id=products.category_id AND c.condominium_id=products.condominium_id AND c.is_active=true) ORDER BY id FOR UPDATE",
         [ids,u.condominium_id,shop.id]
       );
       if(dbItems.rows.length!==ids.length)bad('Um ou mais produtos estão indisponíveis.');
@@ -916,7 +917,7 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
       query('SELECT id,name,email,phone,tower,apartment,status,created_at FROM users WHERE condominium_id=$1 AND role=\'resident\' ORDER BY CASE WHEN status=\'pending\' THEN 0 ELSE 1 END,created_at DESC LIMIT 200',[u.condominium_id]),
       query('SELECT s.id,s.name,s.description,s.status,s.is_open,u.name AS owner_name FROM shops s JOIN users u ON u.id=s.owner_id WHERE s.condominium_id=$1 ORDER BY CASE WHEN s.status=\'pending\' THEN 0 ELSE 1 END,s.created_at DESC LIMIT 200',[u.condominium_id]),
       query("SELECT (SELECT count(*)::int FROM users WHERE condominium_id=$1 AND status='approved') AS residents, (SELECT count(*)::int FROM shops WHERE condominium_id=$1 AND status='approved') AS shops,(SELECT count(*)::int FROM orders WHERE condominium_id=$1) AS orders",[u.condominium_id]),
-      query('SELECT id,name,icon FROM categories WHERE condominium_id=$1 ORDER BY sort_order,name',[u.condominium_id])
+      query('SELECT id,name,icon FROM categories WHERE condominium_id=$1 AND is_active=true ORDER BY sort_order,name',[u.condominium_id])
     ]);
     return out({residents:residents.rows,shops:shops.rows,stats:stats.rows[0],categories:categories.rows});
   }
@@ -1022,7 +1023,10 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
   }
   if(path==='admin/categories'&&method==='POST'){
     admin(u);
-    const b=z.object({name:z.string().trim().min(2).max(60),icon:z.string().regex(/^[a-z0-9-]{2,40}$/)}).parse(await body(req));
+    const b=z.object({name:z.string().trim().min(2).max(60),icon:z.enum(['cake-slice','sandwich','utensils','coffee','pizza','ice-cream-cone','shopping-basket'])}).parse(await body(req));
+    const normalized=b.name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+    if(['servicos','beleza','saude e bem-estar','moda','casa e decoracao','eletronicos','presentes','outros'].includes(normalized))
+      bad('Somente categorias de alimentação são permitidas.');
     try{
       const r=await query('INSERT INTO categories(condominium_id,name,icon) VALUES($1,$2,$3) RETURNING *',[u.condominium_id,b.name,b.icon]);
       return out({category:r.rows[0]},201);

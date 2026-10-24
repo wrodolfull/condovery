@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import {IllustrationSlot} from '@/components/IllustrationSlot';
 import {RoundedStars} from '@/components/RoundedStars';
 import {artwork,getCategoryArtwork} from '@/lib/artwork';
+import {IMAGE_MIME_TYPES, imageSizeIsAllowed} from '@/lib/image-limits';
 import {selectedOptions, extrasTotal, arrivalInstructionOptions, toggleArrivalInstruction, type OptionGroup, type Selection} from '@/lib/orders';
 import {
   ArrowLeft, ArrowRight, Bell, Building2, CakeSlice, Check, CheckCircle2, ChevronDown, ChevronRight,
@@ -67,6 +68,33 @@ const orderFilters:{key:OrderFilter;label:string}[]=[
   {key:'completed',label:'Concluídos'},
   {key:'cancelled',label:'Cancelados'}
 ];
+
+// Compress large photos before our API request (Vercel Functions: 4.5 MB).
+// The backend independently validates image format and size.
+async function prepareImageForUpload(file:File):Promise<File>{
+  if(!IMAGE_MIME_TYPES.some(type=>type===file.type))throw new Error('Imagem deve ser JPG, PNG ou WebP.');
+  if(!imageSizeIsAllowed(file.size))throw new Error('A imagem deve ter no máximo 10 MB.');
+  if(file.size<=4_000_000)return file;
+  let bitmap:ImageBitmap;
+  try{bitmap=await createImageBitmap(file);}
+  catch{throw new Error('Não foi possível ler a imagem selecionada.');}
+  try{
+    const ratio=Math.min(1,960/bitmap.width,960/bitmap.height);
+    const canvas=document.createElement('canvas');
+    canvas.width=Math.max(1,Math.round(bitmap.width*ratio));
+    canvas.height=Math.max(1,Math.round(bitmap.height*ratio));
+    const ctx=canvas.getContext('2d');
+    if(!ctx)throw new Error('Não foi possível preparar a imagem.');
+    ctx.drawImage(bitmap,0,0,canvas.width,canvas.height);
+    const blob=await new Promise<Blob>((resolve,reject)=>canvas.toBlob(
+      result=>result?resolve(result):reject(new Error('Não foi possível otimizar a imagem.')),
+      'image/webp',0.8
+    ));
+    if(blob.type!=='image/webp'||!imageSizeIsAllowed(blob.size)||blob.size>4_000_000)
+      throw new Error('Não foi possível reduzir a imagem para envio.');
+    return new File([blob],'foto.webp',{type:'image/webp'});
+  }finally{bitmap.close();}
+}
 
 async function api<T>(url:string,opts:RequestInit={}):Promise<T>{
   const res=await fetch('/api/'+url,{credentials:'same-origin',...opts,headers:{...(opts.body instanceof FormData?{}:{'Content-Type':'application/json'}),...opts.headers}});
@@ -205,7 +233,7 @@ export default function Page(){
   const [reportReason,setReportReason]=useState<'language'|'image'|'inappropriate'|'other'>('image');
   const [reportDetails,setReportDetails]=useState('');
   const [newCategory,setNewCategory]=useState('');
-  const [categoryIcon,setCategoryIcon]=useState('shopping-bag');
+  const [categoryIcon,setCategoryIcon]=useState('sandwich');
 
   const notify=(msg:string)=>{setToast(msg);setError('');};
   const fail=(e:unknown)=>setError(e instanceof Error?e.message:'Não foi possível concluir.');
@@ -598,7 +626,8 @@ export default function Page(){
   async function upload(file:File,kind:'product'|'cover'|'logo'|'avatar'){
     setBusy(true);setError('');
     try{
-      const data=new FormData();data.append('file',file);
+      const uploadFile=await prepareImageForUpload(file);
+      const data=new FormData();data.append('file',uploadFile);
       const res=await api<{url:string}>(kind==='avatar'?'media/profile':'media',{method:'POST',body:data});
       if(kind==='product'){
         setProductForm(current=>({...current,image_url:res.url}));
@@ -817,7 +846,7 @@ export default function Page(){
       </>}
 
       {view==='categories'&&<>
-        <div className="page-title"><h1>Explorar</h1><p>Descubra produtos, comida e serviços oferecidos por seus vizinhos.</p></div>
+        <div className="page-title"><h1>Explorar</h1><p>Descubra alimentos, bebidas e delícias preparadas pelos seus vizinhos.</p></div>
         <div className="search-container"><Search size={20}/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Buscar por produto ou loja" aria-label="Buscar"/>{query&&<button onClick={()=>setQuery('')}><X size={16}/></button>}</div>
         <div className="category-track explore-category-track" aria-label="Explorar por categoria">
           <button className={'category-card'+(!category?' selected':'')} onClick={()=>setCategory('')} aria-pressed={!category}>
@@ -1169,7 +1198,7 @@ export default function Page(){
           {sellerTab==='products'&&<><div className="section-heading"><h2>Seus produtos</h2><button className="mini-primary" disabled={myShop.status!=='approved'} onClick={()=>editProduct()}><Plus size={17}/>Adicionar</button></div>
             {editingProduct?<form className="white-panel form-stack product-editor" onSubmit={saveProduct}>
               <div className="section-heading"><h2>{productForm.id?'Editar produto':'Novo produto'}</h2><button type="button" onClick={()=>setEditingProduct(false)}><X size={19}/></button></div>
-              <label>Foto do produto<div className="image-upload">{productForm.image_url?<img src={productForm.image_url} alt="Prévia do produto"/>:<ImagePlus size={29}/>}<span>Selecionar foto (até 8 MB)</span><input aria-label="Enviar foto do produto" type="file" accept="image/jpeg,image/png,image/webp" onChange={e=>{const f=e.target.files?.[0];if(f)upload(f,'product');}}/></div></label>
+              <label>Foto do produto<div className="image-upload">{productForm.image_url?<img src={productForm.image_url} alt="Prévia do produto"/>:<ImagePlus size={29}/>}<span>Selecionar foto (até 10 MB)</span><input aria-label="Enviar foto do produto" type="file" accept="image/jpeg,image/png,image/webp" onChange={e=>{const f=e.target.files?.[0];if(f)upload(f,'product');}}/></div></label>
               <label>Nome<input required minLength={2} maxLength={100} value={productForm.name} onChange={e=>setProductForm(s=>({...s,name:e.target.value}))}/></label>
               <label>Descrição<textarea rows={3} maxLength={600} value={productForm.description} onChange={e=>setProductForm(s=>({...s,description:e.target.value}))}/></label>
               <label>Categoria<select required value={productForm.category_id} onChange={e=>setProductForm(s=>({...s,category_id:e.target.value}))}><option value="">Selecione</option>{home.categories.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></label>
@@ -1261,10 +1290,7 @@ export default function Page(){
         <section className="admin-section"><SectionHeader title="Moradores cadastrados"/>
           {adminData.residents.length?adminData.residents.map(r=><div className="admin-row" key={r.id}><div><strong>{r.name}</strong><p>{r.email} · {r.tower} / {r.apartment}</p><Pill tone={r.status==='approved'?'green':'orange'}>{statusLabel[r.status]}</Pill></div><div className="inline-actions">{r.status==='suspended'&&<button disabled={busy} onClick={()=>adminAction('users',r.id,'approved')}>Reativar</button>}{r.status!=='suspended'&&<button disabled={busy} className="danger-text" onClick={()=>adminAction('users',r.id,'suspended')}>Suspender</button>}</div></div>):<p className="muted">Nenhum morador cadastrado ainda.</p>}</section>
         <section className="admin-section"><SectionHeader title="Lojas"/>{adminData.shops.length?adminData.shops.map(s=><div className="admin-row" key={s.id}><div><strong>{s.name}</strong><p>Responsável: {s.owner_name}</p><Pill tone={s.status==='approved'?'green':'orange'}>{statusLabel[s.status]}</Pill></div><div className="inline-actions">{s.status==='suspended'&&<button disabled={busy} onClick={()=>adminAction('shops',s.id,'approved')}>Reativar</button>}{s.status!=='suspended'&&<button disabled={busy} className="danger-text" onClick={()=>adminAction('shops',s.id,'suspended')}>Suspender</button>}</div></div>):<p className="muted">Nenhuma loja cadastrada.</p>}</section>
-        <section className="admin-section white-panel"><h2><LayoutGrid size={20}/> Categorias</h2><div className="filter-chips">{adminData.categories.map(c=><span className="category-tag" key={c.id}>{c.name}</span>)}</div><form className="admin-category-form" onSubmit={createCategory}><input required minLength={2} maxLength={60} value={newCategory} onChange={e=>setNewCategory(e.target.value)} placeholder="Nova categoria"/><select value={categoryIcon} onChange={e=>setCategoryIcon(e.target.value)} aria-label="Ícone"><option value="shopping-bag">Compras</option><option value="cake-slice">Bolos</option><option value="sandwich">Alimentos</option><option value="coffee">Bebidas</option><option value="shirt">Moda</option><option value="sparkles">Beleza</option><option value="gift">Presentes</option><option value="pizza">Lanches</option>
-<option value="ice-cream-cone">Sobremesas</option><option value="shopping-basket">Mercadinho</option>
-<option value="wrench">Serviços</option><option value="heart-pulse">Saúde</option>
-<option value="house">Casa</option><option value="smartphone">Eletrônicos</option></select><button className="outline-button" disabled={busy} type="submit"><Plus size={16}/>Adicionar</button></form></section>
+        <section className="admin-section white-panel"><h2><LayoutGrid size={20}/> Categorias</h2><div className="filter-chips">{adminData.categories.map(c=><span className="category-tag" key={c.id}>{c.name}</span>)}</div><form className="admin-category-form" onSubmit={createCategory}><input required minLength={2} maxLength={60} value={newCategory} onChange={e=>setNewCategory(e.target.value)} placeholder="Nova categoria de alimentação"/><select value={categoryIcon} onChange={e=>setCategoryIcon(e.target.value)} aria-label="Ícone"><option value="cake-slice">Bolos</option><option value="sandwich">Alimentos</option><option value="coffee">Bebidas</option><option value="pizza">Lanches</option><option value="ice-cream-cone">Sobremesas</option><option value="shopping-basket">Mercadinho</option></select><button className="outline-button" disabled={busy} type="submit"><Plus size={16}/>Adicionar</button></form></section>
                 <section className="admin-section white-panel">
           <h2><ShieldCheck size={20}/> Denúncias de conteúdo
             {reports.filter(r=>r.status==='open').length>0&&<span className="review-pending-counter">

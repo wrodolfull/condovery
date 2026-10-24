@@ -8,8 +8,7 @@ const db=new pg.Client({connectionString:process.env.DATABASE_URL});
 await db.connect();
 const expected=[
   'Bolos e doces','Pães e salgados','Refeições','Bebidas','Lanches',
-  'Sobremesas e sorvetes','Mercadinho','Serviços','Beleza','Saúde e bem-estar',
-  'Moda','Casa e decoração','Eletrônicos','Presentes','Outros'
+  'Sobremesas e sorvetes','Mercadinho'
 ];
 try{
   // Legacy tenant fixture with only the original eight categories.
@@ -31,16 +30,20 @@ try{
   const ids=new Map(old.rows.map(x=>[x.name,x.id]));
   // Mimic applying a new migration to an already existing condominium.
   execFileSync(process.execPath,['scripts/migrate.mjs'],{env:process.env,stdio:'pipe'});
-  const upgraded=await db.query('SELECT id,name,icon FROM categories WHERE condominium_id=$1 ORDER BY sort_order,name',[id]);
+  const upgraded=await db.query('SELECT id,name,icon FROM categories WHERE condominium_id=$1 AND is_active=true ORDER BY sort_order,name',[id]);
   assert.deepEqual(upgraded.rows.map(c=>c.name),expected);
   for(const c of upgraded.rows)if(ids.has(c.name))assert.equal(c.id,ids.get(c.name),'Retain existing category UUID');
+  // Old references are preserved, but non-food choices are deactivated.
+  const inactive=await db.query('SELECT name,id FROM categories WHERE condominium_id=$1 AND is_active=false ORDER BY name',[id]);
+  assert.deepEqual(inactive.rows.map(c=>c.name),['Beleza','Moda','Outros','Presentes']);
+  for(const c of inactive.rows)assert.equal(c.id,ids.get(c.name));
   // Reapplying migrations must never duplicate any categories.
   execFileSync(process.execPath,['scripts/migrate.mjs'],{env:process.env,stdio:'pipe'});
-  const repeated=await db.query('SELECT count(*)::int AS n FROM categories WHERE condominium_id=$1',[id]);
-  assert.equal(repeated.rows[0].n,15);
+  const repeated=await db.query('SELECT count(*)::int AS n FROM categories WHERE condominium_id=$1 AND is_active=true',[id]);
+  assert.equal(repeated.rows[0].n,7);
   // The first tenant bootstrapped before this test is also unchanged.
-  const other=await db.query('SELECT count(*)::int AS n FROM categories WHERE condominium_id=(SELECT id FROM condominiums WHERE slug=$1)',
+  const other=await db.query('SELECT count(*)::int AS n FROM categories WHERE is_active=true AND condominium_id=(SELECT id FROM condominiums WHERE slug=$1)',
     ['teste']);
-  assert.equal(other.rows[0].n,15);
-  console.log('Existing condominium migration PASS: 15 categories, original UUIDs, idempotent.');
+  assert.equal(other.rows[0].n,7);
+  console.log('Existing condominium migration PASS: 7 food categories, legacy UUIDs preserved, idempotent.');
 }finally{await db.end();}
