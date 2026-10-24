@@ -11,10 +11,10 @@ import {
   SlidersHorizontal, Sparkles, Store, Tag, Trash2, Truck, UserRound, Utensils, X, Shirt, Sandwich
 } from 'lucide-react';
 
-type Viewer={id:string;name:string;email:string;phone:string;role:'admin'|'resident';status:'pending'|'approved'|'suspended';tower:string;apartment:string;condominium_name:string;towers:string[]};
+type Viewer={id:string;name:string;email:string;phone:string;avatar_image:string|null;role:'admin'|'resident';status:'pending'|'approved'|'suspended';tower:string;apartment:string;condominium_name:string;towers:string[]};
 type Category={id:string;name:string;icon:string};
-type Shop={id:string;name:string;description:string;cover_image:string|null;status?:string;is_open:boolean;delivery_enabled:boolean;pickup_enabled:boolean;lead_time:string;pickup_instructions?:string;whatsapp?:string};
-type Product={id:string;shop_id:string;shop_name?:string;category_id:string;name:string;description:string;price_cents:number;promo_price_cents:number|null;image_url:string|null;stock:number|null;is_available?:boolean;lead_time?:string;is_featured?:boolean};
+type Shop={id:string;name:string;description:string;cover_image:string|null;logo_image:string|null;status?:string;is_open:boolean;delivery_enabled:boolean;pickup_enabled:boolean;lead_time:string;pickup_instructions?:string;whatsapp?:string};
+type Product={id:string;shop_id:string;shop_name?:string;visibility:'available'|'unavailable'|'hidden';category_id:string;name:string;description:string;price_cents:number;promo_price_cents:number|null;image_url:string|null;stock:number|null;is_available?:boolean;lead_time?:string;is_featured?:boolean};
 type Order={id:string;code:number;status:string;review_status?:'pending'|'approved'|'rejected'|null;total_cents:number;shop_name:string;buyer_name:string;buyer_phone:string;tower:string;apartment:string;fulfillment:string;delivery_day:string|null;delivery_window:string;delivery_instructions:string[];note:string;items:{name:string;quantity:number;unit_price_cents:number;note:string}[];created_at:string};
 type ReviewStatus='pending'|'approved'|'rejected';
 type PublicReview={id:string;rating:number;description:string;created_at:string};
@@ -143,6 +143,7 @@ export default function Page(){
   const [instructions,setInstructions]=useState<string[]>([]);
   const [checkoutNote,setCheckoutNote]=useState('');
   const [lastOrder,setLastOrder]=useState<{code:number;whatsapp_url:string}|null>(null);
+  const [checkoutKey,setCheckoutKey]=useState<string|null>(null);
   const [orders,setOrders]=useState<Order[]>([]);
   const [orderFilter,setOrderFilter]=useState<OrderFilter>('all');
   const [ordersLoading,setOrdersLoading]=useState(false);
@@ -151,10 +152,10 @@ export default function Page(){
   const [myProducts,setMyProducts]=useState<Product[]>([]);
   const [adminData,setAdminData]=useState<AdminData|null>(null);
   const [sellerTab,setSellerTab]=useState<'orders'|'products'|'reviews'|'settings'>('orders');
-  const [shopForm,setShopForm]=useState({name:'',description:'',whatsapp:'',is_open:true,delivery_enabled:true,pickup_enabled:true,lead_time:'',pickup_instructions:'',cover_image:''});
-  const [productForm,setProductForm]=useState({id:'',name:'',description:'',category_id:'',price:'',promo:'',stock:'',image_url:'',is_available:true,lead_time:''});
+  const [shopForm,setShopForm]=useState({name:'',description:'',whatsapp:'',is_open:true,delivery_enabled:true,pickup_enabled:true,lead_time:'',pickup_instructions:'',cover_image:'',logo_image:''});
+  const [productForm,setProductForm]=useState({id:'',name:'',description:'',category_id:'',price:'',promo:'',stock:'',image_url:'',visibility:'available' as Product['visibility'],lead_time:''});
   const [editingProduct,setEditingProduct]=useState(false);
-  const [profile,setProfile]=useState({name:'',phone:'',tower:'',apartment:''});
+  const [profile,setProfile]=useState({name:'',phone:'',tower:'',apartment:'',avatar_image:''});
   const [invite,setInvite]=useState('');
   const [newCategory,setNewCategory]=useState('');
   const [categoryIcon,setCategoryIcon]=useState('shopping-bag');
@@ -183,7 +184,7 @@ export default function Page(){
     if(data.shop)setShopForm({
       name:data.shop.name,description:data.shop.description,whatsapp:data.shop.whatsapp??'',
       is_open:data.shop.is_open,delivery_enabled:data.shop.delivery_enabled,pickup_enabled:data.shop.pickup_enabled,
-      lead_time:data.shop.lead_time??'',pickup_instructions:data.shop.pickup_instructions??'',cover_image:data.shop.cover_image??''
+      lead_time:data.shop.lead_time??'',pickup_instructions:data.shop.pickup_instructions??'',cover_image:data.shop.cover_image??'',logo_image:data.shop.logo_image??''
     });
   },[]);
   const loadOrders=useCallback(async(filter:OrderFilter='all')=>{
@@ -237,7 +238,7 @@ export default function Page(){
         setAuthForm(s=>({...s,name:r.googleSignup!.name,email:r.googleSignup!.email,password:''}));
       }
       if(r.viewer){
-        setProfile({name:r.viewer.name,phone:r.viewer.phone,tower:r.viewer.tower,apartment:r.viewer.apartment});
+        setProfile({name:r.viewer.name,phone:r.viewer.phone,tower:r.viewer.tower,apartment:r.viewer.apartment,avatar_image:r.viewer.avatar_image??''});
         if(r.viewer.status==='approved')await refresh(r.viewer);
       }
     }).catch(e=>{if(active)fail(e);}).finally(()=>{if(active)setLoading(false);});
@@ -336,7 +337,7 @@ export default function Page(){
         });
         const response=await api<{viewer:Viewer}>('me');
         setGoogleSignup(null);setViewer(response.viewer);
-        setProfile({name:response.viewer.name,phone:response.viewer.phone,tower:response.viewer.tower,apartment:response.viewer.apartment});
+        setProfile({name:response.viewer.name,phone:response.viewer.phone,tower:response.viewer.tower,apartment:response.viewer.apartment,avatar_image:response.viewer.avatar_image??''});
         go('home');
       } else if(authMode==='register'){
         const result=await api<{message:string}>('auth/register',{method:'POST',body:payload(authForm)});
@@ -346,7 +347,7 @@ export default function Page(){
         const response=await api<{viewer:Viewer}>('me');setViewer(response.viewer);
         const u=response.viewer;
         if(u.status==='approved')await refresh(u);
-        setProfile({name:u.name,phone:u.phone,tower:u.tower,apartment:u.apartment});
+        setProfile({name:u.name,phone:u.phone,tower:u.tower,apartment:u.apartment,avatar_image:u.avatar_image??''});
         go('home');
       }
     }catch(e){fail(e);}finally{setBusy(false);}
@@ -409,8 +410,31 @@ export default function Page(){
     }catch(e){fail(e);}finally{setBusy(false);}
   }
   function openProduct(p:Product){setSelectedProduct(p);setQty(1);setItemNote('');go('product');}
+  const productCanBuy=(p:Product)=>p.visibility==='available'&&p.stock!==0;
+  async function changeProductVisibility(id:string,visibility:Product['visibility']){
+    setBusy(true);setError('');
+    try{
+      await api('products/'+id+'/visibility',{method:'PATCH',body:payload({visibility})});
+      await Promise.all([loadMine(),loadHome(),loadFavorites()]);
+      notify(visibility==='available'?'Produto disponível para compras.':
+        visibility==='unavailable'?'Produto marcado como indisponível.':'Produto ocultado da vitrine.');
+    }catch(e){fail(e);}finally{setBusy(false);}
+  }
+  async function reopenOrderWhatsApp(id:string){
+    try{
+      const result=await api<{whatsapp_url:string}>('orders/'+id+'/whatsapp');
+      window.location.assign(result.whatsapp_url);
+    }catch(e){fail(e);}
+  }
+  function testShopWhatsApp(){
+    const digits=shopForm.whatsapp.replace(/\D/g,'');
+    if(!/^(?:55)?\d{10,11}$/.test(digits)){setError('Informe um número brasileiro com DDD.');return;}
+    const number=digits.startsWith('55')&&digits.length>11?digits:'55'+digits;
+    window.open('https://wa.me/'+number,'_blank','noopener,noreferrer');
+  }
   function addToCart(){
     if(!selectedProduct)return;
+    if(!productCanBuy(selectedProduct)){notify('Este produto está indisponível.');return;}
     if(cart.length&&cart[0].product.shop_id!==selectedProduct.shop_id){
       if(!window.confirm('Seu carrinho é de outra loja. Deseja substituí-lo?'))return;
       setCart([]);
@@ -423,17 +447,21 @@ export default function Page(){
     notify('Produto adicionado ao carrinho.');go('cart');
   }
   async function checkout(){
-    if(!cart.length)return;
+    if(!cart.length||busy)return;
     setBusy(true);setError('');
+    const key=checkoutKey??crypto.randomUUID();
+    if(!checkoutKey)setCheckoutKey(key);
     try{
       const result=await api<{order:{code:number};whatsapp_url:string}>('orders',{method:'POST',body:payload({
         shop_id:cart[0].product.shop_id,
         items:cart.map(i=>({id:i.product.id,quantity:i.quantity,note:i.note})),
         fulfillment,delivery_day:deliveryDay||null,delivery_window:deliveryWindow,
-        instructions,note:checkoutNote
+        instructions,note:checkoutNote,client_order_key:key
       })});
       setLastOrder({code:result.order.code,whatsapp_url:result.whatsapp_url});
-      setCart([]);await loadOrders();await loadHome();go('success');
+      setCheckoutKey(null);setCart([]);go('success');
+      // A saída para o WhatsApp não deve depender de atualizar a vitrine.
+      void Promise.allSettled([loadOrders(),loadHome()]);
       window.location.assign(result.whatsapp_url);
     }catch(e){fail(e);}finally{setBusy(false);}
   }
@@ -457,19 +485,29 @@ export default function Page(){
       await loadMine();await loadHome();
     }catch(e){fail(e);}finally{setBusy(false);}
   }
-  async function upload(file:File,kind:'product'|'cover'){
-    setBusy(true);
+  async function upload(file:File,kind:'product'|'cover'|'logo'|'avatar'){
+    setBusy(true);setError('');
     try{
       const data=new FormData();data.append('file',file);
-      const res=await api<{url:string}>('media',{method:'POST',body:data});
-      if(kind==='product')setProductForm(s=>({...s,image_url:res.url}));
-      else setShopForm(s=>({...s,cover_image:res.url}));
-      notify('Imagem enviada.');
+      const res=await api<{url:string}>(kind==='avatar'?'media/profile':'media',{method:'POST',body:data});
+      if(kind==='product'){
+        setProductForm(current=>({...current,image_url:res.url}));
+        notify('Foto do produto pronta. Salve o produto.');
+      }else if(kind==='avatar'){
+        await api('me',{method:'PATCH',body:payload({...profile,avatar_image:res.url})});
+        const result=await api<{viewer:Viewer}>('me');setViewer(result.viewer);
+        setProfile(p=>({...p,avatar_image:res.url}));notify('Foto de perfil salva.');
+      }else{
+        const next={...shopForm,[kind==='logo'?'logo_image':'cover_image']:res.url};
+        await api('shops/mine',{method:'PATCH',body:payload(next)});
+        setShopForm(next);
+        await loadMine();notify(kind==='logo'?'Foto da loja salva.':'Foto de capa salva.');
+      }
     }catch(e){fail(e);}finally{setBusy(false);}
   }
   function editProduct(p?:Product){
-    setProductForm(p?{id:p.id,name:p.name,description:p.description,category_id:p.category_id,price:(p.price_cents/100).toFixed(2),promo:p.promo_price_cents?(p.promo_price_cents/100).toFixed(2):'',stock:p.stock==null?'':String(p.stock),image_url:p.image_url??'',is_available:p.is_available??true,lead_time:p.lead_time??''}
-      :{id:'',name:'',description:'',category_id:home.categories[0]?.id??'',price:'',promo:'',stock:'',image_url:'',is_available:true,lead_time:''});
+    setProductForm(p?{id:p.id,name:p.name,description:p.description,category_id:p.category_id,price:(p.price_cents/100).toFixed(2),promo:p.promo_price_cents?(p.promo_price_cents/100).toFixed(2):'',stock:p.stock==null?'':String(p.stock),image_url:p.image_url??'',visibility:p.visibility??(p.is_available?'available':'hidden'),lead_time:p.lead_time??''}
+      :{id:'',name:'',description:'',category_id:home.categories[0]?.id??'',price:'',promo:'',stock:'',image_url:'',visibility:'available',lead_time:''});
     setEditingProduct(true);
   }
   async function saveProduct(e:React.FormEvent){
@@ -479,7 +517,7 @@ export default function Page(){
         price_cents:Math.round(Number(productForm.price.replace(',','.'))*100),
         promo_price_cents:productForm.promo?Math.round(Number(productForm.promo.replace(',','.'))*100):null,
         stock:productForm.stock===''?null:Number(productForm.stock),image_url:productForm.image_url||null,
-        is_available:productForm.is_available,lead_time:productForm.lead_time};
+        visibility:productForm.visibility,lead_time:productForm.lead_time};
       await api(productForm.id?'products/'+productForm.id:'products',{method:productForm.id?'PATCH':'POST',body:payload(b)});
       setEditingProduct(false);await Promise.all([loadMine(),loadHome()]);notify('Produto salvo.');
     }catch(e){fail(e);}finally{setBusy(false);}
