@@ -91,3 +91,7 @@ Um único login permite comprar e vender. A loja exige WhatsApp válido e aceita
 ## Cadastro imediato e regras
 
 Não há aprovação prévia para moradores ou lojas. Com código do condomínio e autenticação Supabase, moradores podem entrar e vender imediatamente. Lojas aceitam regras de convivência e podem ser denunciadas, ocultadas ou suspensas pela administração. Detalhes em [docs/INSTANT_ACCESS.md](docs/INSTANT_ACCESS.md). Não há detecção automática de imagens inadequadas nesta versão.
+
+## Exclusão da conta
+
+Moradores podem usar **Minha conta → Excluir minha conta** para encerrar o perfil e loja sem perder a integridade do histórico anonimizado de pedidos. Consulte [docs/ACCOUNT_DELETION.md](docs/ACCOUNT_DELETION.md) para operação e limpeza do Supabase Auth.

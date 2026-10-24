@@ -448,3 +448,69 @@ await request('auth/login',{method:'POST',body:{email:buyerEmail,password:pass},
 const newLogin=await request('auth/login',{method:'POST',body:{email:buyerEmail,password:'NewPassword123!'}});
 assert.ok(newLogin.cookie);
 console.log('Security tests PASS: favorites, catalog, editable address and Supabase one-time password recovery.');
+
+
+const deletionEmails=['delete-seller-smoke@example.com','delete-buyer-smoke@example.com'];
+for(const [index,email] of deletionEmails.entries()){
+  await request('auth/register',{method:'POST',expected:201,body:{
+    name:index===0?'Seller Leaving':'Buyer Leaving',email,phone:'11911112222',
+    password:pass,invite:chosen,tower:'Torre 1',apartment:String(510+index)
+  }});
+  const verified=await fetch('http://127.0.0.1:3333/__test/confirm?email='+encodeURIComponent(email));
+  assert.equal(verified.status,200);
+}
+const deleteSellerCookie=(await request('auth/login',{method:'POST',body:{email:deletionEmails[0],password:pass}})).cookie;
+const deleteBuyerCookie=(await request('auth/login',{method:'POST',body:{email:deletionEmails[1],password:pass}})).cookie;
+const leaveShop=(await request('shops/mine',{method:'POST',expected:201,cookie:deleteSellerCookie,body:{
+  name:'Loja que vai encerrar',description:'Produtos caseiros',whatsapp:'11999991234',accept_guidelines:true
+}})).data.shop;
+const leaveProduct=(await request('products',{method:'POST',cookie:deleteSellerCookie,expected:201,body:{
+  name:'Produto de teste',description:'Um produto de teste',price_cents:1250,
+  category_id:sellerHome.categories[0].id,stock:8
+}})).data.product;
+const leaveOrder=(await request('orders',{method:'POST',cookie:deleteBuyerCookie,expected:201,body:{
+  shop_id:leaveShop.id,items:[{id:leaveProduct.id,quantity:2,note:'Detalhes pessoais para limpar'}],
+  fulfillment:'pickup',note:'Nota privada de compra'
+}})).data.order;
+await request('me',{method:'DELETE',cookie:deleteSellerCookie,expected:400,
+  body:{confirmation:'NÃO EXCLUIR',password:pass}});
+await request('me',{method:'DELETE',cookie:deleteSellerCookie,expected:401,
+  body:{confirmation:'EXCLUIR',password:'senha-invalida'}});
+await request('me',{method:'DELETE',cookie:deleteSellerCookie,expected:409,
+  body:{confirmation:'EXCLUIR',password:pass}});
+await request('me',{method:'DELETE',cookie:deleteBuyerCookie,expected:409,
+  body:{confirmation:'EXCLUIR',password:pass}});
+await request('orders/'+leaveOrder.id,{method:'PATCH',cookie:deleteSellerCookie,body:{status:'confirmed'}});
+await request('orders/'+leaveOrder.id,{method:'PATCH',cookie:deleteSellerCookie,body:{status:'completed'}});
+const buyerDeleted=await request('me',{method:'DELETE',cookie:deleteBuyerCookie,body:{
+  confirmation:'EXCLUIR',password:pass
+}});
+assert.equal(buyerDeleted.data.status,'completed');
+await request('me',{cookie:deleteBuyerCookie,expected:200}).then(r=>assert.equal(r.data.viewer,null));
+await request('home',{cookie:deleteBuyerCookie,expected:401});
+await request('auth/login',{method:'POST',body:{email:deletionEmails[1],password:pass},expected:401});
+const sellerDeleted=await request('me',{method:'DELETE',cookie:deleteSellerCookie,body:{
+  confirmation:'EXCLUIR',password:pass
+}});
+assert.equal(sellerDeleted.data.status,'completed');
+await request('home',{cookie:deleteSellerCookie,expected:401});
+const remaining=await request('home',{cookie:adminCookie});
+assert.ok(!remaining.data.shops.some(s=>s.id===leaveShop.id));
+const archive=new pg.Client({connectionString:process.env.DATABASE_URL});
+await archive.connect();
+try{
+  const o=await archive.query('SELECT o.id,o.total_cents,o.note,u.name,u.phone,u.status FROM orders o JOIN users u ON u.id=o.buyer_id WHERE o.id=$1',[leaveOrder.id]);
+  assert.equal(o.rows.length,1);
+  assert.equal(o.rows[0].total_cents,2500);
+  assert.equal(o.rows[0].name,'Conta excluída');
+  assert.equal(o.rows[0].phone,'');
+  assert.equal(o.rows[0].status,'deleted');
+  assert.equal(o.rows[0].note,'');
+  const sh=await archive.query('SELECT status,is_open,whatsapp FROM shops WHERE id=$1',[leaveShop.id]);
+  assert.equal(sh.rows[0].status,'deleted');
+  assert.equal(sh.rows[0].is_open,false);
+  assert.equal(sh.rows[0].whatsapp,'');
+  const jobs=await archive.query("SELECT count(*)::int AS total FROM account_deletion_jobs WHERE finished_at IS NOT NULL");
+  assert.ok(jobs.rows[0].total>=2);
+}finally{await archive.end();}
+console.log('Account deletion PASS: password, confirmation, unfinished orders, privacy, seller archive, Supabase Auth deletion.');

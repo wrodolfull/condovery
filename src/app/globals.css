@@ -978,3 +978,18 @@ padding:12px;border-radius:14px;font-size:12px;line-height:1.55;margin:9px 0}
 .price-changed{display:grid;gap:9px;border-radius:14px;padding:14px;background:#fff1df;border:1px solid #ffd7a4}
 .price-changed small{font-size:12px;color:#73533d}
 @media(max-width:440px){.option-choice-editor{grid-template-columns:minmax(0,1fr) 92px 30px;gap:6px}.product-option-editor{padding:10px}}
+
+.delete-account-entry{color:#a1332a!important}
+.delete-account-entry small{color:#80645e}
+.account-delete-overlay{position:fixed;inset:0;z-index:110;background:rgba(26,21,19,.65);display:grid;place-items:center;padding:16px}
+.account-delete-dialog{position:relative;width:min(100%,450px);max-height:calc(100dvh - 32px);
+overflow:auto;background:#fffcf8;border-radius:22px;padding:24px;box-shadow:0 15px 60px #0003}
+.account-delete-dialog h2{font-size:23px;margin:0 35px 12px 0}
+.account-delete-dialog p{font-size:13px;color:#65544c;line-height:1.6}
+.account-delete-close{position:absolute;right:14px;top:14px;width:40px;height:40px;
+background:#f1ebe5;border:0;border-radius:50%;display:grid;place-items:center}
+.account-delete-submit{border:0;border-radius:30px;min-height:48px;background:#a32822;color:white;
+font-weight:750;padding:12px 20px;cursor:pointer}
+.account-delete-submit:disabled{opacity:.52;cursor:default}
+.account-delete-note{margin:0!important;font-size:12px!important}
+.account-delete-error{padding:10px;border-radius:10px;background:#fff0ec;color:#a32822!important;font-weight:650}
