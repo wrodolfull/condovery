@@ -29,13 +29,13 @@ ALTER TABLE public.media_assets ALTER COLUMN bytes DROP NOT NULL;
 ALTER TABLE public.media_assets ADD COLUMN IF NOT EXISTS storage_key text;
 CREATE UNIQUE INDEX IF NOT EXISTS media_assets_storage_key_idx ON public.media_assets(storage_key)
   WHERE storage_key IS NOT NULL;
-DO $
+DO $$
 BEGIN
   IF NOT EXISTS(SELECT 1 FROM pg_constraint WHERE conname='media_assets_payload_check') THEN
     ALTER TABLE public.media_assets ADD CONSTRAINT media_assets_payload_check
       CHECK (storage_key IS NOT NULL OR bytes IS NOT NULL);
   END IF;
-END $;
+END $$;
 
 CREATE TABLE IF NOT EXISTS public.favorites (
   condominium_id uuid NOT NULL REFERENCES public.condominiums(id),
