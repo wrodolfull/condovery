@@ -13,11 +13,6 @@ export async function processAccountDeletionJob(id:string):Promise<'completed'|'
   const job=found.rows[0];
   const admin=storageAdmin();
   try{
-    if(!job.auth_done){
-      const {error}=await admin.auth.admin.deleteUser(job.auth_user_id);
-      if(error&&error.status!==404&&error.code!=='user_not_found')throw error;
-      await query('UPDATE account_deletion_jobs SET auth_done=true,last_error=NULL WHERE id=$1',[id]);
-    }
     if(!job.storage_done){
       const keys=Array.isArray(job.storage_keys)?[...new Set(job.storage_keys)]:[];
       for(let i=0;i<keys.length;i+=100){
@@ -25,6 +20,11 @@ export async function processAccountDeletionJob(id:string):Promise<'completed'|'
         if(error)throw error;
       }
       await query('UPDATE account_deletion_jobs SET storage_done=true,last_error=NULL WHERE id=$1',[id]);
+    }
+    if(!job.auth_done){
+      const {error}=await admin.auth.admin.deleteUser(job.auth_user_id);
+      if(error&&error.status!==404&&error.code!=='user_not_found')throw error;
+      await query('UPDATE account_deletion_jobs SET auth_done=true,last_error=NULL WHERE id=$1',[id]);
     }
     await query(
       'UPDATE account_deletion_jobs SET finished_at=now(),storage_keys=\'[]\'::jsonb,last_error=NULL WHERE id=$1',
