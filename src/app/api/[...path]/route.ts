@@ -555,11 +555,14 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
   if(path==='orders'&&method==='GET'){
     const scope=req.nextUrl.searchParams.get('scope');
     const seller=scope==='seller';
+    const status=req.nextUrl.searchParams.get('status');
+    const statuses=['awaiting_confirmation','confirmed','completed','cancelled'];
+    if(status!==null&&!statuses.includes(status))bad('Filtro de pedido inválido.');
     let shopId:string|undefined;
     if(seller){const sh=await shopOwned(u);shopId=sh.id;}
     const r=await query(
-      "SELECT o.*,s.name AS shop_name,bu.name AS buyer_name,bu.tower,bu.apartment,bu.phone AS buyer_phone,COALESCE(json_agg(json_build_object('name',i.name_snapshot,'quantity',i.quantity,'unit_price_cents',i.unit_price_cents,'note',i.note)) FILTER (WHERE i.id IS NOT NULL),'[]'::json) AS items FROM orders o JOIN shops s ON s.id=o.shop_id JOIN users bu ON bu.id=o.buyer_id LEFT JOIN order_items i ON i.order_id=o.id WHERE o.condominium_id=$1 AND "+(seller?'o.shop_id=$2':'o.buyer_id=$2')+" GROUP BY o.id,s.name,bu.id ORDER BY o.created_at DESC LIMIT 100",
-      [u.condominium_id,seller?shopId:u.id]
+      "SELECT o.*,s.name AS shop_name,bu.name AS buyer_name,bu.tower,bu.apartment,bu.phone AS buyer_phone,COALESCE(json_agg(json_build_object('name',i.name_snapshot,'quantity',i.quantity,'unit_price_cents',i.unit_price_cents,'note',i.note)) FILTER (WHERE i.id IS NOT NULL),'[]'::json) AS items FROM orders o JOIN shops s ON s.id=o.shop_id JOIN users bu ON bu.id=o.buyer_id LEFT JOIN order_items i ON i.order_id=o.id WHERE o.condominium_id=$1 AND "+(seller?'o.shop_id=$2':'o.buyer_id=$2')+(status?' AND o.status=$3':'')+" GROUP BY o.id,s.name,bu.id ORDER BY o.created_at DESC LIMIT 100",
+      [...[u.condominium_id,seller?shopId:u.id],...(status?[status]:[])]
     );
     // Buyers do not need to see delivery address of someone else; shop owner sees only data for their own orders.
     return out({orders:r.rows});

@@ -78,6 +78,11 @@ await request('orders/'+orderId,{method:'PATCH',cookie:sellerCookie,body:{status
 const final=(await request('orders',{cookie:buyerCookie})).data.orders.find(o=>o.id===orderId);
 assert.equal(final.status,'completed');
 assert.equal(final.total_cents,5000);
+const completedList=(await request('orders?status=completed',{cookie:buyerCookie})).data.orders;
+assert.ok(completedList.some(order=>order.id===orderId));
+const waitingList=(await request('orders?status=awaiting_confirmation',{cookie:buyerCookie})).data.orders;
+assert.ok(!waitingList.some(order=>order.id===orderId));
+await request('orders?status=unknown',{cookie:buyerCookie,expected:400});
 const mine=(await request('shops/mine',{cookie:sellerCookie})).data;
 assert.equal(mine.products.find(p=>p.id===productId).stock,2);
 console.log('Integration smoke PASS: invite -> approval -> shop -> product -> WhatsApp order -> completed.');
