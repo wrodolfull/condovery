@@ -47,6 +47,25 @@ CREATE TABLE IF NOT EXISTS public.favorites (
 CREATE INDEX IF NOT EXISTS favorites_by_condo_idx
   ON public.favorites(condominium_id,user_id,created_at DESC);
 
+-- Token is stored only as SHA-256; reset URLs never contain passwords.
+CREATE TABLE IF NOT EXISTS public.password_reset_tokens (
+  token_hash text PRIMARY KEY,
+  user_id uuid NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+  expires_at timestamptz NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS password_reset_tokens_user_idx
+  ON public.password_reset_tokens(user_id,expires_at);
+
+CREATE TABLE IF NOT EXISTS public.password_reset_attempts (
+  id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  email text NOT NULL,
+  ip text NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS password_reset_attempts_time_idx
+  ON public.password_reset_attempts(email,ip,created_at);
+
 -- Indexes aligned with marketplace listing and account workflows.
 CREATE INDEX IF NOT EXISTS categories_condo_sort_idx ON public.categories(condominium_id, sort_order, name);
 CREATE INDEX IF NOT EXISTS shops_condo_active_idx ON public.shops(condominium_id, is_open, created_at DESC)
@@ -65,7 +84,7 @@ BEGIN
    FOREACH tbl IN ARRAY ARRAY[
     'condominiums','users','sessions','login_attempts','categories',
     'shops','products','media_assets','orders','order_items','favorites',
-    'google_oauth_flows','google_signup_pending'
+    'google_oauth_flows','google_signup_pending','password_reset_tokens','password_reset_attempts'
    ] LOOP
      EXECUTE format('ALTER TABLE public.%I ENABLE ROW LEVEL SECURITY',tbl);
    END LOOP;
