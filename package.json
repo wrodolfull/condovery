@@ -18,7 +18,8 @@
     "pg": "^8.16.0",
     "bcryptjs": "^3.0.2",
     "lucide-react": "^0.468.0",
-    "zod": "^3.25.0"
+    "zod": "^3.25.0",
+    "@supabase/supabase-js": "^2.79.0"
   },
   "devDependencies": {
     "@types/node": "^22.15.0",
