@@ -74,7 +74,6 @@ export default function Page(){
   const [authMode,setAuthMode]=useState<'login'|'register'|'recover'|'reset'>('login');
   const [passwordRecoveryEnabled,setPasswordRecoveryEnabled]=useState(false);
   const [resetEmail,setResetEmail]=useState('');
-  const [resetToken,setResetToken]=useState('');
   const [newPassword,setNewPassword]=useState('');
   const [googleEnabled,setGoogleEnabled]=useState(false);
   const [googleSignup,setGoogleSignup]=useState<{email:string;name:string}|null>(null);
@@ -151,8 +150,13 @@ export default function Page(){
       setGoogleEnabled(r.google);setPasswordRecoveryEnabled(r.passwordRecovery);
     }).catch(()=>{});
     const reset=new URLSearchParams(window.location.search).get('reset');
-    if(reset&&/^[0-9a-f]{64}$/.test(reset)){
-      setResetToken(reset);setAuthMode('reset');
+    if(reset==='1'){
+      setAuthMode('reset');
+      window.history.replaceState({},'',window.location.pathname);
+    }
+    const confirmed=new URLSearchParams(window.location.search).get('email_confirmed');
+    if(confirmed==='1'){
+      setToast('E-mail confirmado pelo Supabase Auth. Entre com sua senha.');
       window.history.replaceState({},'',window.location.pathname);
     }
     const oauthFailure=new URLSearchParams(window.location.search).get('auth_error');
@@ -229,9 +233,9 @@ export default function Page(){
         notify(r.message);
       }else if(authMode==='reset'){
         const r=await api<{message:string}>('auth/password/confirm',{
-          method:'POST',body:payload({token:resetToken,password:newPassword})
+          method:'POST',body:payload({password:newPassword})
         });
-        setResetToken('');setNewPassword('');setAuthMode('login');notify(r.message);
+        setNewPassword('');setAuthMode('login');notify(r.message);
       }
     }catch(e){fail(e);}finally{setBusy(false);}
   }
@@ -257,8 +261,8 @@ export default function Page(){
         setProfile({name:response.viewer.name,phone:response.viewer.phone,tower:response.viewer.tower,apartment:response.viewer.apartment});
         go('home');
       } else if(authMode==='register'){
-        await api('auth/register',{method:'POST',body:payload(authForm)});
-        setAuthMode('login');setAuthForm(s=>({...s,password:''}));notify('Cadastro enviado! Aguarde a aprovação.');
+        const result=await api<{message:string}>('auth/register',{method:'POST',body:payload(authForm)});
+        setAuthMode('login');setAuthForm(s=>({...s,password:''}));notify(result.message);
       } else {
         await api('auth/login',{method:'POST',body:payload({email:authForm.email,password:authForm.password})});
         const response=await api<{viewer:Viewer}>('me');setViewer(response.viewer);
@@ -381,7 +385,7 @@ export default function Page(){
       <div className="auth-mobile-logo">condovery<span>.</span></div>
       <div className="welcome-emoji"><ShieldCheck size={28}/></div>
       <h2>{authMode==='recover'?'Recuperar minha senha':'Criar nova senha'}</h2>
-      <p>{authMode==='recover'?'Enviaremos um link ao e-mail cadastrado, caso a conta seja elegível.':'Escolha uma nova senha para sua conta.'}</p>
+      <p>{authMode==='recover'?'O Supabase enviará um link de recuperação para o e-mail cadastrado.':'Escolha uma nova senha para sua conta Supabase.'}</p>
       {error&&<div className="alert" role="alert">{error}</div>}
       {toast&&<div className="success-banner" role="status">{toast}</div>}
       <form className="form-stack" onSubmit={submitReset}>
