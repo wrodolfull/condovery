@@ -25,6 +25,6 @@ export function violatesCommunityLanguage(...values:(string|undefined|null)[]):b
 export const communityGuidelines=[
   'Use palavras respeitosas e descrições verdadeiras.',
   'Não publique ofensas, discriminação, pornografia ou imagens inadequadas.',
-  'Produtos e serviços devem ser permitidos por lei.',
+  'Venda apenas alimentos e bebidas permitidos por lei.',
   'Conteúdos denunciados podem ser ocultados e lojas podem ser suspensas.'
 ] as const;
