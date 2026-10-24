@@ -352,3 +352,9 @@ button:focus-visible,a:focus-visible{outline:3px solid #be9e1b;outline-offset:3p
   .checkout-main .field-grid{grid-template-columns:1fr}
 }
 @media(prefers-reduced-motion:reduce){*{scroll-behavior:auto!important;animation:none!important;transition:none!important}}
+
+.category-tag{padding:8px 12px;background:#f4f4ed;border:1px solid #e6e7df;border-radius:99px;white-space:nowrap;font-size:12px;font-weight:700}
+.admin-category-form{display:flex;gap:9px;align-items:center;flex-wrap:wrap}
+.admin-category-form input,.admin-category-form select{height:43px;border:1px solid #e0e2dc;border-radius:10px;padding:9px 12px;background:#fff;font-size:12px;min-width:0}
+.admin-category-form input{flex:1;min-width:130px}
+.admin-category-form .outline-button{min-height:43px;white-space:nowrap}
