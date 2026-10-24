@@ -285,7 +285,7 @@ const checkoutExtra=(await request('orders',{method:'POST',cookie:buyerCookie,ex
 assert.equal(checkoutExtra.order.total_cents,7100);
 assert.equal(checkoutExtra.order.subtotal_cents,6400);
 assert.equal(checkoutExtra.order.delivery_fee_cents,700);
-const whats=decodeURIComponent(checkoutExtra.whatsapp_url.split('?text=')[1]);
+const whats=decodeURIComponent(checkoutExtra.whatsapp_url.split('?text=')[1]).replaceAll('\u00a0',' ');
 assert.match(whats,/Cobertura: Chocolate/);
 assert.match(whats,/Extras: Frutas/);
 assert.match(whats,/Obs.: Primeira encomenda/);

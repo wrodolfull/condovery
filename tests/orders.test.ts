@@ -45,5 +45,5 @@ test('WhatsApp message has line notes, selections, fee and Brazilian date',()=>{
   assert.match(msg,/Obs.: Sem lactose/);
   assert.match(msg,/Data preferida: 26\/10\/2026/);
   assert.match(msg,/Taxa de entrega/);
-  assert.match(msg,/Total: R\$ 57,00/);
+  assert.match(msg.replaceAll('\u00a0',' '),/Total: R\$ 57,00/);
 });
