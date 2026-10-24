@@ -134,6 +134,7 @@ export default function Page(){
   },[]);
   useEffect(()=>{try{window.localStorage.setItem('condovery_cart',JSON.stringify(cart));}catch{}},[cart]);
   useEffect(()=>{if(!toast)return;const timer=setTimeout(()=>setToast(''),4000);return()=>clearTimeout(timer);},[toast]);
+  useEffect(()=>{if(view==='seller'&&myShop?.status==='approved')loadSellerOrders().catch(fail);},[view,myShop?.status,loadSellerOrders]);
   const categoryName=home.categories.find(c=>c.id===category)?.name;
   const filtered=useMemo(()=>{
     const normalized=query.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
@@ -180,7 +181,7 @@ export default function Page(){
       const same=base.find(i=>i.product.id===selectedProduct.id&&i.note===itemNote);
       return same?base.map(i=>i===same?{...i,quantity:i.quantity+qty}:i):[...base,{product:selectedProduct,quantity:qty,note:itemNote}];
     });
-    notify('Produto adicionado ao carrinho.');go('shop');
+    notify('Produto adicionado ao carrinho.');go('cart');
   }
   async function checkout(){
     if(!cart.length)return;
@@ -194,6 +195,7 @@ export default function Page(){
       })});
       setLastOrder({code:result.order.code,whatsapp_url:result.whatsapp_url});
       setCart([]);await loadOrders();await loadHome();go('success');
+      window.location.assign(result.whatsapp_url);
     }catch(e){fail(e);}finally{setBusy(false);}
   }
   async function updateStatus(id:string,status:string){
