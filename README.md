@@ -88,3 +88,7 @@ antes da publicação. Consulte [docs/SHOP_REVIEWS.md](docs/SHOP_REVIEWS.md).
 ## Ativação de loja, fotos e disponibilidade
 
 Um único login permite comprar e vender. A loja exige aprovação administrativa e WhatsApp válido. Produtos têm os estados disponível, indisponível (visível em cinza) e oculto (somente vendedor). A nova gestão inclui fotos de perfil pessoal e da loja. O pedido fica registrado antes do WhatsApp, com opção de reabrir a conversa. Veja [docs/SELLER_ONBOARDING.md](docs/SELLER_ONBOARDING.md).
+
+## Cadastro imediato e regras
+
+Não há aprovação prévia para moradores ou lojas. Com código do condomínio e autenticação Supabase, moradores podem entrar e vender imediatamente. Lojas aceitam regras de convivência e podem ser denunciadas, ocultadas ou suspensas pela administração. Detalhes em [docs/INSTANT_ACCESS.md](docs/INSTANT_ACCESS.md). Não há detecção automática de imagens inadequadas nesta versão.
