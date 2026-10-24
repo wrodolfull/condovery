@@ -1014,7 +1014,7 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
   if(parts[0]==='admin'&&parts[1]==='shops'&&parts[2]&&method==='PATCH'){
     admin(u);if(!uuid(parts[2]))bad('Loja inválida.');
     const b=z.object({status:z.enum(['approved','suspended'])}).parse(await body(req));
-    const r=await query('UPDATE shops SET status=$1 WHERE id=$2 AND condominium_id=$3 AND status<>'deleted' RETURNING id',[b.status,parts[2],u.condominium_id]);
+    const r=await query("UPDATE shops SET status=$1 WHERE id=$2 AND condominium_id=$3 AND status<>'deleted' RETURNING id",[b.status,parts[2],u.condominium_id]);
     if(!r.rowCount)bad('Loja não encontrada.',404);
     return out({ok:true});
   }
