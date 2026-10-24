@@ -16,8 +16,7 @@ entrega/retirada e conclusão da conversa pelo WhatsApp.
   Nenhum login usa bcrypt para verificar senhas no banco Condovery.
 - **Imagens:** Supabase Storage privado. Upload pelo backend; redução para
   WebP (até 960px) e remoção de metadados de imagens.
-- **Residência:** convite e torre/apartamento obrigatórios, depois aprovação
-  administrativa mesmo que a identidade Supabase já esteja verificada.
+- **Residência:** código do condomínio, torre/apartamento e Supabase Auth; acesso direto, sem aprovação manual.
 
 ## Preparação do ambiente
 
@@ -40,7 +39,7 @@ reais antes de admitir moradores.
 ## Escopo da primeira versão
 
 - Login, cadastro, recuperação de senha (Supabase Auth) e login Google;
-- Aprovação de moradores, lojas e alteração de endereço;
+- Cadastro imediato de moradores e lojas; administração mantém suspensão e reativação;
 - Catálogo com categorias, ofertas, produtos e busca paginada;
 - Favoritos por morador e condomínio;
 - Cadastro de lojas, produtos, fotos, preço, estoque e horário orientativo;
@@ -87,7 +86,7 @@ antes da publicação. Consulte [docs/SHOP_REVIEWS.md](docs/SHOP_REVIEWS.md).
 
 ## Ativação de loja, fotos e disponibilidade
 
-Um único login permite comprar e vender. A loja exige aprovação administrativa e WhatsApp válido. Produtos têm os estados disponível, indisponível (visível em cinza) e oculto (somente vendedor). A nova gestão inclui fotos de perfil pessoal e da loja. O pedido fica registrado antes do WhatsApp, com opção de reabrir a conversa. Veja [docs/SELLER_ONBOARDING.md](docs/SELLER_ONBOARDING.md).
+Um único login permite comprar e vender. A loja exige WhatsApp válido e aceitação das regras de convivência, mas não aprovação administrativa. Produtos têm os estados disponível, indisponível (visível em cinza) e oculto (somente vendedor). A nova gestão inclui fotos de perfil pessoal e da loja. O pedido fica registrado antes do WhatsApp, com opção de reabrir a conversa. Veja [docs/SELLER_ONBOARDING.md](docs/SELLER_ONBOARDING.md).
 
 ## Cadastro imediato e regras
 
