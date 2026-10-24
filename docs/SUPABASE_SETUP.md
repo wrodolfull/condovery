@@ -1,64 +1,73 @@
-# Supabase setup (backend-only)
+# Condovery — autenticação centralizada no Supabase Auth
 
-Condovery uses **Supabase PostgreSQL as its database** and Supabase Auth for
-**Google identity verification**. All application records flow through the
-Next.js API server; the browser has no Supabase DB credentials, client or
-PostgREST calls. Custom password sign-in is retained for existing residents;
-Google Auth validates identity through Supabase and then issues Condovery's
-own HttpOnly session, subject to condominium approval.
+## Arquitetura
+Supabase Auth é a única fonte de identidade para cadastro com e-mail e senha,
+confirmação de e-mail, login, recuperação de senha e Google. O navegador só
+chama a API Next.js do Condovery. O backend valida a identidade via Supabase,
+emite uma sessão opaca HttpOnly e aplica regras de condomínio e aprovação.
+Nenhuma senha é validada no PostgreSQL da aplicação.
 
-## Steps in Supabase Dashboard
+Dados de negócio residem em Supabase PostgreSQL. Fotos passam pelo backend
+e são guardadas em bucket privado do Supabase Storage.
 
-1. Create a Supabase project in your chosen region (Brazil if available and
-   appropriate to your data policy). In **Connect**, copy the actual connection
-   string; do not invent the pooler host. For an always-on Node backend, use
-   **Session Pooler** (5432) on IPv4-only hosts, or Direct for IPv6.
-   For serverless, use the **Transaction Pooler** (6543), with a small client
-   pool. Set DATABASE_SSL=true. Set DATABASE_POOL_MAX=1 on serverless.
-2. Add DATABASE_URL, DATABASE_SSL and DATABASE_POOL_MAX to the **server**
-   environment. Never expose the DB password on the frontend.
-3. Add SUPABASE_URL and SUPABASE_ANON_KEY in the server environment only.
-   Enable **Google** in Authentication > Providers and provide Google OAuth
-   Client ID and secret from Google Cloud Console.
-4. In Google Cloud OAuth configuration, register the Supabase callback URL:
-   https://YOUR_PROJECT.supabase.co/auth/v1/callback
-   Add the appropriate authorized JavaScript origins for your deployment.
-5. In Supabase Auth > URL Configuration, whitelist the exact Condovery app
-   callback: https://YOUR_DOMAIN/api/auth/google/callback
-   (and http://localhost:3000/api/auth/google/callback only for development).
-   Set APP_URL=https://YOUR_DOMAIN for production.
-6. In Storage, create a PRIVATE bucket named \`condovery-media\`. Add the
-   SUPABASE_SERVICE_ROLE_KEY to the server environment ONLY, never
-   NEXT_PUBLIC_*. No public bucket and no browser file upload bypass.
-7. Run \`npm run db:migrate\`, then \`npm run db:bootstrap\`, in an authorized
-   deployment environment. For preexisting databases, the additive migration
-   \`db/002_supabase_google_storage.sql\` preserves residents/orders.
-8. Verify both password and Google login, request approval, product upload,
-   seller approval, WhatsApp hand-off and delivery instructions from an
-   Android and an iPhone before enabling your condominium pilot.
+## Configuração obrigatória no painel Supabase
+1. Ative Authentication > Providers > Email e **Confirm email**.
+   Não desative a verificação de e-mail.
+2. Ative Authentication > Providers > Google e informe Client ID e Secret
+   gerados no Google Cloud. Configure a callback do Google para:
+   https://SEU-PROJETO.supabase.co/auth/v1/callback
+3. Em Authentication > URL Configuration, configure a URL do site e permita:
+   https://SEU-DOMINIO/
+   https://SEU-DOMINIO/?email_confirmed=1
+   https://SEU-DOMINIO/api/auth/google/callback
+   https://SEU-DOMINIO/api/auth/recovery/verify
+   Acrescente equivalentes localhost:3000 apenas para desenvolvimento.
+4. Mantenha o template de confirmação de cadastro do Supabase
+   com {{ .ConfirmationURL }}. O Supabase valida o endereço de e-mail.
+5. **Personalize o link no template Authentication > Email Templates >
+   Reset Password** para:
+   https://SEU-DOMINIO/api/auth/recovery/verify?token_hash={{ .TokenHash }}&type=recovery
 
-## Security notes
+   Essa configuração é obrigatória para que o backend consiga validar o
+   token de recuperação por verifyOtp; o link padrão do fluxo implícito
+   pode enviar tokens em um fragmento que não chega ao servidor.
+6. Configure envio de e-mail (SMTP) no **próprio Supabase Auth** para
+   produção. Não é necessário Resend ou um emissor próprio de e-mail.
+7. Crie bucket PRIVADO do Storage chamado condovery-media.
+8. No servidor, configure DATABASE_URL, DATABASE_SSL, DATABASE_POOL_MAX,
+   SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY e APP_URL.
+   Nunca exponha as chaves ou a senha do banco ao navegador.
+9. Execute npm run db:migrate e npm run db:bootstrap. O bootstrap cria ou
+   encontra o usuário administrador em Supabase Auth e o associa ao
+   cadastro condominial do Condovery sem armazenar a senha no PostgreSQL.
 
-- RLS is enabled on business tables on Supabase projects (the API uses the
-  database connection as a trusted backend). Use a dedicated restricted DB
-  role when production hardening; do not grant \`anon\` or
-  \`authenticated\` PostgREST CRUD permissions.
-- Google identity never automatically approves condominium membership.
-  New Google accounts need an invitation and admin approval.
-- Images are stored in private Storage, served by authorized
-  \`/api/media/:id\` handlers; no service keys or object paths are returned.
-- Never copy service role, DB password, Google Client Secret or invitation
-  into commits or browser-readable variables.
-- Password recovery is implemented with single-use 30-minute tokens and
-  backend-only email dispatch. Configure `RESEND_API_KEY` and
-  `RESEND_FROM` with a **verified sending domain** to activate it.
-  Without these values, recovery stays hidden. Use a real email provider
-  rather than sending tokens in logs.
-- Google OAuth is supported in source code but **cannot be validated end-to-end
-  without your project's Google/Supabase credentials**. Exercise this flow on
-  the actual callback domain before launch.
-- The search endpoint `/api/catalog` supports server-side pagination and
-  parameterized substring search, backed by Postgres indexes.
-- Private favorites belong to the user+condominium and are stored in Postgres.
-- Maintain LGPD notices, backups, rate limiting, abuse controls and routine
-  vulnerability scans. A passing CI run does not replace security QA.
+## Fluxos de acesso
+- Cadastro de morador: convite e torre/apartamento são validados pelo
+  backend. Supabase Auth realiza signUp e envia confirmação. O morador
+  permanece pendente da administração.
+- Login: signInWithPassword valida e-mail/senha no Supabase. O backend
+  também exige e-mail confirmado e vínculo válido com condomínio.
+  Moradores aprovados entram na vitrine; pendentes aguardam aprovação.
+- Google: autorização PKCE gerenciada pelo Supabase Auth no servidor.
+  Um novo usuário Google também precisa fornecer convite, telefone e
+  apartamento e passar pela aprovação administrativa.
+- Recuperação: resetPasswordForEmail envia o e-mail do Supabase;
+  verifyOtp valida o hash de recuperação; o backend emite um ticket
+  temporário HttpOnly de uso único (15 minutos). admin.updateUserById
+  grava a nova senha no Supabase, e sessões Condovery anteriores são
+  invalidadas.
+
+## Migração de usuários da versão anterior
+A versão anterior usava senha local em bcrypt. O hash legado NÃO é
+importado automaticamente no Supabase Auth. A migração SQL preserva
+perfis, lojas e pedidos, mas usuários antigos devem ter identidades
+Supabase criadas/associadas com verificação de e-mail e migração segura
+de senha antes do lançamento. Faça backup antes da transição.
+Após a migração completa, hashes antigos poderão ser apagados.
+
+## Testes
+O CI usa PostgreSQL e um stub isolado do Supabase Auth para os testes
+automatizados (cadastro, confirmação, login, recuperação, aprovação,
+pedidos e favoritos). A integração REAL com o painel Supabase, envio de
+e-mails e OAuth Google exige configurar credenciais e validar no domínio
+de produção antes do lançamento.

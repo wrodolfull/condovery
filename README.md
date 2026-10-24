@@ -15,7 +15,7 @@ Next.js 15 / React 19 / TypeScript / PostgreSQL (todas as consultas passam pelo 
 Importante: o script de bootstrap não altera a senha de um administrador já existente. Modifique as torres pelo banco para corresponder à numeração real antes de abrir o cadastro.
 
 ## O que está implementado
-- Cadastro com convite e aprovação administrativa; login; sessão segura; recuperação de senha via e-mail disponível após configurar Resend.
+- Cadastro com convite e aprovação administrativa; login; sessão segura; recuperação de senha via e-mail disponível após configurar Supabase Auth.
 - PostgreSQL no Supabase com conexão privada ao backend (pool otimizado), RLS habilitado nas tabelas de negócio e Google OAuth/PKCE via Supabase Auth.
 - Google novos usuários: convite do condomínio, torre/apartamento e aprovação obrigatória.
 - Fotos otimizadas em WebP (até 960px, metadados EXIF removidos) no bucket PRIVADO do Supabase Storage, com credenciais exclusivas do servidor.
@@ -31,7 +31,7 @@ Importante: o script de bootstrap não altera a senha de um administrador já ex
 ## Segurança e limites
 - Senhas com bcrypt, autenticação via sessões opacas HttpOnly SameSite Lax, validação de entradas, rate-limit persistido para login, ações autorizadas no servidor.
 - A aprovação de moradores e o convite são obrigatórios. O identificador do condomínio vem da sessão autenticada, não do payload do cliente.
-- Sem gateway de pagamento, integração com API oficial WhatsApp, confirmação automática de envio, rastreamento de pagamento ou push. E-mails de recuperação exigem configuração do Resend.
+- Sem gateway de pagamento, integração com API oficial WhatsApp, confirmação automática de envio, rastreamento de pagamento ou push. E-mails de recuperação exigem configuração do Supabase Auth.
 - Imagens são armazenadas em PostgreSQL para facilitar o piloto; migrar para object storage antes da expansão.
 - Executar atrás de HTTPS em produção e configurar as políticas do condomínio/LGPD, retenção e backups. O convite só permite solicitar acesso, não aprova o morador.
 - Não exibir torres/apartamentos em listagens públicas. Os dados são visíveis apenas aos participantes autorizados do pedido.
@@ -50,3 +50,7 @@ Inspiração conceitual no 99Food: campo de busca em destaque, categorias, ofert
 ## Integração Supabase e Google
 
 Consulte [docs/SUPABASE_SETUP.md](docs/SUPABASE_SETUP.md). A PR é entregue sem credenciais, bucket criado ou OAuth habilitado no painel. Fluxos externos precisam de QA manual no domínio final.
+
+## Identidade e acesso
+
+E-mail/senha, confirmação, recuperação e Google são processados pelo Supabase Auth. Para habilitar todos os fluxos veja [configuração](docs/SUPABASE_SETUP.md). Hashes antigos de senhas locais não são aceitos pela versão atual; migre as identidades de moradores existentes antes de lançar.
