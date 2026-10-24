@@ -225,6 +225,92 @@ console.log('Shop activation, product states and idempotent WhatsApp ordering PA
 console.log('Verified reviews smoke PASS: eligibility, single review, moderation, average and privacy.');
 console.log('Integration smoke PASS: code -> instant resident/store -> product -> WhatsApp order -> completed.');
 
+const extraGroup=crypto.randomUUID(),optionNo=crypto.randomUUID(),optionChoc=crypto.randomUUID();
+const addGroup=crypto.randomUUID(),optionFruit=crypto.randomUUID(),optionSprinkles=crypto.randomUUID();
+const optionGroups=[
+  {id:extraGroup,name:'Cobertura',required:true,multiple:false,options:[
+    {id:optionNo,name:'Sem cobertura',price_cents:0},
+    {id:optionChoc,name:'Chocolate',price_cents:150}
+  ]},
+  {id:addGroup,name:'Extras',required:false,multiple:true,options:[
+    {id:optionFruit,name:'Frutas',price_cents:250},
+    {id:optionSprinkles,name:'Granulado',price_cents:100}
+  ]}
+];
+const customizable=(await request('products',{method:'POST',cookie:sellerCookie,expected:201,body:{
+  name:'Bolo personalizável',description:'Escolha seus sabores',price_cents:2000,
+  category_id:sellerHome.categories[0].id,stock:6,option_groups:optionGroups
+}})).data.product;
+const choose=[
+  {id:customizable.id,quantity:1,note:'Primeira encomenda',selections:{[extraGroup]:[optionChoc],[addGroup]:[optionFruit]}},
+  {id:customizable.id,quantity:2,note:'Segunda encomenda',selections:{[extraGroup]:[optionNo]}}
+];
+const shopSettings={
+  name:'Bolos da Gabi',description:'Bolos feitos no condomínio',whatsapp:'11999991234',
+  is_open:true,delivery_enabled:true,pickup_enabled:true,lead_time:'',pickup_instructions:'',
+  cover_image:null,logo_image:null,delivery_fee_cents:550
+};
+await request('shops/mine',{method:'PATCH',cookie:sellerCookie,body:shopSettings});
+const quoteReq={shop_id:shopId,items:choose,fulfillment:'delivery'};
+const quoted=(await request('orders/quote',{method:'POST',cookie:buyerCookie,body:quoteReq})).data.quote;
+assert.equal(quoted.lines.length,2);
+assert.equal(quoted.lines[0].unit_price_cents,2400);
+assert.equal(quoted.lines[1].unit_price_cents,2000);
+assert.equal(quoted.subtotal_cents,6400);
+assert.equal(quoted.delivery_fee_cents,550);
+assert.equal(quoted.total_cents,6950);
+const pick=(await request('orders/quote',{method:'POST',cookie:buyerCookie,body:{...quoteReq,fulfillment:'pickup'}})).data.quote;
+assert.equal(pick.delivery_fee_cents,0);
+assert.equal(pick.total_cents,6400);
+await request('orders/quote',{method:'POST',cookie:buyerCookie,expected:400,body:{
+  ...quoteReq,items:[{id:customizable.id,quantity:1,selections:{[extraGroup]:[crypto.randomUUID()]}}]
+}});
+await request('orders/quote',{method:'POST',cookie:buyerCookie,expected:400,body:{
+  ...quoteReq,items:[{id:customizable.id,quantity:1}]
+}});
+await request('orders/quote',{method:'POST',cookie:buyerCookie,expected:400,body:{
+  ...quoteReq,items:[{...choose[0],quantity:4},{...choose[1],quantity:4}]
+}});
+// Price changed after the customer saw the cart: no order may be registered.
+await request('shops/mine',{method:'PATCH',cookie:sellerCookie,
+  body:{...shopSettings,delivery_fee_cents:700}});
+const newQuote=(await request('orders/quote',{method:'POST',cookie:buyerCookie,body:quoteReq})).data.quote;
+assert.equal(newQuote.total_cents,7100);
+await request('orders',{method:'POST',cookie:buyerCookie,expected:409,body:{
+  ...quoteReq,client_order_key:crypto.randomUUID(),expected_total_cents:quoted.total_cents
+}});
+const checkoutExtra=(await request('orders',{method:'POST',cookie:buyerCookie,expected:201,body:{
+  ...quoteReq,client_order_key:crypto.randomUUID(),expected_total_cents:newQuote.total_cents
+}})).data;
+assert.equal(checkoutExtra.order.total_cents,7100);
+assert.equal(checkoutExtra.order.subtotal_cents,6400);
+assert.equal(checkoutExtra.order.delivery_fee_cents,700);
+const whats=decodeURIComponent(checkoutExtra.whatsapp_url.split('?text=')[1]);
+assert.match(whats,/Cobertura: Chocolate/);
+assert.match(whats,/Extras: Frutas/);
+assert.match(whats,/Obs.: Primeira encomenda/);
+assert.match(whats,/Obs.: Segunda encomenda/);
+assert.match(whats,/Subtotal: R\\$ 64,00/);
+assert.match(whats,/Taxa de entrega: R\\$ 7,00/);
+assert.match(whats,/Total: R\\$ 71,00/);
+const sellerList=(await request('orders?scope=seller',{cookie:sellerCookie})).data.orders;
+const extraOrder=sellerList.find(o=>o.id===checkoutExtra.order.id);
+assert.equal(extraOrder.items.length,2);
+assert.ok(extraOrder.items.some(x=>x.note==='Primeira encomenda'&&x.options.length===2));
+await request('orders/'+extraOrder.id,{method:'PATCH',cookie:sellerCookie,body:{status:'confirmed'}});
+const dbStock=new pg.Client({connectionString:process.env.DATABASE_URL});
+await dbStock.connect();
+try{
+  const out=await dbStock.query('SELECT stock FROM products WHERE id=$1',[customizable.id]);
+  assert.equal(out.rows[0].stock,3);
+}finally{await dbStock.end();}
+await request('orders/'+extraOrder.id,{method:'PATCH',cookie:sellerCookie,body:{status:'completed'}});
+await request('shops/mine',{method:'PATCH',cookie:sellerCookie,
+  body:{...shopSettings,delivery_fee_cents:0}});
+console.log('Checkout customizations PASS: repeated product variants, price confirmation, delivery fee and WhatsApp snapshots.');
+
+
+
 
 // Tests Google invite onboarding after provider identity has been verified;
 // the actual external Supabase/Google callback requires dashboard credentials.

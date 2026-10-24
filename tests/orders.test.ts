@@ -21,3 +21,30 @@ test('order message contains instructions but does not claim payment',()=>{
   assert.match(msg,/Não tocar a campainha/);
   assert.match(msg,/combinar o pagamento/);
 });
+
+test('customization validates choices and prices per unit',()=>{
+  const g='4e9028ac-a3c0-4f02-9dfc-b2373b182f50';
+  const c='51e73e5b-4544-4b3e-8dd3-e495f1e4a4cb';
+  const config=[{id:g,name:'Cobertura',required:true,multiple:false,options:[
+    {id:c,name:'Chocolate',price_cents:175}
+  ]}];
+  const {optionGroupsSchema,selectedOptions,extrasTotal}=require('../src/lib/orders');
+  assert.equal(extrasTotal(selectedOptions(optionGroupsSchema.parse(config),{[g]:[c]})),175);
+  assert.throws(()=>selectedOptions(config,{}),/Selecione/);
+  assert.throws(()=>selectedOptions(config,{[g]:['00000000-0000-4000-8000-000000000000']}),/não está mais disponível/);
+});
+test('WhatsApp message has line notes, selections, fee and Brazilian date',()=>{
+  const msg=orderMessage({
+    code:99,shop:'Bolos da Gabi',buyer:'Maria',tower:'Torre 1',apartment:'2',
+    items:[{name:'Bolo',quantity:2,unit_price_cents:2575,note:'Sem lactose',
+      options:[{group:'Sabor',name:'Chocolate',price_cents:575}]}],
+    subtotal_cents:5150,delivery_fee_cents:550,total_cents:5700,fulfillment:'delivery',
+    delivery_day:'2026-10-26',instructions:['Não tocar a campainha']
+  });
+  assert.match(msg,/2x Bolo/);
+  assert.match(msg,/Sabor: Chocolate/);
+  assert.match(msg,/Obs.: Sem lactose/);
+  assert.match(msg,/Data preferida: 26\\/10\\/2026/);
+  assert.match(msg,/Taxa de entrega/);
+  assert.match(msg,/Total: R\\$ 57,00/);
+});
