@@ -53,7 +53,7 @@ type AdminData={residents:{id:string;name:string;email:string;tower:string;apart
 type View='home'|'categories'|'favorites'|'orders'|'account'|'shop'|'product'|'cart'|'success'|'seller'|'admin';
 const money=(n:number)=>new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(n/100);
 const price=(p:Product)=>p.promo_price_cents??p.price_cents;
-const statusLabel:Record<string,string>={awaiting_confirmation:'Aguardando confirmação',confirmed:'Confirmado',completed:'Concluído',cancelled:'Cancelado',pending:'Em análise',approved:'Ativo',suspended:'Suspenso'};
+const statusLabel:Record<string,string>={awaiting_confirmation:'Aguardando confirmação',confirmed:'Confirmado',completed:'Concluído',cancelled:'Cancelado',pending:'Em análise',approved:'Ativo',suspended:'Suspenso',deleted:'Excluído'};
 const emptyHome:HomeData={categories:[],shops:[],products:[]};
 const cartShopSafe=(cart:CartItem[],shops:Shop[],selected:{shop:Shop}|null)=>{
   return shops.find(s=>s.id===cart[0]?.product.shop_id)||
@@ -143,6 +143,9 @@ export default function Page(){
   const [loading,setLoading]=useState(true);
   const [authMode,setAuthMode]=useState<'login'|'register'|'recover'|'reset'>('login');
   const [passwordRecoveryEnabled,setPasswordRecoveryEnabled]=useState(false);
+  const [showDeleteAccount,setShowDeleteAccount]=useState(false);
+  const [deleteConfirmation,setDeleteConfirmation]=useState('');
+  const [deletePassword,setDeletePassword]=useState('');
   const [resetEmail,setResetEmail]=useState('');
   const [newPassword,setNewPassword]=useState('');
   const [googleEnabled,setGoogleEnabled]=useState(false);
@@ -407,6 +410,22 @@ export default function Page(){
         setProfile({name:u.name,phone:u.phone,tower:u.tower,apartment:u.apartment,avatar_image:u.avatar_image??''});
         go('home');
       }
+    }catch(e){fail(e);}finally{setBusy(false);}
+  }
+  async function deleteAccount(e:React.FormEvent){
+    e.preventDefault();
+    if(deleteConfirmation!=='EXCLUIR'||busy)return;
+    setBusy(true);setError('');
+    try{
+      const result=await api<{message:string;status:'completed'|'pending'}>('me',{
+        method:'DELETE',body:payload({confirmation:'EXCLUIR',password:deletePassword||undefined})
+      });
+      try{window.localStorage.removeItem('condovery_cart');}catch{}
+      setCart([]);setViewer(null);setGoogleSignup(null);setHome(emptyHome);
+      setOrders([]);setSellerOrders([]);setMyShop(null);setMyProducts([]);
+      setFavoriteIds([]);setFavoriteProducts([]);
+      setShowDeleteAccount(false);setDeleteConfirmation('');setDeletePassword('');
+      setAuthMode('login');go('home');notify(result.message);
     }catch(e){fail(e);}finally{setBusy(false);}
   }
   async function logout(){
