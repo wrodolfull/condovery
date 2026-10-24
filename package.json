@@ -9,7 +9,8 @@
     "typecheck": "tsc --noEmit",
     "test": "tsx --test tests/*.test.ts",
     "db:bootstrap": "node --env-file=.env.local scripts/bootstrap.mjs",
-    "db:migrate": "node --env-file=.env.local scripts/migrate.mjs"
+    "db:migrate": "node --env-file=.env.local scripts/migrate.mjs",
+    "db:cleanup-shops": "node --env-file=.env.local scripts/cleanup-deleted-shops.mjs"
   },
   "dependencies": {
     "next": "^15.5.0",
