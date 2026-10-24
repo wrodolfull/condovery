@@ -4,6 +4,8 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import {IllustrationSlot} from '@/components/IllustrationSlot';
 import {RoundedStars} from '@/components/RoundedStars';
 import {ImageCropper,type ImageKind} from '@/components/ImageCropper';
+import {clientUUID} from '@/lib/client-uuid';
+import {parseMoneyInput} from '@/lib/money-input';
 import {artwork,getCategoryArtwork} from '@/lib/artwork';
 import {IMAGE_MIME_TYPES, imageSizeIsAllowed} from '@/lib/image-limits';
 import {selectedOptions, extrasTotal, arrivalInstructionOptions, toggleArrivalInstruction, type OptionGroup, type Selection} from '@/lib/orders';
@@ -19,7 +21,7 @@ type Viewer={id:string;name:string;email:string;phone:string;avatar_image:string
 type Category={id:string;name:string;icon:string};
 type Shop={id:string;name:string;description:string;cover_image:string|null;logo_image:string|null;status?:string;is_open:boolean;delivery_enabled:boolean;delivery_fee_cents:number;pickup_enabled:boolean;lead_time:string;pickup_instructions?:string;whatsapp?:string};
 type Product={id:string;shop_id:string;shop_name?:string;visibility:'available'|'unavailable'|'hidden';category_id:string;name:string;description:string;price_cents:number;promo_price_cents:number|null;image_url:string|null;stock:number|null;is_available?:boolean;lead_time?:string;is_featured?:boolean;option_groups?:OptionGroup[]};
-type Order={id:string;code:number;status:string;review_status?:'pending'|'approved'|'rejected'|null;total_cents:number;shop_name:string;buyer_name:string;buyer_phone:string;tower:string;apartment:string;fulfillment:string;delivery_day:string|null;delivery_window:string;delivery_instructions:string[];note:string;subtotal_cents:number;delivery_fee_cents:number;items:{name:string;quantity:number;unit_price_cents:number;note:string;options?:{group:string;name:string;price_cents:number}[]}[];created_at:string};
+type Order={id:string;code:number;status:string;review_status?:'pending'|'approved'|'rejected'|null;can_review?:boolean;is_own_shop?:boolean;total_cents:number;shop_name:string;buyer_name:string;buyer_phone:string;tower:string;apartment:string;fulfillment:string;delivery_day:string|null;delivery_window:string;delivery_instructions:string[];note:string;subtotal_cents:number;delivery_fee_cents:number;items:{name:string;quantity:number;unit_price_cents:number;note:string;options?:{group:string;name:string;price_cents:number}[]}[];created_at:string};
 type ReviewStatus='pending'|'approved'|'rejected';
 type PublicReview={id:string;rating:number;description:string;created_at:string};
 type ReviewSummary={average:number|null;count:number};
@@ -44,10 +46,10 @@ function MoneyInput({cents,onValue}:{cents:number;onValue:(value:number)=>void})
     value={raw} onFocus={e=>{setFocused(true);e.target.select();}}
     onChange={e=>{
       const value=e.target.value;
-      if(!/^\\d{0,5}(?:[.,]\\d{0,2})?$/.test(value))return;
+      const parsed=parseMoneyInput(value);
+      if(parsed===null)return;
       setRaw(value);
-      const num=Number(value.replace(',','.'));
-      onValue(Number.isFinite(num)?Math.round(num*100):0);
+      onValue(parsed);
     }} onBlur={()=>setFocused(false)}/>;
 }
 type HomeData={categories:Category[];shops:Shop[];products:Product[]};
@@ -563,7 +565,7 @@ export default function Page(){
       const same=base.find(i=>i.product.id===selectedProduct.id&&i.note===itemNote
         &&JSON.stringify(i.selections??{})===JSON.stringify(selected));
       return same?base.map(i=>i===same?{...i,quantity:i.quantity+qty}:i):
-        [...base,{product:selectedProduct,quantity:qty,note:itemNote,selections:selected,line_key:crypto.randomUUID()}];
+        [...base,{product:selectedProduct,quantity:qty,note:itemNote,selections:selected,line_key:clientUUID()}];
     });
     notify('Produto adicionado ao carrinho.');go('cart');
   }
@@ -578,7 +580,7 @@ export default function Page(){
   async function checkout(confirmed=false){
     if(!cart.length||busy)return;
     setBusy(true);setError('');
-    const key=checkoutKey??crypto.randomUUID();
+    const key=checkoutKey??clientUUID();
     if(!checkoutKey)setCheckoutKey(key);
     try{
       const payloadData=checkoutPayload(key);
@@ -1061,6 +1063,10 @@ export default function Page(){
                 <MessageCircle size={17}/> Abrir WhatsApp</button>
             </div>}
           {o.status==='completed'&&(!o.review_status?
+            (o.can_review===false?
+              <p className="review-status-note">
+                {o.is_own_shop?'Não é possível avaliar sua própria loja. Para testar avaliações, use outra conta de morador.':'Avaliação indisponível para este pedido.'}
+              </p>:
             <div className="review-order-action">
               {reviewOrderId===o.id?<form className="review-form" onSubmit={sendReview}>
                 <h3>Como foi comprar nesta loja?</h3>
@@ -1079,7 +1085,7 @@ export default function Page(){
               </form>:<button className="review-order-button" onClick={()=>{
                 setReviewOrderId(o.id);setReviewRating(0);setReviewText('');
               }}><RoundedStars value={0} size={18}/> Avaliar esta compra <ChevronRight size={16}/></button>}
-            </div>:
+            </div>):
             <p className="review-status-note"><CheckCircle2 size={15}/>
               {o.review_status==='pending'?'Avaliação enviada · Aguardando moderação':
               o.review_status==='approved'?'Sua avaliação está publicada':'Avaliação não publicada pela loja'}
@@ -1277,7 +1283,7 @@ export default function Page(){
                 <div className="section-heading"><h3>Opções do produto</h3>
                   <button type="button" className="outline-button" disabled={productForm.option_groups.length>=8}
                     onClick={()=>setProductForm(x=>({...x,option_groups:[...x.option_groups,{
-                      id:crypto.randomUUID(),name:'',required:false,multiple:false,options:[{id:crypto.randomUUID(),name:'',price_cents:0}]
+                      id:clientUUID(),name:'',required:false,multiple:false,options:[{id:clientUUID(),name:'',price_cents:0}]
                     }]}))}><Plus size={15}/> Grupo</button>
                 </div>
                 <p className="helper-note">Ex.: Sabor, tamanho ou adicionais. Os valores são somados ao preço do produto.</p>
@@ -1302,7 +1308,7 @@ export default function Page(){
                   </div>)}
                   <div className="option-editor-footer">
                     <button type="button" className="quiet-link" disabled={group.options.length>=15}
-                      onClick={()=>setProductForm(x=>({...x,option_groups:x.option_groups.map(g=>g.id===group.id?{...g,options:[...g.options,{id:crypto.randomUUID(),name:'',price_cents:0}]}:g)}))}>+ Adicionar escolha</button>
+                      onClick={()=>setProductForm(x=>({...x,option_groups:x.option_groups.map(g=>g.id===group.id?{...g,options:[...g.options,{id:clientUUID(),name:'',price_cents:0}]}:g)}))}>+ Adicionar escolha</button>
                     <button type="button" className="danger-text" onClick={()=>setProductForm(x=>({...x,option_groups:x.option_groups.filter(g=>g.id!==group.id)}))}>Remover grupo</button>
                   </div>
                 </div>)}
@@ -1347,6 +1353,7 @@ export default function Page(){
             {shopForm.delivery_enabled&&<label>Taxa de entrega (R$)
               <MoneyInput cents={shopForm.delivery_fee_cents}
                 onValue={cents=>setShopForm(x=>({...x,delivery_fee_cents:cents}))}/>
+              <small className="muted">Digite o valor em reais, por exemplo 5,50. Para entrega grátis, use 0,00.</small>
             </label>}
             <label className="check-label"><input type="checkbox" checked={shopForm.pickup_enabled} onChange={e=>setShopForm(s=>({...s,pickup_enabled:e.target.checked}))}/> Oferecer retirada</label>
             <button className="primary-button" disabled={busy} type="submit">Salvar configurações <Check size={18}/></button>
