@@ -29,8 +29,13 @@ ALTER TABLE public.media_assets ALTER COLUMN bytes DROP NOT NULL;
 ALTER TABLE public.media_assets ADD COLUMN IF NOT EXISTS storage_key text;
 CREATE UNIQUE INDEX IF NOT EXISTS media_assets_storage_key_idx ON public.media_assets(storage_key)
   WHERE storage_key IS NOT NULL;
-ALTER TABLE public.media_assets ADD CONSTRAINT media_assets_payload_check
-  CHECK (storage_key IS NOT NULL OR bytes IS NOT NULL);
+DO $
+BEGIN
+  IF NOT EXISTS(SELECT 1 FROM pg_constraint WHERE conname='media_assets_payload_check') THEN
+    ALTER TABLE public.media_assets ADD CONSTRAINT media_assets_payload_check
+      CHECK (storage_key IS NOT NULL OR bytes IS NOT NULL);
+  END IF;
+END $;
 
 -- Indexes aligned with marketplace listing and account workflows.
 CREATE INDEX IF NOT EXISTS categories_condo_sort_idx ON public.categories(condominium_id, sort_order, name);
@@ -56,3 +61,11 @@ BEGIN
    END LOOP;
  END IF;
 END $$;
+
+
+-- Accelerate case-insensitive substring search in larger condominiums.
+CREATE EXTENSION IF NOT EXISTS pg_trgm;
+CREATE INDEX IF NOT EXISTS products_name_trgm_idx
+  ON public.products USING gin(name gin_trgm_ops);
+CREATE INDEX IF NOT EXISTS shops_name_trgm_idx
+  ON public.shops USING gin(name gin_trgm_ops);
