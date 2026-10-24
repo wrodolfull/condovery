@@ -63,6 +63,7 @@ export default function Page(){
   const [loading,setLoading]=useState(true);
   const [authMode,setAuthMode]=useState<'login'|'register'>('login');
   const [authForm,setAuthForm]=useState({name:'',email:'',phone:'',password:'',invite:'',tower:'',apartment:''});
+  const [condoLookup,setCondoLookup]=useState<{name:string;towers:string[]}|null>(null);
   const [busy,setBusy]=useState(false);
   const [error,setError]=useState('');
   const [toast,setToast]=useState('');
@@ -146,6 +147,13 @@ export default function Page(){
   const featured=home.products.filter(p=>p.promo_price_cents!=null||p.is_featured).slice(0,8);
   const newest=home.products.slice(0,10);
 
+  async function lookupCondo(){
+    if(authForm.invite.trim().length<10){setCondoLookup(null);return;}
+    try{
+      const r=await api<{name:string;towers:string[]}>('public/condominium?invite='+encodeURIComponent(authForm.invite.trim()));
+      setCondoLookup(r);setError('');setAuthForm(s=>({...s,tower:r.towers.includes(s.tower)?s.tower:r.towers[0]??''}));
+    }catch(e){setCondoLookup(null);fail(e);}
+  }
   async function loginOrRegister(e:React.FormEvent){
     e.preventDefault();setBusy(true);setError('');
     try{
@@ -274,9 +282,9 @@ export default function Page(){
         {authMode==='register'&&<>
           <label>Nome completo<input required autoComplete="name" value={authForm.name} onChange={e=>setAuthForm(s=>({...s,name:e.target.value}))} placeholder="Como podemos chamar você?"/></label>
           <label>WhatsApp<input required type="tel" autoComplete="tel" value={authForm.phone} onChange={e=>setAuthForm(s=>({...s,phone:e.target.value}))} placeholder="(11) 99999-9999"/></label>
-          <label>Código de convite<input required value={authForm.invite} onChange={e=>setAuthForm(s=>({...s,invite:e.target.value}))} placeholder="Código fornecido pelo condomínio"/></label>
-          <div className="field-grid"><label>Torre<input required value={authForm.tower} onChange={e=>setAuthForm(s=>({...s,tower:e.target.value}))} placeholder="Ex.: Torre 1"/></label><label>Apartamento<input required value={authForm.apartment} onChange={e=>setAuthForm(s=>({...s,apartment:e.target.value}))} placeholder="Ex.: 83"/></label></div>
-          <p className="form-hint">Use o nome da torre exatamente como informado na identificação do condomínio.</p>
+          <label>Código de convite<input required value={authForm.invite} onBlur={lookupCondo} onChange={e=>{setCondoLookup(null);setAuthForm(s=>({...s,invite:e.target.value,tower:'' }));}} placeholder="Código fornecido pelo condomínio"/></label>{condoLookup&&<div className="success-banner"><CheckCircle2 size={15}/> {condoLookup.name}</div>}
+          <div className="field-grid"><label>Torre<select required disabled={!condoLookup} value={authForm.tower} onChange={e=>setAuthForm(s=>({...s,tower:e.target.value}))}><option value="">Selecione a torre</option>{condoLookup?.towers.map(t=><option key={t} value={t}>{t}</option>)}</select></label><label>Apartamento<input required value={authForm.apartment} onChange={e=>setAuthForm(s=>({...s,apartment:e.target.value}))} placeholder="Ex.: 83"/></label></div>
+          <p className="form-hint">O código de convite identifica seu condomínio; o cadastro precisa ser aprovado pela administração.</p>
         </>}
         <label>E-mail<input required type="email" autoComplete="email" value={authForm.email} onChange={e=>setAuthForm(s=>({...s,email:e.target.value}))} placeholder="seuemail@exemplo.com"/></label>
         <label>Senha<input required type="password" minLength={authMode==='register'?10:1} autoComplete={authMode==='register'?'new-password':'current-password'} value={authForm.password} onChange={e=>setAuthForm(s=>({...s,password:e.target.value}))} placeholder={authMode==='register'?'Mínimo de 10 caracteres':'Sua senha'}/></label>
