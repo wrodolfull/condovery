@@ -639,7 +639,7 @@ export default function Page(){
       setMyShop(result.shop);
       setShopForm(current=>({...current,is_open:result.shop.is_open}));
       await loadHome();
-      notify(result.shop.is_open?'Loja reaberta e aceitando pedidos.':'Loja pausada. Novos pedidos estão bloqueados.');
+      notify(result.shop.is_open?'Loja aberta e aceitando pedidos.':'Loja fechada. Novos pedidos estão bloqueados.');
     }catch(e){fail(e);}finally{setBusy(false);}
   }
   async function deleteShop(e:React.FormEvent){
@@ -882,7 +882,7 @@ export default function Page(){
         {!query&&<><SectionHeader title="Lojas em destaque" action="Ver todas" onAction={()=>{setCategory('');go('categories');}}/>
           <div className="shops-list">{home.shops.length?home.shops.slice(0,8).map(s=><button className="shop-row" key={s.id} onClick={()=>openShop(s.id)}>
             <ShopLogo src={s.logo_image??s.cover_image} name={s.name}/>
-            <div><strong>{s.name}</strong><p>{s.description||'Conheça os produtos dessa loja'}</p><span className={'open-hint'+(!s.is_open?' closed':'')}><span/> {s.is_open?'Aceitando pedidos':'Pausada'}</span></div><ChevronRight size={20}/></button>):
+            <div><strong>{s.name}</strong><p>{s.description||'Conheça os produtos dessa loja'}</p><span className={'open-hint'+(!s.is_open?' closed':'')}><span/> {s.is_open?'Aceitando pedidos':'Fechada'}</span></div><ChevronRight size={20}/></button>):
             <Empty art="emptyShops" title="Nenhuma loja publicada" subtitle="Seja a primeira pessoa a abrir uma loja no condomínio." action="Criar minha loja" onAction={()=>go('seller')}/>}</div>
         </>}
       </>}
@@ -918,7 +918,7 @@ export default function Page(){
         <div className="shop-profile-photo"><ShopLogo src={selectedShop.shop.logo_image} name={selectedShop.shop.name}/></div>
         <div className="shop-head"><div><h1>{selectedShop.shop.name}</h1><p>{selectedShop.shop.description}</p></div>
           <div className="shop-actions">
-            <Pill tone={selectedShop.shop.is_open?'green':'neutral'}>{selectedShop.shop.is_open?'Aceitando pedidos':'Pausada'}</Pill>
+            <Pill tone={selectedShop.shop.is_open?'green':'neutral'}>{selectedShop.shop.is_open?'Aceitando pedidos':'Fechada'}</Pill>
             <button className="shop-share-button" onClick={()=>shareShop(selectedShop.shop.id,selectedShop.shop.name)}>
               <Share2 size={17}/> Compartilhar loja
             </button>
@@ -1196,19 +1196,19 @@ export default function Page(){
         </form></div>:<>
           <div className="seller-overview"><div><strong>{myShop.name}</strong><p>Seu painel de vendas</p></div>
             <div className="seller-overview-actions">
-              <Pill tone={myShop.status==='approved'&&myShop.is_open?'green':'orange'}>{myShop.status==='approved'&&!myShop.is_open?'Pausada':statusLabel[myShop.status??'pending']}</Pill>
+              <Pill tone={myShop.status==='approved'&&myShop.is_open?'green':'orange'}>{myShop.status==='approved'&&!myShop.is_open?'Fechada':statusLabel[myShop.status??'pending']}</Pill>
               {myShop.status==='approved'&&<>
                 <button className="outline-button seller-pause-button" disabled={busy} type="button" onClick={toggleShopOpen}>
                   {myShop.is_open?<PauseCircle size={17}/>:<PlayCircle size={17}/>}
-                  {myShop.is_open?'Pausar loja':'Reabrir loja'}</button>
+                  {myShop.is_open?'Fechar loja':'Abrir loja'}</button>
                 <button className="shop-share-button" onClick={()=>shareShop(myShop.id,myShop.name)}>
                   <Share2 size={16}/> Compartilhar loja</button>
               </>}
             </div></div>
           <div className={'seller-activation'+(myShop.status==='approved'?(myShop.is_open?' approved':' paused'):myShop.status==='suspended'?' suspended':'')}>
             <div className="activation-symbol">{myShop.status==='approved'?<CheckCircle2 size={28}/>:<Clock3 size={28}/>}</div>
-            <div><strong>{myShop.status==='approved'?(myShop.is_open?'Sua loja está ativa!':'Sua loja está pausada'):myShop.status==='suspended'?'Loja suspensa':'Ativando sua loja'}</strong>
-              <p>{myShop.status==='approved'?(!myShop.is_open?'A loja está pausada e não recebe novos pedidos. Reabra quando quiser.':myProducts.length?'Sua loja está pronta para receber pedidos.':'Agora adicione seus produtos para começar a vender.'):
+            <div><strong>{myShop.status==='approved'?(myShop.is_open?'Sua loja está ativa!':'Sua loja está fechada'):myShop.status==='suspended'?'Loja suspensa':'Ativando sua loja'}</strong>
+              <p>{myShop.status==='approved'?(!myShop.is_open?'A loja está fechada e não recebe novos pedidos. Abra quando quiser.':myProducts.length?'Sua loja está pronta para receber pedidos.':'Agora adicione seus produtos para começar a vender.'):
                 myShop.status==='suspended'?'Fale com a administração do condomínio.':'Sua loja ficará disponível automaticamente.'}</p>
             </div>
           </div>
@@ -1348,7 +1348,7 @@ export default function Page(){
             <label>Foto de capa<div className="image-upload">{shopForm.cover_image?<img src={shopForm.cover_image} alt="Capa"/>:<ImagePlus size={30}/>}<span>Enviar foto de capa</span><input aria-label="Enviar foto de capa" type="file" accept="image/jpeg,image/png,image/webp" onChange={e=>{const f=e.target.files?.[0];e.target.value='';choosePhoto(f,'cover');}}/></div></label>
             <label>Prazo de preparo<input maxLength={100} value={shopForm.lead_time} onChange={e=>setShopForm(s=>({...s,lead_time:e.target.value}))} placeholder="Ex.: Até 2 horas"/></label>
             <label>Orientações para retirada<textarea rows={2} maxLength={250} value={shopForm.pickup_instructions} onChange={e=>setShopForm(s=>({...s,pickup_instructions:e.target.value}))}/></label>
-            <p className="muted seller-pause-note">Para abrir ou pausar as vendas imediatamente, use o botão {myShop.is_open?'Pausar loja':'Reabrir loja'} no topo deste painel.</p>
+            <p className="muted seller-pause-note">Para abrir ou fechar a loja imediatamente, use o botão {myShop.is_open?'Fechar loja':'Abrir loja'} no topo deste painel.</p>
             <label className="check-label"><input type="checkbox" checked={shopForm.delivery_enabled} onChange={e=>setShopForm(s=>({...s,delivery_enabled:e.target.checked}))}/> Oferecer entrega</label>
             {shopForm.delivery_enabled&&<label>Taxa de entrega (R$)
               <MoneyInput cents={shopForm.delivery_fee_cents}
