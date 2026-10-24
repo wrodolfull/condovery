@@ -823,6 +823,7 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
     const owned=await query('SELECT id,moderation_blocked FROM products WHERE id=$1 AND shop_id=$2 AND condominium_id=$3 AND deleted_at IS NULL',[parts[1],shop.id,u.condominium_id]);
     if(!owned.rowCount)bad('Produto não encontrado.',404);
     if(method==='DELETE'){
+      z.object({confirmation:z.literal('EXCLUIR PRODUTO')}).parse(await body(req));
       await transaction(async tx=>{
         await tx.query("UPDATE products SET is_available=false,visibility='hidden',deleted_at=now() WHERE id=$1 AND shop_id=$2 AND condominium_id=$3 AND deleted_at IS NULL",
           [parts[1],shop.id,u.condominium_id]);
