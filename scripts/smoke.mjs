@@ -24,6 +24,13 @@ const sellerEmail='seller-smoke@example.com';
 for(const [name,email,apt] of [['Buyer Test',buyerEmail,'101'],['Seller Test',sellerEmail,'102']]){
   await request('auth/register',{method:'POST',body:{name,email,phone:'11999991234',password:pass,invite,tower:'Torre 1',apartment:apt},expected:201});
 }
+// Supabase Email Confirmations must precede normal login; the test stub
+// simulates clicking the verification link sent by Auth.
+await request('auth/login',{method:'POST',body:{email:buyerEmail,password:pass},expected:401});
+for(const email of [buyerEmail,sellerEmail]){
+  const verified=await fetch('http://127.0.0.1:3333/__test/confirm?email='+encodeURIComponent(email));
+  assert.equal(verified.status,200);
+}
 const adminLogin=await request('auth/login',{method:'POST',body:{email:process.env.BOOTSTRAP_ADMIN_EMAIL,password:process.env.BOOTSTRAP_ADMIN_PASSWORD}});
 const adminCookie=adminLogin.cookie;
 assert.ok(adminCookie);
@@ -118,21 +125,26 @@ await request('home',{cookie:googleSignup.cookie,expected:403});
 await request('admin/users/'+newResident.id,{method:'PATCH',cookie:adminCookie,body:{status:'approved'}});
 await request('home',{cookie:googleSignup.cookie});
 
-// Email recovery token consumption and invalidation of old browser sessions.
-const resetToken=crypto.randomBytes(32).toString('hex');
-const database=new pg.Client({connectionString:process.env.DATABASE_URL});
-await database.connect();
-try{
-  const buyer=(await database.query('SELECT id FROM users WHERE email=$1',[buyerEmail])).rows[0];
-  await database.query(
-    "INSERT INTO password_reset_tokens(token_hash,user_id,expires_at) VALUES($1,$2,now()+interval '30 minutes')",
-    [crypto.createHash('sha256').update(resetToken).digest('hex'),buyer.id]
-  );
-}finally{await database.end();}
-await request('auth/password/confirm',{method:'POST',body:{token:resetToken,password:'NewPassword123!'}});
+// The Supabase Auth service creates/validates a recovery OTP, never Condovery.
+const resetRequested=await request('auth/password/request',{
+  method:'POST',body:{email:buyerEmail}
+});
+assert.match(resetRequested.data.message,/Supabase Auth/);
+const resetData=await fetch('http://127.0.0.1:3333/__test/recovery?email='+encodeURIComponent(buyerEmail));
+assert.equal(resetData.status,200);
+const {token_hash}=await resetData.json();
+const verify=await fetch(origin+'/api/auth/recovery/verify?type=recovery&token_hash='+token_hash,{redirect:'manual'});
+assert.equal(verify.status,307);
+const recoveryCookie=verify.headers.get('set-cookie')?.split(';')[0];
+assert.ok(recoveryCookie?.startsWith('condovery_recovery='));
+await request('auth/password/confirm',{
+  method:'POST',cookie:recoveryCookie,body:{password:'NewPassword123!'}
+});
 await request('home',{cookie:buyerCookie,expected:401});
-await request('auth/password/confirm',{method:'POST',body:{token:resetToken,password:'NewPassword123!'},expected:400});
+await request('auth/password/confirm',{
+  method:'POST',cookie:recoveryCookie,body:{password:'NewPassword123!'},expected:400
+});
+await request('auth/login',{method:'POST',body:{email:buyerEmail,password:pass},expected:401});
 const newLogin=await request('auth/login',{method:'POST',body:{email:buyerEmail,password:'NewPassword123!'}});
 assert.ok(newLogin.cookie);
-console.log('Security tests PASS: favorites, catalog, address reapproval and single-use password reset.');
-
+console.log('Security tests PASS: favorites, catalog, address reapproval and Supabase one-time password recovery.');
