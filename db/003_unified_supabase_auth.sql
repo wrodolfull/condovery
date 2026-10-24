@@ -15,6 +15,8 @@ CREATE UNIQUE INDEX IF NOT EXISTS users_supabase_auth_id_uidx
 -- Supabase generates the reset email/link/token. The table below stores only
 -- a one-time short-lived *application reset ticket* issued after verifyOtp().
 -- Old tickets must be cleared because they belonged to the legacy mail flow.
-DELETE FROM public.password_reset_tokens;
+-- Legacy reset tickets are inert: new recovery requires an HttpOnly cookie
+-- minted exclusively by the Supabase verifyOtp callback.
+-- Do not delete active tickets on every repeated migration.
 
 -- Protect any pending flows through the server's dedicated database session.
