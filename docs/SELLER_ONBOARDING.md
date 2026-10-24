@@ -2,16 +2,15 @@
 
 ## Um único login
 
-Todo morador aprovado pode comprar. Em **Minha conta > Quero vender**,
+Todo morador ativo pode comprar. Em **Minha conta > Quero vender**,
 cadastra uma loja vinculada à sua conta e informa obrigatoriamente
 seu WhatsApp para receber os pedidos. Não há cadastro/login separado
 para vendedor; o morador pode continuar comprando em outras lojas.
 
 ### Ativação simples
 - **Cadastro enviado!** — formulário concluído e loja em análise.
-- **Aguardando aprovação do condomínio.** — botão de adicionar a foto
-  da loja disponível enquanto aguarda.
-- **Loja aprovada!** — pode cadastrar os produtos e receber pedidos.
+- **Loja ativa imediatamente.** — o vendedor já pode adicionar produtos e foto.
+- **Minha loja** — cadastre os produtos e comece a receber pedidos, sem aprovação.
 - **Loja suspensa** — não pode vender; contatar administração.
 
 O vendedor pode testar manualmente seu número pelo botão
@@ -70,7 +69,7 @@ automaticamente o status confirmado pelo redirecionamento.
 ## Validação antes do piloto
 
 - Configurar DB/Storage reais, aplicar \`db/005_seller_profile_product_visibility.sql\`.
-- Fazer cadastro de loja, testar número WhatsApp real e aprovação por admin.
+- Fazer cadastro de loja e teste do número WhatsApp real, sem aprovação prévia.
 - Adicionar foto do perfil e da loja com Supabase Storage.
 - Criar produto nos três estados e tentar comprar indisponível via API.
 - Criar pedido, fechar WhatsApp sem enviar, reabri-lo pelo histórico,

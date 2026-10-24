@@ -7,6 +7,7 @@ import { clearSession, inviteHash, issueSession, sessionViewer, tokenHash, type 
 import { normalizeWhatsApp, orderMessage, unitPrice } from '@/lib/orders';
 import { passwordAuthClient,emailConfigured,recoveryConfigured,googleAuthClient,googleConfigured,storageAdmin,storageConfigured,STORAGE_BUCKET } from '@/lib/supabase';
 import { oauthCookie,randomToken,safeAppOrigin } from '@/lib/security';
+import { violatesCommunityLanguage } from '@/lib/content-policy';
 
 export const runtime='nodejs';
 export const dynamic='force-dynamic';
@@ -19,13 +20,14 @@ const clean=(value:unknown,max=500)=>String(value??'').trim().slice(0,max);
 const uuid=(value:string)=>/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
 async function body(req:NextRequest) {return await req.json().catch(()=>bad('JSON inválido.'));}
 async function viewer(req:NextRequest) {const u=await sessionViewer(req);if(!u)bad('Faça login para continuar.',401);return u!;}
-function approved(u:Viewer){if(u.status!=='approved')bad('Seu cadastro ainda não está aprovado.',403);}
+function approved(u:Viewer){if(u.status!=='approved')bad('Sua conta está suspensa.',403);}
 function admin(u:Viewer){approved(u);if(u.role!=='admin')bad('Acesso restrito à administração.',403);}
 async function shopOwned(u:Viewer,requireApproved=false){
   const r=await query('SELECT * FROM shops WHERE condominium_id=$1 AND owner_id=$2',[u.condominium_id,u.id]);
   const shop=r.rows[0];
   if(!shop) bad('Cadastre sua loja primeiro.',404);
-  if(requireApproved && shop.status!=='approved')bad('Sua loja aguarda aprovação.',403);
+  if(shop.status==='suspended')bad('Esta loja está suspensa.',403);
+  if(requireApproved && shop.status!=='approved')bad('Sua loja está suspensa.',403);
   return shop;
 }
 function imagePath(input:unknown) {
@@ -182,7 +184,7 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
       if(!condo.rowCount)bad('Convite inválido.');
       if(!Array.isArray(condo.rows[0].towers)||!condo.rows[0].towers.includes(b.tower))bad('Torre inválida.');
       const created=await tx.query(
-        "INSERT INTO users(condominium_id,name,email,phone,password_hash,google_auth_user_id,supabase_auth_user_id,tower,apartment) VALUES($1,$2,$3,$4,NULL,$5,$5,$6,$7) RETURNING id",
+        "INSERT INTO users(condominium_id,name,email,phone,password_hash,google_auth_user_id,supabase_auth_user_id,tower,apartment,status) VALUES($1,$2,$3,$4,NULL,$5,$5,$6,$7,'approved') RETURNING id",
         [condo.rows[0].id,b.name,waiting.rows[0].email,b.phone,waiting.rows[0].google_auth_user_id,b.tower,b.apartment]
       );
       const token=randomToken();
@@ -190,7 +192,7 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
         [tokenHash(token),created.rows[0].id]);
       return token;
     });
-    const response=out({message:'Cadastro enviado. Aguarde aprovação.'},201);
+    const response=out({message:'Conta criada! Você já pode explorar seu condomínio.'},201);
     issueSession(response,result);
     response.cookies.set(oauthCookie('condovery_google_signup','',0));
     return response;
@@ -285,7 +287,7 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
     }
     try{
       await query(
-        "INSERT INTO users(condominium_id,name,email,phone,password_hash,supabase_auth_user_id,tower,apartment) VALUES($1,$2,$3,$4,NULL,$5,$6,$7)",
+        "INSERT INTO users(condominium_id,name,email,phone,password_hash,supabase_auth_user_id,tower,apartment,status) VALUES($1,$2,$3,$4,NULL,$5,$6,$7,'approved')",
         [condo.rows[0].id,b.name,b.email,b.phone,authUser!.id,b.tower,b.apartment]
       );
     }catch(e:unknown){
@@ -293,7 +295,7 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
       throw e;
     }
     return out({
-      message:'Cadastro enviado! Confirme seu e-mail pelo Supabase Auth e aguarde a aprovação do condomínio.',
+      message:'Conta criada! Confirme seu e-mail para entrar no Condovery.',
       verificationRequired:!authUser!.email_confirmed_at
     },201);
   }
@@ -357,7 +359,7 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
     }
     if(!u.towers.includes(b.tower))bad('Torre inválida.');
     await query(
-      "UPDATE users SET name=$1,phone=$2,tower=$3,apartment=$4,avatar_image=COALESCE($7,avatar_image),status=CASE WHEN tower<>$3 OR apartment<>$4 THEN 'pending' ELSE status END WHERE id=$5 AND condominium_id=$6",
+      "UPDATE users SET name=$1,phone=$2,tower=$3,apartment=$4,avatar_image=COALESCE($7,avatar_image) WHERE id=$5 AND condominium_id=$6",
       [b.name,b.phone,b.tower,b.apartment,u.id,u.condominium_id,b.avatar_image??null]
     );
     return out({ok:true});
@@ -488,11 +490,12 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
       return out({shop,products});
     }
     if(method==='POST'){
-      const b=z.object({name:z.string().trim().min(3).max(75),description:z.string().max(500).optional(),whatsapp:z.string().min(10).max(20)}).parse(await body(req));
+      const b=z.object({name:z.string().trim().min(3).max(75),description:z.string().max(500).optional(),whatsapp:z.string().min(10).max(20),accept_guidelines:z.literal(true)}).parse(await body(req));
+      if(violatesCommunityLanguage(b.name,b.description))bad('Revise o texto: linguagem imprópria não é permitida.');
       normalizeWhatsApp(b.whatsapp);
       const existing=await query('SELECT id FROM shops WHERE owner_id=$1',[u.id]);
       if(existing.rowCount)bad('Você já possui uma loja.',409);
-      const r=await query('INSERT INTO shops(condominium_id,owner_id,name,description,whatsapp) VALUES($1,$2,$3,$4,$5) RETURNING *',[u.condominium_id,u.id,b.name,b.description??'',b.whatsapp]);
+      const r=await query("INSERT INTO shops(condominium_id,owner_id,name,description,whatsapp,status) VALUES($1,$2,$3,$4,$5,'approved') RETURNING *",[u.condominium_id,u.id,b.name,b.description??'',b.whatsapp]);
       return out({shop:r.rows[0]},201);
     }
     if(method==='PATCH'){
@@ -502,6 +505,7 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
         pickup_enabled:z.boolean(),lead_time:z.string().max(100),pickup_instructions:z.string().max(250),
         cover_image:z.string().nullable().optional()}).parse(await body(req));
       normalizeWhatsApp(b.whatsapp);
+      if(violatesCommunityLanguage(b.name,b.description,b.pickup_instructions))bad('Revise o texto: linguagem imprópria não é permitida.');
       if(!b.delivery_enabled&&!b.pickup_enabled)bad('Habilite entrega ou retirada.');
       const r=await query(
         'UPDATE shops SET name=$1,description=$2,whatsapp=$3,is_open=$4,delivery_enabled=$5,pickup_enabled=$6,lead_time=$7,pickup_instructions=$8,cover_image=$9,logo_image=$12 WHERE id=$10 AND condominium_id=$11 RETURNING *',
@@ -578,6 +582,7 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
       stock:z.number().int().min(0).max(100000).nullable().optional(),image_url:z.string().nullable().optional(),
       visibility:z.enum(['available','unavailable','hidden']).optional(),
       is_available:z.boolean().optional(),lead_time:z.string().max(100).optional()}).parse(await body(req));
+    if(violatesCommunityLanguage(b.name,b.description))bad('Revise o texto do produto: linguagem imprópria não é permitida.');
     if(b.promo_price_cents!=null&&b.promo_price_cents>=b.price_cents)bad('O preço promocional deve ser menor que o original.');
     const category=await query('SELECT id FROM categories WHERE id=$1 AND condominium_id=$2',[b.category_id,u.condominium_id]);
     if(!category.rowCount)bad('Categoria inválida.');
@@ -594,27 +599,34 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
     const shop=await shopOwned(u,true);
     const b=z.object({visibility:z.enum(['available','unavailable','hidden'])}).parse(await body(req));
     const updated=await query(
-      'UPDATE products SET visibility=$1,is_available=($1=\'available\') WHERE id=$2 AND condominium_id=$3 AND shop_id=$4 RETURNING *',
+      'UPDATE products SET visibility=$1,is_available=($1=\'available\') WHERE id=$2 AND condominium_id=$3 AND shop_id=$4 AND moderation_blocked=false RETURNING *',
       [b.visibility,parts[1],u.condominium_id,shop.id]
     );
-    if(!updated.rowCount)bad('Produto não encontrado.',404);
+    if(!updated.rowCount){
+      const exists=await query('SELECT moderation_blocked FROM products WHERE id=$1 AND condominium_id=$2 AND shop_id=$3',
+        [parts[1],u.condominium_id,shop.id]);
+      if(exists.rows[0]?.moderation_blocked)bad('Este produto foi bloqueado pela administração.',403);
+      bad('Produto não encontrado.',404);
+    }
     return out({product:updated.rows[0]});
   }
   if(parts[0]==='products'&&parts[1]&&['PATCH','DELETE'].includes(method)){
     if(!uuid(parts[1]))bad('Produto inválido.');
     const shop=await shopOwned(u,true);
-    const owned=await query('SELECT id FROM products WHERE id=$1 AND shop_id=$2 AND condominium_id=$3',[parts[1],shop.id,u.condominium_id]);
+    const owned=await query('SELECT id,moderation_blocked FROM products WHERE id=$1 AND shop_id=$2 AND condominium_id=$3',[parts[1],shop.id,u.condominium_id]);
     if(!owned.rowCount)bad('Produto não encontrado.',404);
     if(method==='DELETE'){
       await query("UPDATE products SET is_available=false,visibility='hidden' WHERE id=$1 AND shop_id=$2",[parts[1],shop.id]);
       return out({ok:true});
     }
+    if(owned.rows[0].moderation_blocked)bad('Este produto está bloqueado pela administração.',403);
     const b=z.object({name:z.string().trim().min(2).max(100),description:z.string().max(600),
       category_id:z.string().uuid(),price_cents:z.number().int().min(1).max(10_000_000),
       promo_price_cents:z.number().int().min(1).max(10_000_000).nullable(),
       stock:z.number().int().min(0).max(100000).nullable(),image_url:z.string().nullable(),
       visibility:z.enum(['available','unavailable','hidden']).optional(),
       is_available:z.boolean().optional(),lead_time:z.string().max(100)}).parse(await body(req));
+    if(violatesCommunityLanguage(b.name,b.description))bad('Revise o texto do produto: linguagem imprópria não é permitida.');
     if(b.promo_price_cents!=null&&b.promo_price_cents>=b.price_cents)bad('Preço promocional inválido.');
     const cat=await query('SELECT id FROM categories WHERE id=$1 AND condominium_id=$2',[b.category_id,u.condominium_id]);
     if(!cat.rowCount)bad('Categoria inválida.');
@@ -742,6 +754,91 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
     ]);
     return out({residents:residents.rows,shops:shops.rows,stats:stats.rows[0],categories:categories.rows});
   }
+  if(path==='reports'&&method==='POST'){
+    const b=z.object({
+      target_type:z.enum(['shop','product']),target_id:z.string().uuid(),
+      reason:z.enum(['language','image','inappropriate','other']),
+      details:z.string().trim().max(250).default('')
+    }).parse(await body(req));
+    const target=b.target_type==='shop'
+      ?await query("SELECT id,owner_id FROM shops WHERE id=$1 AND condominium_id=$2 AND status='approved'",
+        [b.target_id,u.condominium_id])
+      :await query("SELECT p.id,s.owner_id FROM products p JOIN shops s ON s.id=p.shop_id AND s.condominium_id=p.condominium_id "+
+        "WHERE p.id=$1 AND p.condominium_id=$2 AND p.visibility<>'hidden' AND s.status='approved'",
+        [b.target_id,u.condominium_id]);
+    if(!target.rowCount)bad('Conteúdo não encontrado.',404);
+    if(target.rows[0].owner_id===u.id)bad('Não é possível denunciar sua própria loja.',400);
+    const count=await query("SELECT count(*)::int AS total FROM content_reports "+
+      "WHERE reporter_id=$1 AND created_at>now()-interval '24 hours'",[u.id]);
+    if(count.rows[0].total>=10)bad('Limite de denúncias atingido hoje.',429);
+    const saved=await query(
+      "INSERT INTO content_reports(condominium_id,reporter_id,target_type,target_id,reason,details) "+
+      "VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT(condominium_id,reporter_id,target_type,target_id) DO NOTHING RETURNING id",
+      [u.condominium_id,u.id,b.target_type,b.target_id,b.reason,b.details]
+    );
+    if(!saved.rowCount)bad('Você já denunciou este conteúdo.',409);
+    return out({message:'Denúncia recebida. A administração irá analisar.'},201);
+  }
+  if(path==='admin/reports'&&method==='GET'){
+    admin(u);
+    const items=await query(
+      "SELECT r.id,r.target_type,r.target_id,r.reason,r.details,r.status,r.created_at, "+
+      "COALESCE(s.name,p.name) AS target_name,COALESCE(p.moderation_blocked,false) AS product_blocked FROM content_reports r "+
+      "LEFT JOIN shops s ON r.target_type='shop' AND s.id=r.target_id AND s.condominium_id=r.condominium_id "+
+      "LEFT JOIN products p ON r.target_type='product' AND p.id=r.target_id AND p.condominium_id=r.condominium_id "+
+      "WHERE r.condominium_id=$1 ORDER BY CASE WHEN r.status='open' THEN 0 ELSE 1 END,r.created_at DESC LIMIT 150",
+      [u.condominium_id]
+    );
+    return out({reports:items.rows});
+  }
+  if(parts[0]==='admin'&&parts[1]==='products'&&parts[2]&&parts[3]==='unblock'&&method==='PATCH'){
+    admin(u);
+    if(!uuid(parts[2]))bad('Produto inválido.');
+    const updated=await query(
+      "UPDATE products SET moderation_blocked=false WHERE id=$1 AND condominium_id=$2 AND moderation_blocked=true RETURNING id",
+      [parts[2],u.condominium_id]
+    );
+    if(!updated.rowCount)bad('Produto não encontrado ou não está bloqueado.',404);
+    // Leave visibility hidden; the owner can republish after revising content.
+    return out({ok:true});
+  }
+  if(parts[0]==='admin'&&parts[1]==='reports'&&parts[2]&&method==='PATCH'){
+    admin(u);
+    if(!uuid(parts[2]))bad('Denúncia inválida.');
+    const b=z.object({action:z.enum(['dismiss','hide_product','suspend_shop'])}).parse(await body(req));
+    await transaction(async tx=>{
+      const found=await tx.query(
+        "SELECT * FROM content_reports WHERE id=$1 AND condominium_id=$2 AND status='open' FOR UPDATE",
+        [parts[2],u.condominium_id]
+      );
+      if(!found.rowCount)bad('Denúncia não encontrada ou já analisada.',404);
+      const r=found.rows[0];
+      if(b.action==='hide_product'){
+        if(r.target_type!=='product')bad('Esta denúncia não é de um produto.');
+        await tx.query(
+          "UPDATE products SET visibility='hidden',is_available=false,moderation_blocked=true WHERE id=$1 AND condominium_id=$2",
+          [r.target_id,u.condominium_id]
+        );
+      }
+      if(b.action==='suspend_shop'){
+        let shopId=r.target_id;
+        if(r.target_type==='product'){
+          const q=await tx.query('SELECT shop_id FROM products WHERE id=$1 AND condominium_id=$2',
+            [r.target_id,u.condominium_id]);
+          if(!q.rowCount)bad('Produto não encontrado.',404);
+          shopId=q.rows[0].shop_id;
+        }
+        await tx.query("UPDATE shops SET status='suspended',is_open=false WHERE id=$1 AND condominium_id=$2",
+          [shopId,u.condominium_id]
+        );
+      }
+      await tx.query(
+        "UPDATE content_reports SET status='resolved',resolved_by=$1,resolved_at=now() WHERE id=$2",
+        [u.id,r.id]
+      );
+    });
+    return out({ok:true});
+  }
   if(parts[0]==='admin'&&parts[1]==='users'&&parts[2]&&method==='PATCH'){
     admin(u);if(!uuid(parts[2])||parts[2]===u.id)bad('Morador inválido.');
     const b=z.object({status:z.enum(['approved','suspended'])}).parse(await body(req));
@@ -767,9 +864,13 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
   }
   if(path==='admin/invite'&&method==='POST'){
     admin(u);
-    const code=crypto.randomBytes(12).toString('base64url');
-    await query('UPDATE condominiums SET invite_code_hash=$1 WHERE id=$2',[inviteHash(code),u.condominium_id]);
-    return out({invite:code,message:'Compartilhe o convite em canal privado. O convite anterior deixou de funcionar.'});
+    const input=z.object({code:z.string().trim().min(10).max(40).regex(/^[A-Za-z0-9-]+$/)}).parse(await body(req));
+    const code=input.code;
+    if(!/[A-Za-z]/.test(code)||!/[0-9]/.test(code))bad('Use letras e números no código (mínimo de 10 caracteres).');
+    try{
+      await query('UPDATE condominiums SET invite_code_hash=$1 WHERE id=$2',[inviteHash(code),u.condominium_id]);
+    }catch(e:unknown){if((e as {code?:string}).code==='23505')bad('Este código já pertence a outro condomínio.',409);throw e;}
+    return out({invite:code,message:'Código do condomínio atualizado. Compartilhe apenas com moradores.'});
   }
   return bad('Rota não encontrada.',404);
 }

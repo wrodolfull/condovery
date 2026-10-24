@@ -4,7 +4,7 @@
 Supabase Auth é a única fonte de identidade para cadastro com e-mail e senha,
 confirmação de e-mail, login, recuperação de senha e Google. O navegador só
 chama a API Next.js do Condovery. O backend valida a identidade via Supabase,
-emite uma sessão opaca HttpOnly e aplica regras de condomínio e aprovação.
+emite uma sessão opaca HttpOnly e aplica regras de condomínio e suspensão administrativa.
 Nenhuma senha é validada no PostgreSQL da aplicação.
 
 Dados de negócio residem em Supabase PostgreSQL. Fotos passam pelo backend
@@ -44,13 +44,13 @@ e são guardadas em bucket privado do Supabase Storage.
 ## Fluxos de acesso
 - Cadastro de morador: convite e torre/apartamento são validados pelo
   backend. Supabase Auth realiza signUp e envia confirmação. O morador
-  permanece pendente da administração.
+  fica ativo depois da confirmação do e-mail.
 - Login: signInWithPassword valida e-mail/senha no Supabase. O backend
   também exige e-mail confirmado e vínculo válido com condomínio.
-  Moradores aprovados entram na vitrine; pendentes aguardam aprovação.
+  Acesso liberado após confirmação do e-mail, sem moderação prévia.
 - Google: autorização PKCE gerenciada pelo Supabase Auth no servidor.
   Um novo usuário Google também precisa fornecer convite, telefone e
-  apartamento e passar pela aprovação administrativa.
+  apartamento sem precisar de aprovação administrativa.
 - Recuperação: resetPasswordForEmail envia o e-mail do Supabase;
   verifyOtp valida o hash de recuperação; o backend emite um ticket
   temporário HttpOnly de uso único (15 minutos). admin.updateUserById
@@ -67,7 +67,7 @@ Após a migração completa, hashes antigos poderão ser apagados.
 
 ## Testes
 O CI usa PostgreSQL e um stub isolado do Supabase Auth para os testes
-automatizados (cadastro, confirmação, login, recuperação, aprovação,
+automatizados (cadastro, confirmação, login, recuperação, validação do código,
 pedidos e favoritos). A integração REAL com o painel Supabase, envio de
 e-mails e OAuth Google exige configurar credenciais e validar no domínio
 de produção antes do lançamento.
