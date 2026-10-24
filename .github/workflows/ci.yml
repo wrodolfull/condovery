@@ -2,10 +2,32 @@ name: CI
 on:
   pull_request:
   push:
-    branches: [main, feat/condovery-mvp-mobile-first]
+    branches: [main]
 jobs:
   checks:
     runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: postgres://condovery:condovery-ci@127.0.0.1:5432/condovery_test
+      BOOTSTRAP_ADMIN_EMAIL: admin-smoke@example.com
+      BOOTSTRAP_ADMIN_PASSWORD: CIOnlyLongSecurePass123!
+      BOOTSTRAP_CONDO_NAME: Condominio Teste
+      BOOTSTRAP_CONDO_SLUG: teste
+      BOOTSTRAP_INVITE_CODE: CIOnlyPrivateInvite123!
+      NEXT_TELEMETRY_DISABLED: '1'
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: condovery
+          POSTGRES_PASSWORD: condovery-ci
+          POSTGRES_DB: condovery_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U condovery -d condovery_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 8
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -15,5 +37,18 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
-        env:
-          NEXT_TELEMETRY_DISABLED: '1'
+      - name: Apply DB schema
+        run: node scripts/migrate.mjs
+      - name: Bootstrap test condominium
+        run: node scripts/bootstrap.mjs
+      - name: Start app
+        run: |
+          npm start > /tmp/condovery.log 2>&1 &
+          for attempt in $(seq 1 35); do
+            if curl -sf http://127.0.0.1:3000/ > /dev/null; then exit 0; fi
+            sleep 1
+          done
+          cat /tmp/condovery.log
+          exit 1
+      - name: API integration test
+        run: node scripts/smoke.mjs
