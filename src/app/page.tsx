@@ -5,7 +5,7 @@ import {
   ArrowLeft, ArrowRight, Bell, Building2, CakeSlice, Check, CheckCircle2, ChevronDown, ChevronRight,
   CircleHelp, Clock3, Coffee, Gift, Heart, Home, ImagePlus, LayoutGrid, LogOut, MapPin,
   Menu, Minus, Package, Plus, Receipt, Search, Settings, ShieldCheck, ShoppingBag, ShoppingBasket,
-  SlidersHorizontal, Sparkles, Store, Tag, Trash2, Truck, UserRound, Utensils, X
+  SlidersHorizontal, Sparkles, Store, Tag, Trash2, Truck, UserRound, Utensils, X, Shirt, Sandwich
 } from 'lucide-react';
 
 type Viewer={id:string;name:string;email:string;phone:string;role:'admin'|'resident';status:'pending'|'approved'|'suspended';tower:string;apartment:string;condominium_name:string;towers:string[]};
@@ -34,9 +34,14 @@ function ProductPicture({src,name,large=false}:{src?:string|null;name:string;lar
     {src?<img src={src} alt={name} loading="lazy"/>:<div className="photo-placeholder"><ShoppingBasket size={large?54:34} strokeWidth={1.5}/><span>feito por vizinhos</span></div>}
   </div>;
 }
-function CategorySymbol({name}:{name:string}){
+function CategorySymbol({name,icon}:{name:string;icon?:string}){
   const lower=name.toLowerCase();
-  const Icon=lower.includes('bolo')||lower.includes('doce')?CakeSlice:lower.includes('pão')||lower.includes('salgado')?ShoppingBasket:lower.includes('refei')?Utensils:lower.includes('bebida')?Coffee:lower.includes('presente')?Gift:lower.includes('beleza')?Sparkles:ShoppingBag;
+  const icons:Record<string,React.ElementType>={
+    'cake-slice':CakeSlice,'sandwich':Sandwich,'utensils':Utensils,'coffee':Coffee,
+    'sparkles':Sparkles,'shirt':Shirt,'gift':Gift,'shopping-bag':ShoppingBag
+  };
+  const Fallback=lower.includes('bolo')||lower.includes('doce')?CakeSlice:lower.includes('pão')||lower.includes('salgado')?ShoppingBasket:lower.includes('refei')?Utensils:lower.includes('bebida')?Coffee:lower.includes('presente')?Gift:lower.includes('beleza')?Sparkles:ShoppingBag;
+  const Icon=icons[icon??'']??Fallback;
   return <Icon size={25} strokeWidth={1.8}/>;
 }
 function Pill({children,tone='neutral'}:{children:React.ReactNode;tone?:'neutral'|'green'|'orange'}){
@@ -327,7 +332,7 @@ export default function Page(){
         {!query&&<section className="hero-banner"><div className="hero-copy"><span className="eyebrow">NOSSO CONDOMÍNIO, NOSSO MARKETPLACE</span><h2>Coisa boa mora <em>bem pertinho.</em></h2><p>Conheça os produtos e talentos dos seus vizinhos.</p><button onClick={()=>go('categories')}>Explorar produtos <ArrowRight size={17}/></button></div><img src="/hero.svg" alt="Ilustração de uma lojinha" /></section>}
         <SectionHeader title="O que você procura?" action="Ver categorias" onAction={()=>go('categories')}/>
         <div className="category-track">
-          {home.categories.map(c=><button key={c.id} className="category-card" onClick={()=>{setCategory(c.id);go('categories');}}><div><CategorySymbol name={c.name}/></div><span>{c.name}</span></button>)}
+          {home.categories.map(c=><button key={c.id} className="category-card" onClick={()=>{setCategory(c.id);go('categories');}}><div><CategorySymbol name={c.name} icon={c.icon}/></div><span>{c.name}</span></button>)}
         </div>
         {!query&&featured.length>0&&<><SectionHeader title="Ofertas e destaques" action="Ver tudo" onAction={()=>go('categories')}/><div className="product-track">{featured.map(p=><ProductCard key={p.id} p={p} onClick={()=>openProduct(p)}/>)}</div></>}
         <SectionHeader title={query?'Resultados da busca':'Feito e vendido por vizinhos'} action={!query?'Ver produtos':undefined} onAction={()=>go('categories')}/>
