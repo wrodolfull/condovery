@@ -8,7 +8,8 @@ import {
   ArrowLeft, ArrowRight, Bell, Building2, CakeSlice, Check, CheckCircle2, ChevronDown, ChevronRight,
   CircleHelp, Clock3, Coffee, Gift, Heart, Home, ImagePlus, LayoutGrid, LogOut, MapPin,
   Menu, MessageCircle, Minus, Package, Plus, Receipt, Search, Settings, Share2, ShieldCheck, ShoppingBag, ShoppingBasket,
-  SlidersHorizontal, Sparkles, Store, Tag, Trash2, Truck, UserRound, Utensils, X, Shirt, Sandwich
+  SlidersHorizontal, Sparkles, Store, Tag, Trash2, Truck, UserRound, Utensils, X, Shirt, Sandwich,
+  Pizza, IceCreamCone, Wrench, HeartPulse, House, Smartphone
 } from 'lucide-react';
 
 type Viewer={id:string;name:string;email:string;phone:string;avatar_image:string|null;role:'admin'|'resident';status:'pending'|'approved'|'suspended';tower:string;apartment:string;condominium_name:string;towers:string[]};
@@ -57,7 +58,9 @@ function CategorySymbol({name,icon}:{name:string;icon?:string}){
   const lower=name.toLowerCase();
   const icons:Record<string,React.ElementType>={
     'cake-slice':CakeSlice,'sandwich':Sandwich,'utensils':Utensils,'coffee':Coffee,
-    'sparkles':Sparkles,'shirt':Shirt,'gift':Gift,'shopping-bag':ShoppingBag
+    'sparkles':Sparkles,'shirt':Shirt,'gift':Gift,'shopping-bag':ShoppingBag,
+    'pizza':Pizza,'ice-cream-cone':IceCreamCone,'shopping-basket':ShoppingBasket,
+    'wrench':Wrench,'heart-pulse':HeartPulse,'house':House,'smartphone':Smartphone
   };
   const Fallback=lower.includes('bolo')||lower.includes('doce')?CakeSlice:lower.includes('pão')||lower.includes('salgado')?ShoppingBasket:lower.includes('refei')?Utensils:lower.includes('bebida')?Coffee:lower.includes('presente')?Gift:lower.includes('beleza')?Sparkles:ShoppingBag;
   const Icon=icons[icon??'']??Fallback;
@@ -996,7 +999,10 @@ export default function Page(){
         <section className="admin-section"><SectionHeader title="Moradores pendentes e cadastrados"/>
           {adminData.residents.length?adminData.residents.map(r=><div className="admin-row" key={r.id}><div><strong>{r.name}</strong><p>{r.email} · {r.tower} / {r.apartment}</p><Pill tone={r.status==='approved'?'green':'orange'}>{statusLabel[r.status]}</Pill></div><div className="inline-actions">{r.status!=='approved'&&<button disabled={busy} onClick={()=>adminAction('users',r.id,'approved')}>Aprovar</button>}{r.status!=='suspended'&&<button disabled={busy} className="danger-text" onClick={()=>adminAction('users',r.id,'suspended')}>Suspender</button>}</div></div>):<p className="muted">Nenhum morador cadastrado ainda.</p>}</section>
         <section className="admin-section"><SectionHeader title="Lojas"/>{adminData.shops.length?adminData.shops.map(s=><div className="admin-row" key={s.id}><div><strong>{s.name}</strong><p>Responsável: {s.owner_name}</p><Pill tone={s.status==='approved'?'green':'orange'}>{statusLabel[s.status]}</Pill></div><div className="inline-actions">{s.status!=='approved'&&<button disabled={busy} onClick={()=>adminAction('shops',s.id,'approved')}>Aprovar</button>}{s.status!=='suspended'&&<button disabled={busy} className="danger-text" onClick={()=>adminAction('shops',s.id,'suspended')}>Suspender</button>}</div></div>):<p className="muted">Nenhuma loja cadastrada.</p>}</section>
-        <section className="admin-section white-panel"><h2><LayoutGrid size={20}/> Categorias</h2><div className="filter-chips">{adminData.categories.map(c=><span className="category-tag" key={c.id}>{c.name}</span>)}</div><form className="admin-category-form" onSubmit={createCategory}><input required minLength={2} maxLength={60} value={newCategory} onChange={e=>setNewCategory(e.target.value)} placeholder="Nova categoria"/><select value={categoryIcon} onChange={e=>setCategoryIcon(e.target.value)} aria-label="Ícone"><option value="shopping-bag">Compras</option><option value="cake-slice">Bolos</option><option value="sandwich">Alimentos</option><option value="coffee">Bebidas</option><option value="shirt">Moda</option><option value="sparkles">Beleza</option><option value="gift">Presentes</option></select><button className="outline-button" disabled={busy} type="submit"><Plus size={16}/>Adicionar</button></form></section>
+        <section className="admin-section white-panel"><h2><LayoutGrid size={20}/> Categorias</h2><div className="filter-chips">{adminData.categories.map(c=><span className="category-tag" key={c.id}>{c.name}</span>)}</div><form className="admin-category-form" onSubmit={createCategory}><input required minLength={2} maxLength={60} value={newCategory} onChange={e=>setNewCategory(e.target.value)} placeholder="Nova categoria"/><select value={categoryIcon} onChange={e=>setCategoryIcon(e.target.value)} aria-label="Ícone"><option value="shopping-bag">Compras</option><option value="cake-slice">Bolos</option><option value="sandwich">Alimentos</option><option value="coffee">Bebidas</option><option value="shirt">Moda</option><option value="sparkles">Beleza</option><option value="gift">Presentes</option><option value="pizza">Lanches</option>
+<option value="ice-cream-cone">Sobremesas</option><option value="shopping-basket">Mercadinho</option>
+<option value="wrench">Serviços</option><option value="heart-pulse">Saúde</option>
+<option value="house">Casa</option><option value="smartphone">Eletrônicos</option></select><button className="outline-button" disabled={busy} type="submit"><Plus size={16}/>Adicionar</button></form></section>
         <section className="admin-section white-panel"><h2><ShieldCheck size={20}/> Convite do condomínio</h2><p>Novos moradores precisam de um convite e aprovação manual para acessar o marketplace.</p><button className="outline-button" disabled={busy} onClick={generateInvite}>Gerar novo convite</button>{invite&&<div className="invite-code"><code>{invite}</code><button onClick={()=>{navigator.clipboard.writeText(invite).then(()=>notify('Convite copiado.')).catch(fail);}}>Copiar</button></div>}<small>Ao gerar novo código, o anterior deixa de valer. Compartilhe apenas com moradores.</small></section>
         </>:<Empty title="Carregando administração" subtitle="Confira sua conexão e tente novamente." action="Recarregar" onAction={()=>loadAdmin().catch(fail)}/>}
       </>}
