@@ -147,8 +147,9 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
   if(path==='media'&&method==='POST'){
     const shop=await shopOwned(u);
     const form=await req.formData();
-    const file=form.get('file');
-    if(!(file instanceof File))bad('Selecione uma imagem.');
+    const input=form.get('file');
+    if(!(input instanceof File))throw new ApiError(400,'Selecione uma imagem.');
+    const file:File=input;
     if(!['image/jpeg','image/png','image/webp'].includes(file.type))bad('Imagem deve ser JPG, PNG ou WebP.');
     if(file.size<1||file.size>1_500_000)bad('A imagem deve ter no máximo 1,5 MB.');
     const buffer=Buffer.from(await file.arrayBuffer());
@@ -320,7 +321,7 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
     await query('UPDATE condominiums SET invite_code_hash=$1 WHERE id=$2',[inviteHash(code),u.condominium_id]);
     return out({invite:code,message:'Compartilhe o convite em canal privado. O convite anterior deixou de funcionar.'});
   }
-  bad('Rota não encontrada.',404);
+  return bad('Rota não encontrada.',404);
 }
 async function endpoint(req:NextRequest,method:Verb) {
   const parts=req.nextUrl.pathname.replace(/^\/api\/?/,'').split('/').filter(Boolean);
