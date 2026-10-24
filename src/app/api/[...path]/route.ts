@@ -427,8 +427,8 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
         (v):v is string=>typeof v==='string'&&v.length>0
       ))];
       const job=await tx.query(
-        'INSERT INTO account_deletion_jobs(user_id,auth_user_id,storage_keys) VALUES($1,$2,$3::jsonb) RETURNING id',
-        [u.id,authId,JSON.stringify(keys)]
+        'INSERT INTO account_deletion_jobs(user_id,auth_user_id,email_hash,storage_keys) VALUES($1,$2,$3,$4::jsonb) RETURNING id',
+        [u.id,authId,crypto.createHash('sha256').update(email).digest('hex'),JSON.stringify(keys)]
       );
       // Review texts, favorites, reports and image objects are no longer needed.
       await tx.query('DELETE FROM shop_reviews WHERE buyer_id=$1 OR shop_id=ANY($2::uuid[])',
