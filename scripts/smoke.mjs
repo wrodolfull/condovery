@@ -68,6 +68,8 @@ const standardNames=[
 ];
 assert.deepEqual(sellerHome.categories.map(c=>c.name),standardNames);
 assert.equal(new Set(sellerHome.categories.map(c=>c.id)).size,7);
+await request('admin/categories',{method:'POST',cookie:adminCookie,expected:400,body:{name:'Moda',icon:'sandwich'}});
+await request('admin/categories',{method:'POST',cookie:adminCookie,expected:400,body:{name:'Produtos de teste',icon:'shirt'}});
 await request('products',{method:'POST',cookie:sellerCookie,expected:400,body:{
   name:'Porra',description:'Teste de ofensa',price_cents:2500,stock:4,
   category_id:sellerHome.categories[0].id,lead_time:'Disponível hoje',is_available:true
