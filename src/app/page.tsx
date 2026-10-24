@@ -729,7 +729,8 @@ export default function Page(){
       if(selectedProduct?.id===id){setSelectedProduct(null);go('home');}
       setDeleteProductTarget(null);
       setEditingProduct(false);
-      await Promise.all([loadMine(),loadHome()]);
+      setSelectedShop(prev=>prev?{...prev,products:prev.products.filter(p=>p.id!==id)}:null);
+      await Promise.all([loadMine(),loadHome(),loadFavorites()]);
       notify('Produto excluído da loja. O histórico dos pedidos foi preservado.');
     }catch(e){fail(e);}finally{setBusy(false);}
   }
