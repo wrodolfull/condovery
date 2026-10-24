@@ -43,7 +43,7 @@ const statusLabel:Record<string,string>={awaiting_confirmation:'Aguardando confi
 const emptyHome:HomeData={categories:[],shops:[],products:[]};
 const cartShopSafe=(cart:CartItem[],shops:Shop[],selected:{shop:Shop}|null)=>{
   return shops.find(s=>s.id===cart[0]?.product.shop_id)||
-    (selected?.shop.id===cart[0]?.product.shop_id?selected.shop:undefined);
+    (selected&&cart.length>0&&selected.shop.id===cart[0].product.shop_id?selected.shop:undefined);
 };
 type OrderFilter='all'|'awaiting_confirmation'|'confirmed'|'completed'|'cancelled';
 const orderFilters:{key:OrderFilter;label:string}[]=[
