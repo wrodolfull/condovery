@@ -865,3 +865,68 @@ img{height:auto}
   .review-form-footer .outline-button{flex:0 0 auto}
 }
 @media(prefers-reduced-motion:reduce){.star-choice{transition:none}.star-choice:hover{transform:none}}
+
+
+/* Loja fácil de ativar: linguagem direta e etapas visuais. */
+.seller-activation{display:flex;align-items:center;gap:14px;padding:17px;margin:14px 0 10px;border-radius:20px;
+ background:#fff1c7;border:1px solid #ffe19a;color:#59421f;min-width:0}
+.seller-activation.approved{background:#e6f4e9;border-color:#c5e8cc;color:#1f704a}
+.seller-activation.suspended{background:#f6ecea;border-color:#eed1ca;color:#944237}
+.activation-symbol{width:46px;height:46px;display:grid;place-items:center;flex:0 0 46px;
+ border-radius:16px;background:rgba(255,255,255,.66)}
+.seller-activation strong{font:800 20px/1.2 var(--app-heading,inherit)}
+.seller-activation p{font-size:12px;line-height:1.5;margin-top:4px}
+.seller-activation-help{display:flex;flex-direction:column;align-items:flex-start;gap:12px;padding:0 0 14px}
+.activation-steps{display:flex;gap:8px;max-width:100%;overflow-x:auto;scrollbar-width:none}
+.activation-steps span{white-space:nowrap;display:inline-flex;align-items:center;gap:5px;
+ border:1px solid #eae2d4;background:#f7f5ee;color:#928b7a;border-radius:999px;padding:8px 10px;font-size:10px;font-weight:800}
+.activation-steps .done{color:#246e54;background:#e6f3eb;border-color:#cae6d3}
+.activation-steps .current{color:#9b6513;background:#fff0c8;border-color:#ffe4a4}
+.simple-photo-uploader{display:inline-flex;position:relative;align-items:center;justify-content:center;gap:7px;
+ font-size:12px;font-weight:800;border:1px dashed #d4bea0;background:#fff8e9;color:#564326;
+ border-radius:999px;padding:11px 16px;min-height:42px;max-width:100%;cursor:pointer}
+.simple-photo-uploader input{position:absolute;inset:0;opacity:0;width:100%;height:100%;cursor:pointer}
+.simple-photo-uploader:focus-within{outline:2px solid #e78e46;outline-offset:2px}
+.account-welcome .avatar{overflow:hidden}
+.account-welcome .avatar img{width:100%;height:100%;object-fit:cover;border-radius:inherit}
+.shop-profile-photo{display:flex;position:relative;width:88px;margin:-43px 0 10px 17px;z-index:2}
+.shop-profile-photo .shop-logo{width:88px;height:88px;border:4px solid #fffdfa;border-radius:26px;background:#ffefca;
+ box-shadow:0 7px 21px rgba(51,35,12,.1);overflow:hidden}
+.shop-profile-photo .shop-logo img{width:100%;height:100%;object-fit:cover}
+.shop-row .shop-logo img{width:100%;height:100%;object-fit:cover}
+.order-contact{margin-top:13px;padding:12px;border-radius:16px;background:#f8f5ed;
+ display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px}
+.order-contact p{font-size:12px;color:#726b5f;line-height:1.45;flex:1 1 160px}
+.order-contact .outline-button{font-size:12px;min-height:42px;white-space:nowrap;display:inline-flex;align-items:center;gap:7px}
+.product-card.is-unavailable{background:#f0f0ee}
+.product-card.is-unavailable .product-open,
+.seller-product-item.is-unavailable .seller-product-edit,
+.product-detail.is-unavailable .product-photo,
+.product-detail.is-unavailable .product-detail-copy>h1,
+.product-detail.is-unavailable .detail-price{
+ filter:grayscale(1);opacity:.48}
+.product-card.is-unavailable .product-photo{filter:grayscale(1)}
+.product-card.is-unavailable .product-open .product-meta{opacity:.72}
+.unavailable-tag{position:absolute;z-index:4;left:10px;top:10px;background:#494945;color:#fff;
+ border-radius:99px;font-size:10px;font-weight:800;padding:7px 10px}
+.seller-product-list{display:flex;flex-direction:column;gap:10px}
+.seller-product-item{min-width:0;background:#fffdfa;border:1px solid #eae4d8;border-radius:17px;padding:7px 10px}
+.seller-product-edit{display:flex;align-items:center;text-align:left;border:0;background:transparent;width:100%;
+ gap:12px;min-height:75px;color:inherit;padding:4px 0}
+.seller-product-edit .product-photo{width:66px;height:66px;flex:0 0 66px;border-radius:13px;overflow:hidden}
+.seller-product-edit>span{flex:1;min-width:0;display:flex;flex-direction:column;gap:5px}
+.seller-product-edit strong{overflow-wrap:anywhere}
+.seller-product-edit small{font-size:12px;color:#777166}
+.product-visibility-actions{display:flex;gap:6px;padding:7px 0;overflow-x:auto;scrollbar-width:none}
+.product-visibility-actions button{border:1px solid #e8e5dd;background:#f7f6f0;color:#6e6a60;border-radius:99px;
+ padding:8px 11px;white-space:nowrap;min-height:37px;font-size:11px;font-weight:800}
+.product-visibility-actions button.selected{background:#26221b;border-color:#26221b;color:#fff}
+.product-visibility-actions button:disabled{opacity:.5}
+@media(max-width:420px){
+ .seller-activation{padding:13px;gap:10px}
+ .seller-activation strong{font-size:18px}
+ .activation-steps{gap:5px}
+ .activation-steps span{font-size:9px;padding:7px}
+ .order-contact .outline-button{width:100%;justify-content:center}
+ .product-visibility-actions button{padding:8px 9px;font-size:10px}
+}
