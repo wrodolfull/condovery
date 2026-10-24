@@ -1184,13 +1184,13 @@ export default function Page(){
           <p className="form-hint">Confira se a conversa abre no número correto. Não enviamos mensagens automaticamente.</p>
           <label className="community-agreement">
             <input type="checkbox" required checked={acceptedGuidelines} onChange={e=>setAcceptedGuidelines(e.target.checked)}/>
-            <span>Vou usar palavras respeitosas, imagens adequadas e anunciar somente produtos e serviços permitidos.</span>
+            <span>Vou usar palavras respeitosas, imagens adequadas e anunciar somente alimentos e bebidas permitidos.</span>
           </label>
           <button className="primary-button" disabled={busy||!acceptedGuidelines} type="submit">Criar minha loja <ArrowRight size={18}/></button>
         </form></div>:<>
           <div className="seller-overview"><div><strong>{myShop.name}</strong><p>Seu painel de vendas</p></div>
             <div className="seller-overview-actions">
-              <Pill tone={myShop.status==='approved'?'green':'orange'}>{statusLabel[myShop.status??'pending']}</Pill>
+              <Pill tone={myShop.status==='approved'&&myShop.is_open?'green':'orange'}>{myShop.status==='approved'&&!myShop.is_open?'Pausada':statusLabel[myShop.status??'pending']}</Pill>
               {myShop.status==='approved'&&<>
                 <button className="outline-button seller-pause-button" disabled={busy} type="button" onClick={toggleShopOpen}>
                   {myShop.is_open?<PauseCircle size={17}/>:<PlayCircle size={17}/>}
@@ -1199,9 +1199,9 @@ export default function Page(){
                   <Share2 size={16}/> Compartilhar loja</button>
               </>}
             </div></div>
-          <div className={'seller-activation'+(myShop.status==='approved'?' approved':myShop.status==='suspended'?' suspended':'')}>
+          <div className={'seller-activation'+(myShop.status==='approved'?(myShop.is_open?' approved':' paused'):myShop.status==='suspended'?' suspended':'')}>
             <div className="activation-symbol">{myShop.status==='approved'?<CheckCircle2 size={28}/>:<Clock3 size={28}/>}</div>
-            <div><strong>{myShop.status==='approved'?'Sua loja está ativa!':myShop.status==='suspended'?'Loja suspensa':'Ativando sua loja'}</strong>
+            <div><strong>{myShop.status==='approved'?(myShop.is_open?'Sua loja está ativa!':'Sua loja está pausada'):myShop.status==='suspended'?'Loja suspensa':'Ativando sua loja'}</strong>
               <p>{myShop.status==='approved'?(!myShop.is_open?'A loja está pausada e não recebe novos pedidos. Reabra quando quiser.':myProducts.length?'Sua loja está pronta para receber pedidos.':'Agora adicione seus produtos para começar a vender.'):
                 myShop.status==='suspended'?'Fale com a administração do condomínio.':'Sua loja ficará disponível automaticamente.'}</p>
             </div>
