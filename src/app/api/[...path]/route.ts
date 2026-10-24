@@ -5,6 +5,8 @@ import crypto from 'node:crypto';
 import { query, transaction } from '@/lib/db';
 import { clearSession, inviteHash, issueSession, sessionViewer, tokenHash, type Viewer } from '@/lib/auth';
 import { normalizeWhatsApp, orderMessage, unitPrice } from '@/lib/orders';
+import { googleAuthClient,googleConfigured,storageAdmin,storageConfigured,STORAGE_BUCKET } from '@/lib/supabase';
+import { oauthCookie,randomToken,safeAppOrigin } from '@/lib/security';
 
 export const runtime='nodejs';
 export const dynamic='force-dynamic';
@@ -46,10 +48,32 @@ const orderSchema=z.object({
   delivery_window:z.string().max(70).optional(),instructions:z.array(z.enum(['Tocar a campainha','Não tocar a campainha','Deixar na porta','Entregar pessoalmente','Retirar na portaria'])).max(4).optional(),
   note:z.string().max(400).optional()
 });
+const googleRegister=z.object({
+  invite:z.string().trim().min(10).max(150),
+  name:z.string().trim().min(2).max(90),
+  phone:z.string().trim().min(10).max(20),
+  tower:z.string().trim().min(1).max(60),
+  apartment:z.string().trim().min(1).max(24)
+});
+async function issueAppLogin(userId:string):Promise<{token:string;response:NextResponse}> {
+  const token=randomToken();
+  await query("INSERT INTO sessions(token_hash,user_id,expires_at) VALUES($1,$2,now()+interval '14 days')",[tokenHash(token),userId]);
+  const response=out({ok:true});
+  issueSession(response,token);
+  return {token,response};
+}
+function oauthRedirect(req:NextRequest,code?:string){
+  const url=new URL('/',safeAppOrigin(req));
+  if(code)url.searchParams.set('auth_error',code);
+  const res=NextResponse.redirect(url);
+  res.cookies.set(oauthCookie('condovery_google_flow','',0));
+  return res;
+}
 async function processApi({req,method,parts}:Args):Promise<NextResponse> {
   const path=parts.join('/');
-  if(path==='public/condominium'&&method==='GET'){
-    const invite=clean(req.nextUrl.searchParams.get('invite'),150);
+  if(path==='public/condominium'&&method==='POST'){
+    const input=z.object({invite:z.string().min(10).max(150)}).parse(await body(req));
+    const invite=input.invite;
     if(invite.length<10)bad('Informe um convite válido.');
     const result=await query(
       'SELECT name,towers FROM condominiums WHERE invite_code_hash=$1 AND is_active=true',
@@ -57,6 +81,99 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
     );
     if(!result.rowCount)bad('Código de convite inválido.',404);
     return out({name:result.rows[0].name,towers:result.rows[0].towers});
+  }
+  if(path==='auth/providers'&&method==='GET')return out({google:googleConfigured()});
+  if(path==='auth/google'&&method==='GET'){
+    if(!googleConfigured())bad('Login Google não configurado.',503);
+    const {client,pkceValues}=googleAuthClient();
+    const callback=safeAppOrigin(req)+'/api/auth/google/callback';
+    const {data,error}=await client.auth.signInWithOAuth({
+      provider:'google',options:{redirectTo:callback,skipBrowserRedirect:true}
+    });
+    if(error||!data.url||!pkceValues.size)bad('Não foi possível iniciar o login Google.',502);
+    const flow=randomToken();
+    await query("INSERT INTO google_oauth_flows(token_hash,pkce_storage) VALUES($1,$2::jsonb)",
+      [tokenHash(flow),JSON.stringify(Object.fromEntries(pkceValues))]);
+    const response=NextResponse.redirect(data.url);
+    response.cookies.set(oauthCookie('condovery_google_flow',flow));
+    return response;
+  }
+  if(path==='auth/google/callback'&&method==='GET'){
+    const code=req.nextUrl.searchParams.get('code');
+    const flow=req.cookies.get('condovery_google_flow')?.value;
+    if(!code||!flow||!googleConfigured())return oauthRedirect(req,'google_cancelled');
+    // Consume the flow exactly once: no replay or other-device callback allowed.
+    const existing=await query(
+      'DELETE FROM google_oauth_flows WHERE token_hash=$1 AND expires_at>now() RETURNING pkce_storage',
+      [tokenHash(flow)]
+    );
+    if(!existing.rowCount)return oauthRedirect(req,'google_expired');
+    const {client}=googleAuthClient(existing.rows[0].pkce_storage as Record<string,string>);
+    const {data,error}=await client.auth.exchangeCodeForSession(code);
+    const identity=data?.user;
+    const verified=Boolean(identity?.email_confirmed_at&&identity.identities?.some(i=>i.provider==='google'));
+    if(error||!identity?.id||!identity.email||!verified)return oauthRedirect(req,'google_failed');
+    const email=identity.email.trim().toLowerCase();
+    // Existing email/password residents may also use a verified Google identity.
+    const matched=await query(
+      'SELECT id,google_auth_user_id FROM users WHERE google_auth_user_id=$1 OR email=$2 LIMIT 1',
+      [identity.id,email]
+    );
+    if(matched.rowCount){
+      if(matched.rows[0].google_auth_user_id&&matched.rows[0].google_auth_user_id!==identity.id){
+        return oauthRedirect(req,'google_account_conflict');
+      }
+      await query('UPDATE users SET google_auth_user_id=$1 WHERE id=$2 AND (google_auth_user_id IS NULL OR google_auth_user_id=$1)',
+        [identity.id,matched.rows[0].id]);
+      const token=randomToken();
+      await query("INSERT INTO sessions(token_hash,user_id,expires_at) VALUES($1,$2,now()+interval '14 days')",
+        [tokenHash(token),matched.rows[0].id]);
+      const res=oauthRedirect(req);
+      issueSession(res,token);
+      res.cookies.set(oauthCookie('condovery_google_signup','',0));
+      return res;
+    }
+    const pending=randomToken();
+    await query(
+      'INSERT INTO google_signup_pending(token_hash,google_auth_user_id,email,name) VALUES($1,$2,$3,$4)',
+      [tokenHash(pending),identity.id,email,clean(identity.user_metadata?.full_name||identity.user_metadata?.name||'',90)]
+    );
+    const res=oauthRedirect(req);
+    res.cookies.set(oauthCookie('condovery_google_signup',pending,900));
+    return res;
+  }
+  if(path==='auth/register-google'&&method==='POST'){
+    const pending=req.cookies.get('condovery_google_signup')?.value;
+    if(!pending)bad('Inicie o cadastro pelo Google.',401);
+    const b=googleRegister.parse(await body(req));
+    const result=await transaction(async tx=>{
+      const waiting=await tx.query(
+        'DELETE FROM google_signup_pending WHERE token_hash=$1 AND expires_at>now() RETURNING *',
+        [tokenHash(pending)]
+      );
+      if(!waiting.rowCount)bad('Cadastro Google expirado. Entre novamente.',401);
+      const linked=await tx.query('SELECT id FROM users WHERE email=$1 OR google_auth_user_id=$2',
+        [waiting.rows[0].email,waiting.rows[0].google_auth_user_id]);
+      if(linked.rowCount)bad('E-mail já cadastrado. Entre com o Google novamente.',409);
+      const condo=await tx.query(
+        'SELECT id,towers FROM condominiums WHERE invite_code_hash=$1 AND is_active=true',
+        [inviteHash(b.invite)]
+      );
+      if(!condo.rowCount)bad('Convite inválido.');
+      if(!Array.isArray(condo.rows[0].towers)||!condo.rows[0].towers.includes(b.tower))bad('Torre inválida.');
+      const created=await tx.query(
+        "INSERT INTO users(condominium_id,name,email,phone,password_hash,google_auth_user_id,tower,apartment) VALUES($1,$2,$3,$4,NULL,$5,$6,$7) RETURNING id",
+        [condo.rows[0].id,b.name,waiting.rows[0].email,b.phone,waiting.rows[0].google_auth_user_id,b.tower,b.apartment]
+      );
+      const token=randomToken();
+      await tx.query("INSERT INTO sessions(token_hash,user_id,expires_at) VALUES($1,$2,now()+interval '14 days')",
+        [tokenHash(token),created.rows[0].id]);
+      return token;
+    });
+    const response=out({message:'Cadastro enviado. Aguarde aprovação.'},201);
+    issueSession(response,result);
+    response.cookies.set(oauthCookie('condovery_google_signup','',0));
+    return response;
   }
   if(path==='auth/register'&&method==='POST'){
     const b=signup.parse(await body(req));
@@ -81,17 +198,13 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
     if(failures.rows[0].count>=8)bad('Muitas tentativas. Tente novamente em 15 minutos.',429);
     const result=await query('SELECT * FROM users WHERE email=$1',[b.email]);
     const user=result.rows[0];
-    const ok=user ? await bcrypt.compare(b.password,user.password_hash) : false;
+    const ok=user?.password_hash ? await bcrypt.compare(b.password,user.password_hash) : false;
     if(!ok || user.status==='suspended'){
       await query('INSERT INTO login_attempts(email,ip) VALUES($1,$2)',[b.email,clean(req.headers.get('x-real-ip')||req.headers.get('x-forwarded-for')||'unknown',80)]);
       bad('E-mail ou senha incorretos.',401);
     }
     await query('DELETE FROM login_attempts WHERE email=$1',[b.email]);
-    const token=crypto.randomBytes(32).toString('hex');
-    await query("INSERT INTO sessions(token_hash,user_id,expires_at) VALUES($1,$2,now()+interval '14 days')",[tokenHash(token),user.id]);
-    const response=out({ok:true});
-    issueSession(response,token);
-    return response;
+    return (await issueAppLogin(user.id)).response;
   }
   if(path==='auth/logout'&&method==='POST'){
     const token=req.cookies.get('condovery_session')?.value;
@@ -99,7 +212,17 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
     const response=out({ok:true});clearSession(response);return response;
   }
   if(path==='me'&&method==='GET'){
-    const u=await sessionViewer(req);return out({viewer:u});
+    const u=await sessionViewer(req);
+    const pendingToken=req.cookies.get('condovery_google_signup')?.value;
+    let googleSignup:null|{email:string;name:string}=null;
+    if(!u&&pendingToken){
+      const result=await query(
+        'SELECT email,name FROM google_signup_pending WHERE token_hash=$1 AND expires_at>now()',
+        [tokenHash(pendingToken)]
+      );
+      if(result.rowCount)googleSignup={email:result.rows[0].email,name:result.rows[0].name};
+    }
+    return out({viewer:u,googleSignup});
   }
   const u=await viewer(req);
   if(path==='me'&&method==='PATCH'){
@@ -167,14 +290,38 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
     const png=buffer.subarray(0,8).equals(Buffer.from([137,80,78,71,13,10,26,10]));
     const webp=buffer.toString('ascii',0,4)==='RIFF'&&buffer.toString('ascii',8,12)==='WEBP';
     if(!(file.type==='image/jpeg'&&jpg||file.type==='image/png'&&png||file.type==='image/webp'&&webp))bad('O arquivo não corresponde ao formato declarado.');
-    const r=await query('INSERT INTO media_assets(condominium_id,shop_id,mime,bytes) VALUES($1,$2,$3,$4) RETURNING id',[u.condominium_id,shop.id,file.type,buffer]);
-    return out({url:'/api/media/'+r.rows[0].id},201);
+    if(!storageConfigured())bad('Armazenamento de imagens não configurado.',503);
+    // Only server uses the private Storage service credential.
+    const ext=file.type==='image/jpeg'?'jpg':file.type==='image/png'?'png':'webp';
+    const objectKey=u.condominium_id+'/'+shop.id+'/'+crypto.randomUUID()+'.'+ext;
+    const {error:uploadError}=await storageAdmin().storage.from(STORAGE_BUCKET).upload(
+      objectKey,buffer,{contentType:file.type,upsert:false,cacheControl:'86400'}
+    );
+    if(uploadError)bad('Não foi possível enviar a foto.',502);
+    try{
+      const r=await query(
+        'INSERT INTO media_assets(condominium_id,shop_id,mime,storage_key) VALUES($1,$2,$3,$4) RETURNING id',
+        [u.condominium_id,shop.id,file.type,objectKey]
+      );
+      return out({url:'/api/media/'+r.rows[0].id},201);
+    }catch(e){await storageAdmin().storage.from(STORAGE_BUCKET).remove([objectKey]);throw e;}
   }
   if(parts[0]==='media'&&parts[1]&&method==='GET'){
     if(!uuid(parts[1]))bad('Arquivo inválido.');
-    const r=await query('SELECT mime,bytes FROM media_assets WHERE condominium_id=$1 AND id=$2',[u.condominium_id,parts[1]]);
+    const r=await query('SELECT mime,bytes,storage_key FROM media_assets WHERE condominium_id=$1 AND id=$2',[u.condominium_id,parts[1]]);
     if(!r.rowCount)bad('Imagem não encontrada.',404);
-    return new NextResponse(new Uint8Array(r.rows[0].bytes),{headers:{'Content-Type':r.rows[0].mime,'Cache-Control':'private,max-age=86400','X-Content-Type-Options':'nosniff'}});
+    let bytes:Uint8Array;
+    if(r.rows[0].storage_key){
+      const {data,error:downloadError}=await storageAdmin().storage.from(STORAGE_BUCKET).download(r.rows[0].storage_key);
+      if(downloadError||!data)bad('Imagem indisponível.',502);
+      bytes=new Uint8Array(await data.arrayBuffer());
+    }else if(r.rows[0].bytes){
+      bytes=new Uint8Array(r.rows[0].bytes);
+    }else return bad('Imagem indisponível.',404);
+    return new NextResponse(bytes,{headers:{
+      'Content-Type':r.rows[0].mime,'Cache-Control':'private,max-age=3600',
+      'X-Content-Type-Options':'nosniff','Vary':'Cookie'
+    }});
   }
   if(path==='products'&&method==='POST'){
     const shop=await shopOwned(u,true);
