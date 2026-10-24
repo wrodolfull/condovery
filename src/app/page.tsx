@@ -369,7 +369,7 @@ export default function Page(){
   async function saveProfile(e:React.FormEvent){
     e.preventDefault();setBusy(true);try{
       await api('me',{method:'PATCH',body:payload(profile)});
-      const r=await api<{viewer:Viewer}>('me');setViewer(r.viewer);notify('Perfil atualizado.');
+      const r=await api<{viewer:Viewer}>('me');setViewer(r.viewer);notify(r.viewer.status==='pending'?'Novo endereço enviado para aprovação.':'Perfil atualizado.');
     }catch(e){fail(e);}finally{setBusy(false);}
   }
   const bottomNav:[View,React.ElementType,string][]=[['home',Home,'Início'],['categories',LayoutGrid,'Explorar'],['favorites',Heart,'Salvos'],['orders',Receipt,'Pedidos'],['account',UserRound,'Conta']];
