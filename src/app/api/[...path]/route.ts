@@ -495,7 +495,7 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
       normalizeWhatsApp(b.whatsapp);
       const existing=await query('SELECT id FROM shops WHERE owner_id=$1',[u.id]);
       if(existing.rowCount)bad('Você já possui uma loja.',409);
-      const r=await query('INSERT INTO shops(condominium_id,owner_id,name,description,whatsapp,status) VALUES($1,$2,$3,$4,$5,'approved') RETURNING *',[u.condominium_id,u.id,b.name,b.description??'',b.whatsapp]);
+      const r=await query("INSERT INTO shops(condominium_id,owner_id,name,description,whatsapp,status) VALUES($1,$2,$3,$4,$5,'approved') RETURNING *",[u.condominium_id,u.id,b.name,b.description??'',b.whatsapp]);
       return out({shop:r.rows[0]},201);
     }
     if(method==='PATCH'){
