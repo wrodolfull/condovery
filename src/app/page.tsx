@@ -34,6 +34,20 @@ const addOns=(p:Product,choices:Selection={})=>{
 };
 const cartUnitPrice=(i:CartItem)=>price(i.product)+addOns(i.product,i.selections);
 const moneyInput=(v:number)=>Number.isFinite(v)?(v/100).toFixed(2):'0.00';
+function MoneyInput({cents,onValue}:{cents:number;onValue:(value:number)=>void}){
+  const [raw,setRaw]=useState(moneyInput(cents));
+  const [focused,setFocused]=useState(false);
+  useEffect(()=>{if(!focused)setRaw(moneyInput(cents));},[cents,focused]);
+  return <input type="text" inputMode="decimal" autoComplete="off"
+    value={raw} onFocus={e=>{setFocused(true);e.target.select();}}
+    onChange={e=>{
+      const value=e.target.value;
+      if(!/^\\d{0,5}(?:[.,]\\d{0,2})?$/.test(value))return;
+      setRaw(value);
+      const num=Number(value.replace(',','.'));
+      onValue(Number.isFinite(num)?Math.round(num*100):0);
+    }} onBlur={()=>setFocused(false)}/>;
+}
 type HomeData={categories:Category[];shops:Shop[];products:Product[]};
 type AdminData={residents:{id:string;name:string;email:string;tower:string;apartment:string;status:string}[];shops:{id:string;name:string;owner_name:string;status:string}[];stats:{residents:number;shops:number;orders:number};categories:Category[]};
 type View='home'|'categories'|'favorites'|'orders'|'account'|'shop'|'product'|'cart'|'success'|'seller'|'admin';
@@ -1123,8 +1137,9 @@ export default function Page(){
                   {group.options.map(opt=><div key={opt.id} className="option-choice-editor">
                     <label>Escolha<input required maxLength={70} placeholder="Ex.: Chocolate" value={opt.name}
                       onChange={e=>setProductForm(x=>({...x,option_groups:x.option_groups.map(g=>g.id===group.id?{...g,options:g.options.map(o=>o.id===opt.id?{...o,name:e.target.value}:o)}:g)}))}/></label>
-                    <label>Adicional (R$)<input type="number" min="0" max="10000" step=".01" value={moneyInput(opt.price_cents)}
-                      onChange={e=>setProductForm(x=>({...x,option_groups:x.option_groups.map(g=>g.id===group.id?{...g,options:g.options.map(o=>o.id===opt.id?{...o,price_cents:Math.max(0,Math.round(Number(e.target.value)*100))}:o)}:g)}))}/></label>
+                    <label>Adicional (R$)<MoneyInput cents={opt.price_cents} onValue={cents=>setProductForm(x=>({...x,
+                      option_groups:x.option_groups.map(g=>g.id===group.id?{...g,options:g.options.map(o=>o.id===opt.id?{...o,price_cents:cents}:o)}:g)
+                    }))}/></label>
                     <button type="button" className="option-remove" aria-label="Remover escolha"
                       disabled={group.options.length<=1} onClick={()=>setProductForm(x=>({...x,option_groups:x.option_groups.map(g=>g.id===group.id?{...g,options:g.options.filter(o=>o.id!==opt.id)}:g)}))}><X size={16}/></button>
                   </div>)}
@@ -1173,8 +1188,8 @@ export default function Page(){
             <label className="check-label"><input type="checkbox" checked={shopForm.is_open} onChange={e=>setShopForm(s=>({...s,is_open:e.target.checked}))}/> Loja aceitando pedidos</label>
             <label className="check-label"><input type="checkbox" checked={shopForm.delivery_enabled} onChange={e=>setShopForm(s=>({...s,delivery_enabled:e.target.checked}))}/> Oferecer entrega</label>
             {shopForm.delivery_enabled&&<label>Taxa de entrega (R$)
-              <input type="number" min="0" max="10000" step=".01" value={moneyInput(shopForm.delivery_fee_cents)}
-                onChange={e=>setShopForm(x=>({...x,delivery_fee_cents:Math.max(0,Math.round(Number(e.target.value)*100))}))}/>
+              <MoneyInput cents={shopForm.delivery_fee_cents}
+                onValue={cents=>setShopForm(x=>({...x,delivery_fee_cents:cents}))}/>
             </label>}
             <label className="check-label"><input type="checkbox" checked={shopForm.pickup_enabled} onChange={e=>setShopForm(s=>({...s,pickup_enabled:e.target.checked}))}/> Oferecer retirada</label>
             <button className="primary-button" disabled={busy} type="submit">Salvar configurações <Check size={18}/></button>
