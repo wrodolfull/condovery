@@ -515,3 +515,60 @@ try{
   assert.ok(jobs.rows[0].total>=2);
 }finally{await archive.end();}
 console.log('Account deletion PASS: password, confirmation, unfinished orders, privacy, seller archive, Supabase Auth deletion.');
+
+ 
+// Seller self-service store lifecycle: immediate pause, safe removal, retained order history,
+// and permission to start a replacement shop without deleting the resident account.
+for(const [email,apt] of [['lifecycle-seller@example.com','622'],['lifecycle-buyer@example.com','623']]){
+  await request('auth/register',{method:'POST',expected:201,body:{
+    name:'Shop Lifecycle Test',email,phone:'11999998888',password:pass,invite:chosen,tower:'Torre 1',apartment:apt
+  }});
+  const verification=await fetch('http://127.0.0.1:3333/__test/confirm?email='+encodeURIComponent(email));
+  assert.equal(verification.status,200);
+}
+const lifecycleSeller=(await request('auth/login',{method:'POST',body:{email:'lifecycle-seller@example.com',password:pass}})).cookie;
+const lifecycleBuyer=(await request('auth/login',{method:'POST',body:{email:'lifecycle-buyer@example.com',password:pass}})).cookie;
+const lifecycleShop=(await request('shops/mine',{method:'POST',expected:201,cookie:lifecycleSeller,body:{
+  name:'Loja do Teste',description:'Lanches caseiros',whatsapp:'11999998888',accept_guidelines:true
+}})).data.shop;
+const lifecycleProduct=(await request('products',{method:'POST',cookie:lifecycleSeller,expected:201,body:{
+  name:'Salgado',category_id:sellerHome.categories[1].id,price_cents:1050,stock:10
+}})).data.product;
+await request('shops/mine/status',{method:'PATCH',cookie:lifecycleBuyer,expected:404,body:{is_open:false}});
+await request('shops/mine/status',{method:'PATCH',cookie:lifecycleSeller,body:{is_open:false}});
+const paused=await request('shops/mine',{cookie:lifecycleSeller});
+assert.equal(paused.data.shop.is_open,false);
+await request('orders/quote',{method:'POST',cookie:lifecycleBuyer,expected:400,body:{
+  shop_id:lifecycleShop.id,items:[{id:lifecycleProduct.id,quantity:1}],fulfillment:'pickup'
+}});
+await request('shops/mine/status',{method:'PATCH',cookie:lifecycleSeller,body:{is_open:true}});
+const unfinished=(await request('orders',{method:'POST',cookie:lifecycleBuyer,expected:201,body:{
+  shop_id:lifecycleShop.id,items:[{id:lifecycleProduct.id,quantity:1}],fulfillment:'pickup'
+}})).data.order;
+await request('shops/mine',{method:'DELETE',cookie:lifecycleSeller,expected:400,body:{confirmation:'NÃO'}});
+await request('shops/mine',{method:'DELETE',cookie:lifecycleBuyer,expected:404,body:{confirmation:'EXCLUIR LOJA'}});
+await request('shops/mine',{method:'DELETE',cookie:lifecycleSeller,expected:409,body:{confirmation:'EXCLUIR LOJA'}});
+await request('orders/'+unfinished.id,{method:'PATCH',cookie:lifecycleSeller,body:{status:'confirmed'}});
+await request('orders/'+unfinished.id,{method:'PATCH',cookie:lifecycleSeller,body:{status:'completed'}});
+const lifecycleDeleted=await request('shops/mine',{method:'DELETE',cookie:lifecycleSeller,body:{confirmation:'EXCLUIR LOJA'}});
+assert.equal(lifecycleDeleted.data.status,'completed');
+assert.equal((await request('shops/mine',{cookie:lifecycleSeller})).data.shop,null);
+await request('shops/'+lifecycleShop.id,{cookie:lifecycleBuyer,expected:404});
+assert.ok(!(await request('home',{cookie:lifecycleBuyer})).data.shops.some(s=>s.id===lifecycleShop.id));
+const replacement=(await request('shops/mine',{method:'POST',expected:201,cookie:lifecycleSeller,body:{
+  name:'Nova Loja de Teste',description:'Sobremesas',whatsapp:'11999998888',accept_guidelines:true
+}})).data.shop;
+assert.notEqual(replacement.id,lifecycleShop.id);
+const historyDB=new pg.Client({connectionString:process.env.DATABASE_URL});
+await historyDB.connect();
+try{
+  const previous=await historyDB.query('SELECT status,is_open,whatsapp FROM shops WHERE id=$1',[lifecycleShop.id]);
+  assert.equal(previous.rows[0].status,'deleted');
+  assert.equal(previous.rows[0].whatsapp,'');
+  const oldOrder=await historyDB.query('SELECT id,total_cents,status FROM orders WHERE id=$1',[unfinished.id]);
+  assert.equal(oldOrder.rows[0].status,'completed');
+  assert.equal(oldOrder.rows[0].total_cents,1050);
+  const cleanup=await historyDB.query('SELECT finished_at FROM shop_deletion_jobs WHERE shop_id=$1',[lifecycleShop.id]);
+  assert.ok(cleanup.rows[0].finished_at);
+}finally{await historyDB.end();}
+console.log('Shop lifecycle PASS: pause/reopen, blocked pending orders, confirmation, archive, historical orders and recreation.');
