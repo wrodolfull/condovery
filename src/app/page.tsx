@@ -71,7 +71,11 @@ function ProductCard({p,onClick,favorite,onFavorite}:{p:Product;onClick:()=>void
 export default function Page(){
   const [viewer,setViewer]=useState<Viewer|null>(null);
   const [loading,setLoading]=useState(true);
-  const [authMode,setAuthMode]=useState<'login'|'register'>('login');
+  const [authMode,setAuthMode]=useState<'login'|'register'|'recover'|'reset'>('login');
+  const [passwordRecoveryEnabled,setPasswordRecoveryEnabled]=useState(false);
+  const [resetEmail,setResetEmail]=useState('');
+  const [resetToken,setResetToken]=useState('');
+  const [newPassword,setNewPassword]=useState('');
   const [googleEnabled,setGoogleEnabled]=useState(false);
   const [googleSignup,setGoogleSignup]=useState<{email:string;name:string}|null>(null);
   const [authForm,setAuthForm]=useState({name:'',email:'',phone:'',password:'',invite:'',tower:'',apartment:''});
@@ -143,7 +147,14 @@ export default function Page(){
   },[loadHome,loadMine,loadOrders,loadFavorites,loadAdmin]);
 
   useEffect(()=>{
-    api<{google:boolean}>('auth/providers').then(r=>setGoogleEnabled(r.google)).catch(()=>{});
+    api<{google:boolean;passwordRecovery:boolean}>('auth/providers').then(r=>{
+      setGoogleEnabled(r.google);setPasswordRecoveryEnabled(r.passwordRecovery);
+    }).catch(()=>{});
+    const reset=new URLSearchParams(window.location.search).get('reset');
+    if(reset&&/^[0-9a-f]{64}$/.test(reset)){
+      setResetToken(reset);setAuthMode('reset');
+      window.history.replaceState({},'',window.location.pathname);
+    }
     const oauthFailure=new URLSearchParams(window.location.search).get('auth_error');
     if(oauthFailure){
       setError('Não foi possível concluir o acesso Google. Tente novamente.');
@@ -207,6 +218,22 @@ export default function Page(){
       await api(exists?'favorites/'+id:'favorites',{method:exists?'DELETE':'POST',...(!exists?{body:payload({product_id:id})}:{})});
       await loadFavorites();
     }catch(e){await loadFavorites().catch(()=>{});fail(e);}
+  }
+  async function submitReset(e:React.FormEvent){
+    e.preventDefault();setBusy(true);setError('');
+    try{
+      if(authMode==='recover'){
+        const r=await api<{message:string}>('auth/password/request',{
+          method:'POST',body:payload({email:resetEmail})
+        });
+        notify(r.message);
+      }else if(authMode==='reset'){
+        const r=await api<{message:string}>('auth/password/confirm',{
+          method:'POST',body:payload({token:resetToken,password:newPassword})
+        });
+        setResetToken('');setNewPassword('');setAuthMode('login');notify(r.message);
+      }
+    }catch(e){fail(e);}finally{setBusy(false);}
   }
   async function lookupCondo(){
     if(authForm.invite.trim().length<10){setCondoLookup(null);return;}
@@ -348,6 +375,23 @@ export default function Page(){
   const bottomNav:[View,React.ElementType,string][]=[['home',Home,'Início'],['categories',LayoutGrid,'Explorar'],['favorites',Heart,'Salvos'],['orders',Receipt,'Pedidos'],['account',UserRound,'Conta']];
 
   if(loading)return <main className="loading-page"><div className="spinner"/><strong>condovery.</strong><span>Preparando sua vizinhança</span></main>;
+  if(!viewer&&(authMode==='recover'||authMode==='reset'))return <main className="auth-layout">
+    <div className="auth-aside"><div className="auth-logo">condovery<span>.</span></div><div className="auth-art"><img src="/hero.svg" alt="Lojinha de condomínio"/></div><h1>Seu lugar na vizinhança.</h1><p>Recupere o acesso com segurança.</p></div>
+    <section className="auth-card">
+      <div className="auth-mobile-logo">condovery<span>.</span></div>
+      <div className="welcome-emoji"><ShieldCheck size={28}/></div>
+      <h2>{authMode==='recover'?'Recuperar minha senha':'Criar nova senha'}</h2>
+      <p>{authMode==='recover'?'Enviaremos um link ao e-mail cadastrado, caso a conta seja elegível.':'Escolha uma nova senha para sua conta.'}</p>
+      {error&&<div className="alert" role="alert">{error}</div>}
+      {toast&&<div className="success-banner" role="status">{toast}</div>}
+      <form className="form-stack" onSubmit={submitReset}>
+        {authMode==='recover'?<label>E-mail<input type="email" required autoComplete="email" value={resetEmail} onChange={e=>setResetEmail(e.target.value)} placeholder="seuemail@exemplo.com"/></label>:
+          <label>Nova senha<input type="password" required minLength={10} maxLength={100} autoComplete="new-password" value={newPassword} onChange={e=>setNewPassword(e.target.value)} placeholder="No mínimo 10 caracteres"/></label>}
+        <button className="primary-button" disabled={busy} type="submit">{busy?'Enviando...':authMode==='recover'?'Solicitar link':'Salvar nova senha'} <ArrowRight size={18}/></button>
+      </form>
+      <button className="text-button" onClick={()=>{setAuthMode('login');setError('');}}>Voltar ao login</button>
+    </section>
+  </main>;
   if(!viewer)return <main className="auth-layout">
     <div className="auth-aside"><div className="auth-logo">condovery<span>.</span></div><div className="auth-art"><img src="/hero.svg" alt="Ilustração de uma lojinha de bairro"/></div><h1>Tem coisa boa morando pertinho de você.</h1><p>Descubra, compre e venda dentro do seu condomínio.</p></div>
     <section className="auth-card">
@@ -376,6 +420,7 @@ export default function Page(){
           Continuar com Google
         </a>
       </>}
+      {!googleSignup&&authMode==='login'&&passwordRecoveryEnabled&&<button className="forgot-button" onClick={()=>{setAuthMode('recover');setError('');setToast('');}}>Esqueci minha senha</button>}
       {!googleSignup&&<p className="auth-switch">{authMode==='login'?'Ainda não tem cadastro?':'Já possui uma conta?'} <button onClick={()=>{setAuthMode(authMode==='login'?'register':'login');setError('');}}>{authMode==='login'?'Cadastre-se':'Faça login'}</button></p>}
       <p className="auth-privacy"><ShieldCheck size={14}/> Exclusivo para moradores autorizados.</p>
     </section>
