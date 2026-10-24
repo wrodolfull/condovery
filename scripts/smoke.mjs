@@ -56,7 +56,7 @@ const created=await request('orders',{method:'POST',cookie:buyerCookie,body:{
 const orderId=created.data.order.id;
 assert.match(created.data.whatsapp_url,/^https:\/\/wa\.me\/55/);
 assert.equal(created.data.order.status,'awaiting_confirmation');
-await request('orders/'+orderId,{method:'PATCH',cookie:buyerCookie,body:{status:'confirmed'},expected:403});
+await request('orders/'+orderId,{method:'PATCH',cookie:buyerCookie,body:{status:'confirmed'},expected:404});
 await request('orders/'+orderId,{method:'PATCH',cookie:sellerCookie,body:{status:'confirmed'}});
 await request('orders/'+orderId,{method:'PATCH',cookie:sellerCookie,body:{status:'completed'}});
 const final=(await request('orders',{cookie:buyerCookie})).data.orders.find(o=>o.id===orderId);
