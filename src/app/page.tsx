@@ -67,6 +67,8 @@ export default function Page(){
   const [viewer,setViewer]=useState<Viewer|null>(null);
   const [loading,setLoading]=useState(true);
   const [authMode,setAuthMode]=useState<'login'|'register'>('login');
+  const [googleEnabled,setGoogleEnabled]=useState(false);
+  const [googleSignup,setGoogleSignup]=useState<{email:string;name:string}|null>(null);
   const [authForm,setAuthForm]=useState({name:'',email:'',phone:'',password:'',invite:'',tower:'',apartment:''});
   const [condoLookup,setCondoLookup]=useState<{name:string;towers:string[]}|null>(null);
   const [busy,setBusy]=useState(false);
@@ -126,9 +128,22 @@ export default function Page(){
   },[loadHome,loadMine,loadOrders,loadAdmin]);
 
   useEffect(()=>{
+    api<{google:boolean}>('auth/providers').then(r=>setGoogleEnabled(r.google)).catch(()=>{});
+    const oauthFailure=new URLSearchParams(window.location.search).get('auth_error');
+    if(oauthFailure){
+      setError('Não foi possível concluir o acesso Google. Tente novamente.');
+      window.history.replaceState({},'',window.location.pathname);
+    }
+  },[]);
+  useEffect(()=>{
     let active=true;
-    api<{viewer:Viewer|null}>('me').then(async r=>{
+    api<{viewer:Viewer|null;googleSignup?:{email:string;name:string}|null}>('me').then(async r=>{
       if(!active)return;setViewer(r.viewer);
+      if(r.googleSignup){
+        setGoogleSignup(r.googleSignup);
+        setAuthMode('register');
+        setAuthForm(s=>({...s,name:r.googleSignup!.name,email:r.googleSignup!.email,password:''}));
+      }
       if(r.viewer){
         setProfile({name:r.viewer.name,phone:r.viewer.phone,tower:r.viewer.tower,apartment:r.viewer.apartment});
         if(r.viewer.status==='approved')await refresh(r.viewer);
@@ -157,14 +172,25 @@ export default function Page(){
   async function lookupCondo(){
     if(authForm.invite.trim().length<10){setCondoLookup(null);return;}
     try{
-      const r=await api<{name:string;towers:string[]}>('public/condominium?invite='+encodeURIComponent(authForm.invite.trim()));
+      const r=await api<{name:string;towers:string[]}>('public/condominium',{
+        method:'POST',body:payload({invite:authForm.invite.trim()})
+      });
       setCondoLookup(r);setError('');setAuthForm(s=>({...s,tower:r.towers.includes(s.tower)?s.tower:r.towers[0]??''}));
     }catch(e){setCondoLookup(null);fail(e);}
   }
   async function loginOrRegister(e:React.FormEvent){
     e.preventDefault();setBusy(true);setError('');
     try{
-      if(authMode==='register'){
+      if(authMode==='register'&&googleSignup){
+        await api('auth/register-google',{
+          method:'POST',
+          body:payload({name:authForm.name,phone:authForm.phone,invite:authForm.invite,tower:authForm.tower,apartment:authForm.apartment})
+        });
+        const response=await api<{viewer:Viewer}>('me');
+        setGoogleSignup(null);setViewer(response.viewer);
+        setProfile({name:response.viewer.name,phone:response.viewer.phone,tower:response.viewer.tower,apartment:response.viewer.apartment});
+        go('home');
+      } else if(authMode==='register'){
         await api('auth/register',{method:'POST',body:payload(authForm)});
         setAuthMode('login');setAuthForm(s=>({...s,password:''}));notify('Cadastro enviado! Aguarde a aprovação.');
       } else {
@@ -179,7 +205,7 @@ export default function Page(){
   }
   async function logout(){
     try{await api('auth/logout',{method:'POST'});}catch{}
-    setViewer(null);setHome(emptyHome);setCart([]);setMyShop(null);setOrders([]);go('home');
+    setViewer(null);setGoogleSignup(null);setHome(emptyHome);setCart([]);setMyShop(null);setOrders([]);go('home');
   }
   async function openShop(id:string){
     setBusy(true);try{setSelectedShop(await api<{shop:Shop;products:Product[]}>('shops/'+id));go('shop');}catch(e){fail(e);}finally{setBusy(false);}
@@ -288,8 +314,8 @@ export default function Page(){
     <section className="auth-card">
       <div className="auth-mobile-logo">condovery<span>.</span></div>
       <div className="welcome-emoji"><ShoppingBag size={28}/></div>
-      <h2>{authMode==='login'?'Que bom ter você aqui!':'Entre para a vizinhança'}</h2>
-      <p>{authMode==='login'?'Acesse o marketplace exclusivo do seu condomínio.':'Seu cadastro será analisado pela administração.'}</p>
+      <h2>{googleSignup?'Confirme sua residência':authMode==='login'?'Que bom ter você aqui!':'Entre para a vizinhança'}</h2>
+      <p>{googleSignup?'Seu e-mail já foi verificado pelo Google. Informe seu condomínio para solicitar acesso.':authMode==='login'?'Acesse o marketplace exclusivo do seu condomínio.':'Seu cadastro será analisado pela administração.'}</p>
       {error&&<div role="alert" className="alert">{error}</div>}
       {toast&&<div className="success-banner">{toast}</div>}
       <form onSubmit={loginOrRegister} className="form-stack">
@@ -300,11 +326,18 @@ export default function Page(){
           <div className="field-grid"><label>Torre<select required disabled={!condoLookup} value={authForm.tower} onChange={e=>setAuthForm(s=>({...s,tower:e.target.value}))}><option value="">Selecione a torre</option>{condoLookup?.towers.map(t=><option key={t} value={t}>{t}</option>)}</select></label><label>Apartamento<input required value={authForm.apartment} onChange={e=>setAuthForm(s=>({...s,apartment:e.target.value}))} placeholder="Ex.: 83"/></label></div>
           <p className="form-hint">O código de convite identifica seu condomínio; o cadastro precisa ser aprovado pela administração.</p>
         </>}
-        <label>E-mail<input required type="email" autoComplete="email" value={authForm.email} onChange={e=>setAuthForm(s=>({...s,email:e.target.value}))} placeholder="seuemail@exemplo.com"/></label>
-        <label>Senha<input required type="password" minLength={authMode==='register'?10:1} autoComplete={authMode==='register'?'new-password':'current-password'} value={authForm.password} onChange={e=>setAuthForm(s=>({...s,password:e.target.value}))} placeholder={authMode==='register'?'Mínimo de 10 caracteres':'Sua senha'}/></label>
+        <label>E-mail<input required readOnly={Boolean(googleSignup)} type="email" autoComplete="email" value={authForm.email} onChange={e=>setAuthForm(s=>({...s,email:e.target.value}))} placeholder="seuemail@exemplo.com"/></label>
+        {!googleSignup&&<label>Senha<input required type="password" minLength={authMode==='register'?10:1} autoComplete={authMode==='register'?'new-password':'current-password'} value={authForm.password} onChange={e=>setAuthForm(s=>({...s,password:e.target.value}))} placeholder={authMode==='register'?'Mínimo de 10 caracteres':'Sua senha'}/></label>}
         <button className="primary-button" type="submit" disabled={busy}>{busy?'Processando...':authMode==='login'?'Entrar':'Solicitar meu acesso'}<ArrowRight size={19}/></button>
       </form>
-      <p className="auth-switch">{authMode==='login'?'Ainda não tem cadastro?':'Já possui uma conta?'} <button onClick={()=>{setAuthMode(authMode==='login'?'register':'login');setError('');}}>{authMode==='login'?'Cadastre-se':'Faça login'}</button></p>
+      {!googleSignup&&googleEnabled&&<>
+        <div className="auth-divider"><span>ou continue com</span></div>
+        <a className="google-button" href="/api/auth/google" aria-label="Continuar com Google">
+          <svg width="21" height="21" viewBox="0 0 24 24" aria-hidden="true"><path fill="#4285F4" d="M22.6 12.3c0-.8-.1-1.5-.2-2.3H12v4.4h6c-.3 1.4-1.1 2.5-2.4 3.2v2.7h3.9c2.2-2.1 3.1-4.8 3.1-8Z"/><path fill="#34A853" d="M12 23c3 0 5.5-1 7.4-2.7l-3.9-2.7c-1.1.7-2.3 1.1-3.5 1.1-2.7 0-5-1.8-5.8-4.3h-4V17c1.8 3.6 5.5 6 9.8 6Z"/><path fill="#FBBC05" d="M6.2 14.4a6.8 6.8 0 0 1 0-4.7V7h-4C1.4 8.6 1 10.3 1 12s.4 3.4 1.2 5l4-2.6Z"/><path fill="#EA4335" d="M12 5.3c1.7 0 3.2.6 4.4 1.7l3.4-3.4C17.8 1.8 15.2 1 12 1 7.7 1 4 3.4 2.2 7l4 2.7c.8-2.6 3.1-4.4 5.8-4.4Z"/></svg>
+          Continuar com Google
+        </a>
+      </>}
+      {!googleSignup&&<p className="auth-switch">{authMode==='login'?'Ainda não tem cadastro?':'Já possui uma conta?'} <button onClick={()=>{setAuthMode(authMode==='login'?'register':'login');setError('');}}>{authMode==='login'?'Cadastre-se':'Faça login'}</button></p>}
       <p className="auth-privacy"><ShieldCheck size={14}/> Exclusivo para moradores autorizados.</p>
     </section>
   </main>;
