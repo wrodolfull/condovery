@@ -1054,10 +1054,16 @@ export default function Page(){
           </div>
           {sellerTab==='orders'&&<>{sellerOrders.length?<div className="order-list">{sellerOrders.map(o=><article className="order-card" key={o.id}>
             <div className="order-top"><strong>Pedido #{o.code}</strong><Pill tone={o.status==='completed'?'green':'orange'}>{statusLabel[o.status]??o.status}</Pill></div>
-            <p><strong>{o.buyer_name}</strong> · {o.fulfillment==='delivery'?o.tower+' · Ap. '+o.apartment:'Retirada'}</p><p>{o.items.map(i=>i.quantity+'× '+i.name).join(' · ')}</p>
+            <p><strong>{o.buyer_name}</strong> · {o.fulfillment==='delivery'?o.tower+' · Ap. '+o.apartment:'Retirada'}</p>
+            <div className="seller-order-lines">{o.items.map((item,index)=><div key={index}>
+              <strong>{item.quantity}× {item.name} — {money(item.unit_price_cents*item.quantity)}</strong>
+              {item.options?.map((opt,i)=><small key={i}>{opt.group}: {opt.name}{opt.price_cents>0?' (+'+money(opt.price_cents)+')':''}</small>)}
+              {item.note&&<small>Obs. do produto: {item.note}</small>}
+            </div>)}</div>
+            {o.fulfillment==='delivery'&&<p>Entrega: {o.tower} · Ap. {o.apartment} · Taxa: {money(o.delivery_fee_cents??0)}</p>
             {o.delivery_day&&<p>Data: {String(o.delivery_day).slice(0,10)}</p>}{o.delivery_window&&<p>Preferência: {o.delivery_window}</p>}
             {o.note&&<p>Observação: {o.note}</p>}{o.delivery_instructions?.length>0&&<p>Instruções: {o.delivery_instructions.join(', ')}</p>}
-            <div className="order-bottom"><strong>{money(o.total_cents)}</strong><div className="inline-actions">{o.status==='awaiting_confirmation'&&<><button disabled={busy} onClick={()=>updateStatus(o.id,'confirmed')}>Confirmar</button><button className="danger-text" disabled={busy} onClick={()=>updateStatus(o.id,'cancelled')}>Cancelar</button></>}
+            <div className="order-bottom"><strong>Subtotal {money(o.subtotal_cents??o.total_cents)} · Total {money(o.total_cents)}</strong><div className="inline-actions">{o.status==='awaiting_confirmation'&&<><button disabled={busy} onClick={()=>updateStatus(o.id,'confirmed')}>Confirmar</button><button className="danger-text" disabled={busy} onClick={()=>updateStatus(o.id,'cancelled')}>Cancelar</button></>}
               {o.status==='confirmed'&&<><button disabled={busy} onClick={()=>updateStatus(o.id,'completed')}>Concluir</button><button className="danger-text" disabled={busy} onClick={()=>updateStatus(o.id,'cancelled')}>Cancelar</button></>}</div></div>
           </article>)}</div>:<Empty title="Sem pedidos ainda" subtitle="Quando moradores comprarem na sua loja, os pedidos aparecerão aqui."/>}</>}
           {sellerTab==='reviews'&&<>
@@ -1096,6 +1102,39 @@ export default function Page(){
               <label>Categoria<select required value={productForm.category_id} onChange={e=>setProductForm(s=>({...s,category_id:e.target.value}))}><option value="">Selecione</option>{home.categories.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></label>
               <div className="field-grid"><label>Preço (R$)<input required type="number" min=".01" step=".01" value={productForm.price} onChange={e=>setProductForm(s=>({...s,price:e.target.value}))}/></label><label>Promocional (opcional)<input type="number" min=".01" step=".01" value={productForm.promo} onChange={e=>setProductForm(s=>({...s,promo:e.target.value}))}/></label></div>
               <div className="field-grid"><label>Estoque (opcional)<input type="number" min="0" step="1" value={productForm.stock} onChange={e=>setProductForm(s=>({...s,stock:e.target.value}))}/></label><label>Prazo de preparo<input maxLength={100} value={productForm.lead_time} onChange={e=>setProductForm(s=>({...s,lead_time:e.target.value}))} placeholder="Ex.: 1 dia"/></label></div>
+              <section className="product-option-editor">
+                <div className="section-heading"><h3>Opções do produto</h3>
+                  <button type="button" className="outline-button" disabled={productForm.option_groups.length>=8}
+                    onClick={()=>setProductForm(x=>({...x,option_groups:[...x.option_groups,{
+                      id:crypto.randomUUID(),name:'',required:false,multiple:false,options:[{id:crypto.randomUUID(),name:'',price_cents:0}]
+                    }]}))}><Plus size={15}/> Grupo</button>
+                </div>
+                <p className="helper-note">Ex.: Sabor, tamanho ou adicionais. Os valores são somados ao preço do produto.</p>
+                {productForm.option_groups.map(group=><div className="option-group-editor" key={group.id}>
+                  <label>Nome da opção<input required minLength={2} maxLength={65}
+                    placeholder="Ex.: Cobertura" value={group.name}
+                    onChange={e=>setProductForm(x=>({...x,option_groups:x.option_groups.map(g=>g.id===group.id?{...g,name:e.target.value}:g)}))}/></label>
+                  <div className="option-flags">
+                    <label><input type="checkbox" checked={group.required}
+                      onChange={e=>setProductForm(x=>({...x,option_groups:x.option_groups.map(g=>g.id===group.id?{...g,required:e.target.checked}:g)}))}/> Obrigatório</label>
+                    <label><input type="checkbox" checked={group.multiple}
+                      onChange={e=>setProductForm(x=>({...x,option_groups:x.option_groups.map(g=>g.id===group.id?{...g,multiple:e.target.checked}:g)}))}/> Permitir várias opções</label>
+                  </div>
+                  {group.options.map(opt=><div key={opt.id} className="option-choice-editor">
+                    <label>Escolha<input required maxLength={70} placeholder="Ex.: Chocolate" value={opt.name}
+                      onChange={e=>setProductForm(x=>({...x,option_groups:x.option_groups.map(g=>g.id===group.id?{...g,options:g.options.map(o=>o.id===opt.id?{...o,name:e.target.value}:o)}:g)}))}/></label>
+                    <label>Adicional (R$)<input type="number" min="0" max="10000" step=".01" value={moneyInput(opt.price_cents)}
+                      onChange={e=>setProductForm(x=>({...x,option_groups:x.option_groups.map(g=>g.id===group.id?{...g,options:g.options.map(o=>o.id===opt.id?{...o,price_cents:Math.max(0,Math.round(Number(e.target.value)*100))}:o)}:g)}))}/></label>
+                    <button type="button" className="option-remove" aria-label="Remover escolha"
+                      disabled={group.options.length<=1} onClick={()=>setProductForm(x=>({...x,option_groups:x.option_groups.map(g=>g.id===group.id?{...g,options:g.options.filter(o=>o.id!==opt.id)}:g)}))}><X size={16}/></button>
+                  </div>)}
+                  <div className="option-editor-footer">
+                    <button type="button" className="quiet-link" disabled={group.options.length>=15}
+                      onClick={()=>setProductForm(x=>({...x,option_groups:x.option_groups.map(g=>g.id===group.id?{...g,options:[...g.options,{id:crypto.randomUUID(),name:'',price_cents:0}]}:g)}))}>+ Adicionar escolha</button>
+                    <button type="button" className="danger-text" onClick={()=>setProductForm(x=>({...x,option_groups:x.option_groups.filter(g=>g.id!==group.id)}))}>Remover grupo</button>
+                  </div>
+                </div>)}
+              </section>
               <label>Exibição do produto
                 <select value={productForm.visibility} onChange={e=>setProductForm(s=>({...s,visibility:e.target.value as Product['visibility']}))}>
                   <option value="available">Disponível — pode comprar</option>
@@ -1133,6 +1172,10 @@ export default function Page(){
             <label>Orientações para retirada<textarea rows={2} maxLength={250} value={shopForm.pickup_instructions} onChange={e=>setShopForm(s=>({...s,pickup_instructions:e.target.value}))}/></label>
             <label className="check-label"><input type="checkbox" checked={shopForm.is_open} onChange={e=>setShopForm(s=>({...s,is_open:e.target.checked}))}/> Loja aceitando pedidos</label>
             <label className="check-label"><input type="checkbox" checked={shopForm.delivery_enabled} onChange={e=>setShopForm(s=>({...s,delivery_enabled:e.target.checked}))}/> Oferecer entrega</label>
+            {shopForm.delivery_enabled&&<label>Taxa de entrega (R$)
+              <input type="number" min="0" max="10000" step=".01" value={moneyInput(shopForm.delivery_fee_cents)}
+                onChange={e=>setShopForm(x=>({...x,delivery_fee_cents:Math.max(0,Math.round(Number(e.target.value)*100))}))}/>
+            </label>}
             <label className="check-label"><input type="checkbox" checked={shopForm.pickup_enabled} onChange={e=>setShopForm(s=>({...s,pickup_enabled:e.target.checked}))}/> Oferecer retirada</label>
             <button className="primary-button" disabled={busy} type="submit">Salvar configurações <Check size={18}/></button>
           </form>}
