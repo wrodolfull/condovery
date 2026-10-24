@@ -42,20 +42,24 @@ const adminLogin=await request('auth/login',{method:'POST',body:{email:process.e
 const adminCookie=adminLogin.cookie;
 assert.ok(adminCookie);
 let summary=(await request('admin/summary',{cookie:adminCookie})).data;
-assert.equal(summary.residents.filter(x=>x.status==='pending').length,2);
-for(const user of summary.residents){
-  await request('admin/users/'+user.id,{method:'PATCH',cookie:adminCookie,body:{status:'approved'}});
-}
+assert.equal(summary.residents.filter(x=>x.status==='approved').length,2);
+assert.equal(summary.residents.filter(x=>x.status==='pending').length,0);
 const sellerLogin=await request('auth/login',{method:'POST',body:{email:sellerEmail,password:pass}});
 const buyerLogin=await request('auth/login',{method:'POST',body:{email:buyerEmail,password:pass}});
 const sellerCookie=sellerLogin.cookie, buyerCookie=buyerLogin.cookie;
 assert.ok(sellerCookie&&buyerCookie);
 await request('admin/summary',{cookie:buyerCookie,expected:403});
+await request('shops/mine',{method:'POST',cookie:sellerCookie,expected:400,body:{
+  name:'Bolos da Gabi',description:'Bolos feitos no condomínio',whatsapp:'11999991234'
+}});
+await request('shops/mine',{method:'POST',cookie:sellerCookie,expected:400,body:{
+  name:'Bolos da Gabi',description:'Porra, que absurdo',whatsapp:'11999991234',accept_guidelines:true
+}});
 const shopCreated=await request('shops/mine',{method:'POST',cookie:sellerCookie,body:{
-  name:'Bolos da Gabi',description:'Bolos feitos aqui no condomínio',whatsapp:'11999991234'
+  name:'Bolos da Gabi',description:'Bolos feitos aqui no condomínio',whatsapp:'11999991234',accept_guidelines:true
 },expected:201});
 const shopId=shopCreated.data.shop.id;
-await request('admin/shops/'+shopId,{method:'PATCH',cookie:adminCookie,body:{status:'approved'}});
+assert.equal(shopCreated.data.shop.status,'approved');
 const sellerHome=(await request('home',{cookie:sellerCookie})).data;
 assert.equal(sellerHome.categories.length,15);
 const standardNames=[
@@ -65,6 +69,10 @@ const standardNames=[
 ];
 assert.deepEqual(sellerHome.categories.map(c=>c.name),standardNames);
 assert.equal(new Set(sellerHome.categories.map(c=>c.id)).size,15);
+await request('products',{method:'POST',cookie:sellerCookie,expected:400,body:{
+  name:'Porra',description:'Teste de ofensa',price_cents:2500,stock:4,
+  category_id:sellerHome.categories[0].id,lead_time:'Disponível hoje',is_available:true
+}});
 const product=await request('products',{method:'POST',cookie:sellerCookie,body:{
   name:'Bolo de cenoura',description:'Com chocolate',price_cents:2500,stock:4,
   category_id:sellerHome.categories[0].id,lead_time:'Disponível hoje',is_available:true
@@ -215,7 +223,7 @@ try {
 console.log('Shop activation, product states and idempotent WhatsApp ordering PASS.');
 
 console.log('Verified reviews smoke PASS: eligibility, single review, moderation, average and privacy.');
-console.log('Integration smoke PASS: invite -> approval -> shop -> product -> WhatsApp order -> completed.');
+console.log('Integration smoke PASS: code -> instant resident/store -> product -> WhatsApp order -> completed.');
 
 
 // Tests Google invite onboarding after provider identity has been verified;
@@ -236,14 +244,13 @@ const googleSignup=await request('auth/register-google',{
   body:{invite,name:'Google Resident',phone:'11911111111',tower:'Torre 1',apartment:'103'}
 });
 assert.ok(googleSignup.cookie?.includes('condovery_session='));
-await request('home',{cookie:googleSignup.cookie,expected:403});
+await request('home',{cookie:googleSignup.cookie});
 const googleWait=(await request('me',{cookie:googleSignup.cookie})).data;
-assert.equal(googleWait.viewer.status,'pending');
+assert.equal(googleWait.viewer.status,'approved');
 assert.equal(googleWait.viewer.email,googleEmail);
 const newSummary=(await request('admin/summary',{cookie:adminCookie})).data;
 const newResident=newSummary.residents.find(x=>x.email===googleEmail);
 assert.ok(newResident);
-await request('admin/users/'+newResident.id,{method:'PATCH',cookie:adminCookie,body:{status:'approved'}});
 const googleHome=(await request('home',{cookie:googleSignup.cookie})).data;
 assert.ok(googleHome.categories.length>0);
 console.log('Google verified identity onboarding PASS (provider callback itself requires Google credentials).');
@@ -260,12 +267,59 @@ assert.equal(sellerFavorites.ids.length,0);
 await request('favorites/'+productId,{method:'DELETE',cookie:buyerCookie});
 assert.equal((await request('favorites',{cookie:buyerCookie})).data.ids.length,0);
 
-// Changing an apartment must invalidate tenant approval until an admin checks.
+// Changing address does not trigger approval, although suspension remains possible.
 await request('me',{method:'PATCH',cookie:googleSignup.cookie,
   body:{name:'Google Resident',phone:'11911111111',tower:'Torre 2',apartment:'202'}});
-await request('home',{cookie:googleSignup.cookie,expected:403});
-await request('admin/users/'+newResident.id,{method:'PATCH',cookie:adminCookie,body:{status:'approved'}});
+const newProfile=(await request('me',{cookie:googleSignup.cookie})).data.viewer;
+assert.equal(newProfile.status,'approved');
+assert.equal(newProfile.tower,'Torre 2');
 await request('home',{cookie:googleSignup.cookie});
+
+// A buyer can flag inappropriate words or images; only administrators can take action.
+await request('reports',{method:'POST',cookie:sellerCookie,expected:400,body:{
+  target_type:'shop',target_id:shopId,reason:'language'
+}});
+const complaint=(await request('reports',{method:'POST',cookie:buyerCookie,expected:201,body:{
+  target_type:'product',target_id:productId,reason:'image',details:'Foto inadequada para famílias'
+}})).data;
+assert.match(complaint.message,/Denúncia recebida/);
+await request('reports',{method:'POST',cookie:buyerCookie,expected:409,body:{
+  target_type:'product',target_id:productId,reason:'image'
+}});
+await request('admin/reports',{cookie:buyerCookie,expected:403});
+let reported=(await request('admin/reports',{cookie:adminCookie})).data.reports;
+const complaintRow=reported.find(row=>row.target_id===productId&&row.status==='open');
+assert.ok(complaintRow);
+await request('admin/reports/'+complaintRow.id,{method:'PATCH',cookie:buyerCookie,expected:403,
+  body:{action:'hide_product'}});
+await request('admin/reports/'+complaintRow.id,{method:'PATCH',cookie:adminCookie,body:{action:'hide_product'}});
+assert.ok(!(await request('home',{cookie:buyerCookie})).data.products.some(p=>p.id===productId));
+assert.equal((await request('shops/mine',{cookie:sellerCookie})).data.products.find(p=>p.id===productId).visibility,'hidden');
+await request('admin/reports/'+complaintRow.id,{method:'PATCH',cookie:adminCookie,expected:404,
+  body:{action:'dismiss'}});
+const shopComplaint=(await request('reports',{method:'POST',cookie:buyerCookie,expected:201,body:{
+  target_type:'shop',target_id:shopId,reason:'inappropriate',details:'Conteúdo da loja'
+}})).data;
+assert.match(shopComplaint.message,/Denúncia recebida/);
+reported=(await request('admin/reports',{cookie:adminCookie})).data.reports;
+const shopRow=reported.find(r=>r.target_id===shopId&&r.status==='open');
+assert.ok(shopRow);
+await request('admin/reports/'+shopRow.id,{method:'PATCH',cookie:adminCookie,body:{action:'suspend_shop'}});
+assert.ok(!(await request('home',{cookie:buyerCookie})).data.shops.some(s=>s.id===shopId));
+await request('products',{method:'POST',cookie:sellerCookie,expected:403,body:{
+  name:'Novo produto',category_id:sellerHome.categories[0].id,price_cents:2500
+}});
+await request('admin/shops/'+shopId,{method:'PATCH',cookie:adminCookie,body:{status:'approved'}});
+// Only the administrator can define a new permanent code.
+await request('admin/invite',{method:'POST',cookie:buyerCookie,expected:403,body:{code:'TESTE-CADEADO-2026'}});
+await request('admin/invite',{method:'POST',cookie:adminCookie,expected:400,body:{code:'so-letras-sem-numeros'}});
+const chosen='CONDOVERY-PILOTO-2026';
+const editedInvite=(await request('admin/invite',{method:'POST',cookie:adminCookie,body:{code:chosen}})).data;
+assert.equal(editedInvite.invite,chosen);
+await request('public/condominium',{method:'POST',body:{invite},expected:404});
+assert.equal((await request('public/condominium',{method:'POST',body:{invite:chosen}})).data.name,
+  process.env.BOOTSTRAP_CONDO_NAME);
+console.log('No preapprovals, guidelines, reports, suspension and manual invitation code PASS.');
 
 // The Supabase Auth service creates/validates a recovery OTP, never Condovery.
 const resetRequested=await request('auth/password/request',{
@@ -289,4 +343,4 @@ await request('auth/password/confirm',{
 await request('auth/login',{method:'POST',body:{email:buyerEmail,password:pass},expected:401});
 const newLogin=await request('auth/login',{method:'POST',body:{email:buyerEmail,password:'NewPassword123!'}});
 assert.ok(newLogin.cookie);
-console.log('Security tests PASS: favorites, catalog, address reapproval and Supabase one-time password recovery.');
+console.log('Security tests PASS: favorites, catalog, editable address and Supabase one-time password recovery.');
