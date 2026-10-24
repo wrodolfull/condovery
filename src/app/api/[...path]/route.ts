@@ -243,7 +243,7 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
     const search=clean(req.nextUrl.searchParams.get('search'),100);
     const category=req.nextUrl.searchParams.get('category')||null;
     if(category&&!uuid(category))bad('Categoria inválida.');
-    const escaped='%'+search.replace(/[\\%_]/g,'\\  if(path==='home'&&method==='GET'){')+'%';
+    const escaped='%'+search.replace(/[%_\\]/g,'')+'%';
     const result=await query(
       "SELECT p.id,p.shop_id,p.category_id,p.name,p.description,p.price_cents,p.promo_price_cents,p.image_url,p.stock,p.lead_time,p.is_featured,s.name AS shop_name,s.is_open FROM products p JOIN shops s ON s.id=p.shop_id AND s.condominium_id=p.condominium_id WHERE p.condominium_id=$1 AND p.is_available=true AND s.status='approved' AND ($2::uuid IS NULL OR p.category_id=$2::uuid) AND ($3::text='' OR p.name ILIKE $3 ESCAPE '\\' OR s.name ILIKE $3 ESCAPE '\\') ORDER BY p.created_at DESC,p.id DESC LIMIT $4 OFFSET $5",
       [u.condominium_id,category,search?escaped:'',limit+1,page*limit]
