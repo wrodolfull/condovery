@@ -8,7 +8,8 @@
     "start": "next start",
     "typecheck": "tsc --noEmit",
     "test": "tsx --test tests/*.test.ts",
-    "db:bootstrap": "node --env-file=.env.local scripts/bootstrap.mjs"
+    "db:bootstrap": "node --env-file=.env.local scripts/bootstrap.mjs",
+    "db:migrate": "node --env-file=.env.local scripts/migrate.mjs"
   },
   "dependencies": {
     "next": "^15.5.0",
