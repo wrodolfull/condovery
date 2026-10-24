@@ -643,6 +643,11 @@ export default function Page(){
   </div></section>}
         <SectionHeader title="Descubra o que tem por aqui" action="Ver categorias" onAction={()=>go('categories')}/>
         <div className="category-track" aria-label="Categorias">
+          <button className="category-card" onClick={()=>{setCategory('');go('categories');}}>
+            <IllustrationSlot className="category-art" src={artwork.categoryAll}
+              alt="Todas as categorias" fit="contain" fallback={<LayoutGrid size={25}/>}/>
+            <span>Todos</span>
+          </button>
           {home.categories.map(c=><button key={c.id} className="category-card" onClick={()=>{setCategory(c.id);go('categories');}}>
             <CategoryArtwork category={c}/><span>{c.name}</span></button>)}
         </div>
