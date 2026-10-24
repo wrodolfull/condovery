@@ -279,7 +279,10 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
     approved(u);
     const b=z.object({name:z.string().trim().min(2).max(90),phone:z.string().trim().min(10).max(20),tower:z.string().min(1).max(60),apartment:z.string().min(1).max(24)}).parse(await body(req));
     if(!u.towers.includes(b.tower))bad('Torre inválida.');
-    await query('UPDATE users SET name=$1,phone=$2,tower=$3,apartment=$4 WHERE id=$5 AND condominium_id=$6',[b.name,b.phone,b.tower,b.apartment,u.id,u.condominium_id]);
+    await query(
+      "UPDATE users SET name=$1,phone=$2,tower=$3,apartment=$4,status=CASE WHEN tower<>$3 OR apartment<>$4 THEN 'pending' ELSE status END WHERE id=$5 AND condominium_id=$6",
+      [b.name,b.phone,b.tower,b.apartment,u.id,u.condominium_id]
+    );
     return out({ok:true});
   }
   approved(u);
