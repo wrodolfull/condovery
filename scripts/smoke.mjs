@@ -1,4 +1,6 @@
 import assert from 'node:assert/strict';
+import crypto from 'node:crypto';
+import pg from 'pg';
 
 const origin=process.env.SMOKE_URL||'http://127.0.0.1:3000';
 async function request(path, {method='GET', body, cookie, expected=200}={}) {
@@ -14,7 +16,7 @@ async function request(path, {method='GET', body, cookie, expected=200}={}) {
 const pass='TestPassword789!';const invite=process.env.BOOTSTRAP_INVITE_CODE;
 assert.ok(invite);
 await request('home',{expected:401});
-const condo=(await request('public/condominium?invite='+encodeURIComponent(invite))).data;
+const condo=(await request('public/condominium',{method:'POST',body:{invite}})).data;
 assert.equal(condo.name,process.env.BOOTSTRAP_CONDO_NAME);
 assert.ok(condo.towers.includes('Torre 1'));
 const buyerEmail='buyer-smoke@example.com';
@@ -65,3 +67,34 @@ assert.equal(final.total_cents,5000);
 const mine=(await request('shops/mine',{cookie:sellerCookie})).data;
 assert.equal(mine.products.find(p=>p.id===productId).stock,2);
 console.log('Integration smoke PASS: invite -> approval -> shop -> product -> WhatsApp order -> completed.');
+
+
+// Tests Google invite onboarding after provider identity has been verified;
+// the actual external Supabase/Google callback requires dashboard credentials.
+const googleEmail='google-smoke@example.com';
+const googleSubject=crypto.randomUUID(),pending=crypto.randomBytes(32).toString('hex');
+const client=new pg.Client({connectionString:process.env.DATABASE_URL});
+await client.connect();
+try{
+  await client.query(
+    "INSERT INTO google_signup_pending(token_hash,google_auth_user_id,email,name) VALUES($1,$2,$3,$4)",
+    [crypto.createHash('sha256').update(pending).digest('hex'),googleSubject,googleEmail,'Google Resident']
+  );
+}finally{await client.end();}
+const googleSignup=await request('auth/register-google',{
+  method:'POST',expected:201,
+  cookie:'condovery_google_signup='+pending,
+  body:{invite,name:'Google Resident',phone:'11911111111',tower:'Torre 1',apartment:'103'}
+});
+assert.ok(googleSignup.cookie?.includes('condovery_session='));
+await request('home',{cookie:googleSignup.cookie,expected:403});
+const googleWait=(await request('me',{cookie:googleSignup.cookie})).data;
+assert.equal(googleWait.viewer.status,'pending');
+assert.equal(googleWait.viewer.email,googleEmail);
+const newSummary=(await request('admin/summary',{cookie:adminCookie})).data;
+const newResident=newSummary.residents.find(x=>x.email===googleEmail);
+assert.ok(newResident);
+await request('admin/users/'+newResident.id,{method:'PATCH',cookie:adminCookie,body:{status:'approved'}});
+const googleHome=(await request('home',{cookie:googleSignup.cookie})).data;
+assert.ok(googleHome.categories.length>0);
+console.log('Google verified identity onboarding PASS (provider callback itself requires Google credentials).');
