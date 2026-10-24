@@ -470,3 +470,155 @@ body {background:var(--bg);letter-spacing:-.08px}
 
 .forgot-button{background:transparent;border:0;color:#a9502d;align-self:center;margin-top:16px;font-weight:800;font-size:12px}
 .forgot-button:hover{text-decoration:underline}
+
+
+/* Condovery visual storyboard — mobile-first alignment
+   Keep visuals based on implemented data and order states. */
+.auth-mobile-intro {
+  min-height: 174px;
+  display: flex;
+  align-items: center;
+  overflow: hidden;
+  position: relative;
+  border-radius: 26px;
+  padding: 22px 17px 22px 21px;
+  background: linear-gradient(135deg,#f84927 0%,#ff6e3f 68%,#ff965d 100%);
+  color: #fff;
+  margin: 0 0 25px;
+  isolation: isolate;
+}
+.auth-mobile-intro::before {
+  content: '';
+  position: absolute;
+  width: 155px;
+  height: 155px;
+  border-radius: 50%;
+  right: -42px;
+  top: -38px;
+  background: rgba(255,255,255,.10);
+}
+.auth-intro-copy {
+  position: relative;
+  z-index: 2;
+  max-width: 62%;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+}
+.auth-intro-copy>span {
+  color: #fff4d8;
+  font-size: 8px;
+  font-weight: 900;
+  letter-spacing: .7px;
+}
+.auth-intro-copy>strong {
+  font: 800 clamp(18px,5.2vw,23px)/1.1 'Outfit',sans-serif;
+  letter-spacing: -.35px;
+}
+.auth-intro-copy>small {
+  line-height: 1.5;
+  font-size: 10px;
+  color: #fff7ec;
+}
+.auth-mobile-intro img {
+  width: 52%;
+  max-width: 210px;
+  height: auto;
+  position: absolute;
+  z-index: 1;
+  right: -28px;
+  bottom: -11px;
+  filter: drop-shadow(0 8px 14px rgba(74,28,11,.18));
+}
+.auth-card .auth-mobile-logo {
+  margin-bottom: 19px;
+}
+.auth-card>h2 {
+  font-size: clamp(25px,4vw,31px);
+  letter-spacing: -.9px;
+}
+.hello-row h1 {
+  max-width: 530px;
+  font-size: clamp(25px,4.4vw,38px);
+  letter-spacing: -1.15px;
+}
+.hello-row .hello-bag {
+  flex-shrink: 0;
+}
+.section-heading h2 {
+  letter-spacing: -.55px;
+}
+.product-card,.shop-row,.white-panel,.order-card {
+  transition: box-shadow .18s ease, transform .18s ease;
+}
+.order-progress {
+  display: grid;
+  grid-template-columns: repeat(3,minmax(0,1fr));
+  position: relative;
+  gap: 0;
+  margin-top: 17px;
+  padding: 0 3px 15px;
+}
+.order-progress::before {
+  content:'';
+  position:absolute;
+  top: 13px;
+  left: calc(16.667%);
+  right: calc(16.667%);
+  height: 2px;
+  background:#e7e6dc;
+}
+.order-progress-step {
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:flex-start;
+  gap:6px;
+  position:relative;
+  z-index:1;
+  text-align:center;
+  color:#999a91;
+  font-weight:700;
+  font-size:10px;
+}
+.order-step-dot {
+  display:grid;
+  place-items:center;
+  height:27px;
+  width:27px;
+  border-radius:50%;
+  background:#f2f1ed;
+  border:2px solid #dddcd6;
+  color:#898b84;
+  font-size:10px;
+  font-weight:800;
+}
+.order-progress-step.completed {color:#246b4f}
+.order-progress-step.completed .order-step-dot {
+  color:#fff;
+  border-color:#26835c;
+  background:#26835c;
+}
+.order-progress-note{
+  margin-top:15px!important;
+  padding:11px 12px;
+  border-radius:12px;
+  background:#f6f4ef;
+  font-size:12px!important;
+}
+@media(max-width:380px){
+  .auth-mobile-intro{padding:17px 15px;min-height:160px}
+  .auth-intro-copy{max-width:65%}
+  .auth-intro-copy>strong{font-size:18px}
+  .auth-mobile-intro img{right:-39px;bottom:-5px}
+  .hello-row h1{font-size:24px}
+  .order-progress-step{font-size:9px}
+}
+@media(min-width:900px){
+  .auth-mobile-intro{display:none}
+  .auth-card .auth-mobile-logo{margin-bottom:0}
+}
+@media(prefers-reduced-motion: reduce) {
+  .product-card,.shop-row,.white-panel,.order-card {transition:none}
+}
