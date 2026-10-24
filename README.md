@@ -8,8 +8,8 @@ Next.js 15 / React 19 / TypeScript / PostgreSQL (todas as consultas passam pelo 
 ## Inicialização
 1. npm install
 2. Crie uma base PostgreSQL 15+ e copie .env.example para .env.local; preencha DATABASE_URL.
-3. Execute psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f db/schema.sql
-4. Exporte as variáveis BOOTSTRAP_* do .env.example no terminal e execute npm run db:bootstrap. O comando inicializa condomínio, 23 torres e administrador. Não exponha o convite publicamente.
+3. Execute `npm run db:migrate` para aplicar o esquema PostgreSQL (ou `psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f db/schema.sql`).
+4. Preencha as variáveis `BOOTSTRAP_*` no `.env.local` e execute `npm run db:bootstrap`. O comando inicializa condomínio, 23 torres e administrador. Não exponha o convite publicamente.
 5. npm run dev e abra http://localhost:3000
 
 Importante: o script de bootstrap não altera a senha de um administrador já existente. Modifique as torres pelo banco para corresponder à numeração real antes de abrir o cadastro.
@@ -37,6 +37,8 @@ Importante: o script de bootstrap não altera a senha de um administrador já ex
 npm run typecheck
 npm run test
 npm run build
+
+O workflow CI executa uma integração com PostgreSQL real e verifica cadastro, aprovação, loja, produto e ciclo de pedido. Para executar localmente: configure `DATABASE_URL` e as variáveis `BOOTSTRAP_*`, rode `node scripts/migrate.mjs`, `node scripts/bootstrap.mjs`, `npm start` e `node scripts/smoke.mjs` com o servidor ativo. Use apenas em banco de testes.
 
 ## Referência de UX
 Inspiração conceitual no 99Food: campo de busca em destaque, categorias, ofertas e navegação inferior. Identidade, componentes, textos e código próprios do Condovery.
