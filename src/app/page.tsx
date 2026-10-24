@@ -1039,7 +1039,12 @@ export default function Page(){
         <div className="account-shortcuts"><button onClick={()=>{loadMine();go('seller');}}><Store size={23}/><span><strong>{myShop?'Minha loja':'Quero vender'}</strong><small>{myShop?'Gerencie produtos e pedidos':'Crie sua loja e comece a vender'}</small></span><ChevronRight/></button>
         <button onClick={()=>{loadOrders();go('orders');}}><Receipt size={23}/><span><strong>Meus pedidos</strong><small>Acompanhe suas compras</small></span><ChevronRight/></button>
         {viewer.role==='admin'&&<button onClick={()=>{loadAdmin();go('admin');}}><ShieldCheck size={23}/><span><strong>Administração</strong><small>Segurança e configurações</small></span><ChevronRight/></button>}
-        <button onClick={logout}><LogOut size={23}/><span><strong>Sair</strong><small>Encerrar sessão neste dispositivo</small></span><ChevronRight/></button></div></div>
+        <button onClick={logout}><LogOut size={23}/><span><strong>Sair</strong><small>Encerrar sessão neste dispositivo</small></span><ChevronRight/></button>
+        {viewer.role==='resident'&&<button className="delete-account-entry"
+          onClick={()=>{setShowDeleteAccount(true);setDeleteConfirmation('');setDeletePassword('');setError('');}}>
+          <Trash2 size={23}/><span><strong>Excluir minha conta</strong>
+          <small>Encerrar definitivamente seu acesso e sua loja</small></span><ChevronRight/>
+        </button>}</div></div>
       </>}
 
       {view==='seller'&&<><button className="back-link" onClick={()=>go('account')}><ArrowLeft size={18}/> Minha conta</button><div className="page-title"><h1>Painel do vendedor</h1><p>Seu negócio, a poucos passos de seus clientes.</p></div>
