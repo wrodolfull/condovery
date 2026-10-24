@@ -930,7 +930,7 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
     const target=b.target_type==='shop'
       ?await query("SELECT id,owner_id FROM shops WHERE id=$1 AND condominium_id=$2 AND status='approved'",
         [b.target_id,u.condominium_id])
-      :await query("SELECT p.id,s.owner_id FROM products p JOIN categories c ON c.id=p.category_id AND c.condominium_id=p.condominium_id AND c.is_active=true JOIN shops s ON s.id=p.shop_id AND s.condominium_id=p.condominium_id "+
+      :await query("SELECT p.id,s.owner_id FROM products p JOIN shops s ON s.id=p.shop_id AND s.condominium_id=p.condominium_id "+
         "WHERE p.id=$1 AND p.condominium_id=$2 AND p.visibility<>'hidden' AND s.status='approved'",
         [b.target_id,u.condominium_id]);
     if(!target.rowCount)bad('Conteúdo não encontrado.',404);
@@ -1023,7 +1023,10 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
   }
   if(path==='admin/categories'&&method==='POST'){
     admin(u);
-    const b=z.object({name:z.string().trim().min(2).max(60),icon:z.string().regex(/^[a-z0-9-]{2,40}$/)}).parse(await body(req));
+    const b=z.object({name:z.string().trim().min(2).max(60),icon:z.enum(['cake-slice','sandwich','utensils','coffee','pizza','ice-cream-cone','shopping-basket'])}).parse(await body(req));
+    const normalized=b.name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+    if(['servicos','beleza','saude e bem-estar','moda','casa e decoracao','eletronicos','presentes','outros'].includes(normalized))
+      bad('Somente categorias de alimentação são permitidas.');
     try{
       const r=await query('INSERT INTO categories(condominium_id,name,icon) VALUES($1,$2,$3) RETURNING *',[u.condominium_id,b.name,b.icon]);
       return out({category:r.rows[0]},201);
