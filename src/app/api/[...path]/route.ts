@@ -220,7 +220,7 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
     const b=z.object({password:z.string().min(10).max(100)}).parse(await body(req));
     const result=await query(
       'DELETE FROM password_reset_tokens WHERE token_hash=$1 AND expires_at>now() RETURNING user_id',
-      [tokenHash(cookie)]
+      [tokenHash(cookie!)]
     );
     if(!result.rowCount)bad('Link expirado ou já utilizado.',400);
     const found=await query('SELECT supabase_auth_user_id FROM users WHERE id=$1',[result.rows[0].user_id]);
@@ -291,18 +291,19 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
         [b.email,clean(req.headers.get('x-real-ip')||'unknown',80)]);
       bad('Credenciais inválidas ou e-mail ainda não confirmado.',401);
     }
+    const verifiedUser=data.user!;
     const member=await query(
       'SELECT id,status,supabase_auth_user_id FROM users WHERE supabase_auth_user_id=$1 OR email=$2 LIMIT 1',
-      [data.user.id,b.email]
+      [verifiedUser.id,b.email]
     );
     if(!member.rowCount)bad('Conta sem vínculo com um condomínio. Solicite um convite.',403);
-    if(member.rows[0].supabase_auth_user_id&&member.rows[0].supabase_auth_user_id!==data.user.id){
+    if(member.rows[0].supabase_auth_user_id&&member.rows[0].supabase_auth_user_id!==verifiedUser.id){
       bad('Esta conta está vinculada a outra identidade. Entre em contato com a administração.',403);
     }
     if(member.rows[0].status==='suspended')bad('Conta suspensa.',403);
     if(!member.rows[0].supabase_auth_user_id){
       await query('UPDATE users SET supabase_auth_user_id=$1 WHERE id=$2 AND supabase_auth_user_id IS NULL',
-        [data.user.id,member.rows[0].id]);
+        [verifiedUser.id,member.rows[0].id]);
     }
     await query('DELETE FROM login_attempts WHERE email=$1',[b.email]);
     return (await issueAppLogin(member.rows[0].id)).response;
