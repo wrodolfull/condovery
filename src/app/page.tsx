@@ -7,7 +7,7 @@ import {artwork,getCategoryArtwork} from '@/lib/artwork';
 import {
   ArrowLeft, ArrowRight, Bell, Building2, CakeSlice, Check, CheckCircle2, ChevronDown, ChevronRight,
   CircleHelp, Clock3, Coffee, Gift, Heart, Home, ImagePlus, LayoutGrid, LogOut, MapPin,
-  Menu, Minus, Package, Plus, Receipt, Search, Settings, Share2, ShieldCheck, ShoppingBag, ShoppingBasket,
+  Menu, MessageCircle, Minus, Package, Plus, Receipt, Search, Settings, Share2, ShieldCheck, ShoppingBag, ShoppingBasket,
   SlidersHorizontal, Sparkles, Store, Tag, Trash2, Truck, UserRound, Utensils, X, Shirt, Sandwich
 } from 'lucide-react';
 
@@ -45,6 +45,9 @@ async function api<T>(url:string,opts:RequestInit={}):Promise<T>{
   return data as T;
 }
 const payload=(data:unknown)=>JSON.stringify(data);
+function ShopLogo({src,name}:{src?:string|null;name:string}){
+  return <div className="shop-logo">{src?<img src={src} alt={'Foto da loja '+name}/>:<Store size={27}/>}</div>;
+}
 function ProductPicture({src,name,large=false}:{src?:string|null;name:string;large?:boolean}){
   return <div className={'product-photo'+(large?' product-photo-lg':'')}>
     {src?<img src={src} alt={name} loading="lazy"/>:<div className="photo-placeholder"><ShoppingBasket size={large?54:34} strokeWidth={1.5}/><span>feito por vizinhos</span></div>}
@@ -88,7 +91,8 @@ function OrderProgress({status}:{status:string}) {
   </div>;
 }
 function ProductCard({p,onClick,favorite,onFavorite}:{p:Product;onClick:()=>void;favorite:boolean;onFavorite:(id:string)=>void}){
-  return <article className="product-card">
+  return <article className={'product-card'+(p.visibility==='unavailable'?' is-unavailable':'')}>
+    {p.visibility==='unavailable'&&<span className="unavailable-tag">Indisponível</span>}
     <button className="product-open" onClick={onClick} aria-label={'Ver '+p.name}>
       <ProductPicture src={p.image_url} name={p.name}/>
       {p.promo_price_cents!=null&&<span className="card-offer">Oferta</span>}
@@ -690,12 +694,13 @@ export default function Page(){
           {catalogLoading?'Carregando...':'Mostrar mais produtos'} <ArrowRight size={17}/>
         </button>}
         <SectionHeader title="Todas as lojas"/>
-        <div className="shops-list">{home.shops.map(s=><button key={s.id} className="shop-row" onClick={()=>openShop(s.id)}><div className="shop-logo">{s.cover_image?<img src={s.cover_image} alt=""/>:<Store size={27}/>}</div><div><strong>{s.name}</strong><p>{s.description}</p></div><ChevronRight size={18}/></button>)}</div>
+        <div className="shops-list">{home.shops.map(s=><button key={s.id} className="shop-row" onClick={()=>openShop(s.id)}><ShopLogo src={s.logo_image??s.cover_image} name={s.name}/><div><strong>{s.name}</strong><p>{s.description}</p></div><ChevronRight size={18}/></button>)}</div>
       </>}
 
       {view==='shop'&&selectedShop&&<>
         <button className="back-link" onClick={()=>go('home')}><ArrowLeft size={18}/> Voltar às lojas</button>
         <div className="shop-cover">{selectedShop.shop.cover_image?<img src={selectedShop.shop.cover_image} alt={'Capa '+selectedShop.shop.name}/>:<div className="shop-cover-fallback"><Store size={62}/></div>}</div>
+        <div className="shop-profile-photo"><ShopLogo src={selectedShop.shop.logo_image} name={selectedShop.shop.name}/></div>
         <div className="shop-head"><div><h1>{selectedShop.shop.name}</h1><p>{selectedShop.shop.description}</p></div>
           <div className="shop-actions">
             <Pill tone={selectedShop.shop.is_open?'green':'neutral'}>{selectedShop.shop.is_open?'Aceitando pedidos':'Pausada'}</Pill>
@@ -732,16 +737,18 @@ export default function Page(){
 
       {view==='product'&&selectedProduct&&<>
         <button className="back-link" onClick={()=>selectedShop?go('shop'):go('home')}><ArrowLeft size={18}/> Voltar</button>
-        <div className="product-detail">
+        <div className={'product-detail'+(!productCanBuy(selectedProduct)?' is-unavailable':'')}>
           <ProductPicture src={selectedProduct.image_url} name={selectedProduct.name} large/>
-          <div className="product-detail-copy"><Pill tone="orange">Da nossa vizinhança</Pill><h1>{selectedProduct.name}</h1>
+          <div className="product-detail-copy">
+            {!productCanBuy(selectedProduct)?<Pill tone="neutral">Indisponível no momento</Pill>:<Pill tone="orange">Da nossa vizinhança</Pill>}<h1>{selectedProduct.name}</h1>
             <p className="seller-by">Por {selectedProduct.shop_name??home.shops.find(s=>s.id===selectedProduct.shop_id)?.name}</p>
             <div className="detail-price">{selectedProduct.promo_price_cents!=null&&<del>{money(selectedProduct.price_cents)}</del>}<strong>{money(price(selectedProduct))}</strong></div>
             <p>{selectedProduct.description||'Produto disponível diretamente com um morador do condomínio.'}</p>
             {selectedProduct.lead_time&&<p className="time-hint"><Clock3 size={16}/> Prazo informado: {selectedProduct.lead_time}</p>}
             <label className="field-label">Observações sobre este produto<textarea maxLength={200} rows={3} value={itemNote} onChange={e=>setItemNote(e.target.value)} placeholder="Ex.: sem cobertura, embalagem para presente..."/></label>
             <div className="add-row"><div className="quantity"><button onClick={()=>setQty(Math.max(1,qty-1))} aria-label="Diminuir"><Minus size={18}/></button><strong>{qty}</strong><button onClick={()=>setQty(Math.min(Math.max(1,selectedProduct.stock??30),qty+1))} aria-label="Aumentar"><Plus size={18}/></button></div>
-            <button className="primary-button" disabled={selectedProduct.stock===0} onClick={addToCart}><Plus size={18}/>Adicionar · {money(price(selectedProduct)*qty)}</button></div>
+            <button className="primary-button" disabled={!productCanBuy(selectedProduct)} onClick={addToCart}><Plus size={18}/>Adicionar · {money(price(selectedProduct)*qty)}</button></div>
+            {!productCanBuy(selectedProduct)&&<p className="helper-note">Este produto continua visível, mas não pode ser comprado agora.</p>}
           </div>
         </div>
       </>}
@@ -767,8 +774,9 @@ export default function Page(){
             <label className="field-label">Observações gerais<textarea rows={3} maxLength={400} value={checkoutNote} onChange={e=>setCheckoutNote(e.target.value)} placeholder="Algo mais que o vendedor precisa saber?"/></label>
           </div>
         </section><aside className="checkout-total white-panel"><h2>Resumo do pedido</h2><div className="total-line"><span>{cartCount} {cartCount===1?'item':'itens'}</span><strong>{money(cartTotal)}</strong></div><div className="total-line bold"><span>Total dos produtos</span><strong>{money(cartTotal)}</strong></div><p>O pagamento será combinado diretamente com o vendedor.</p>
+          <p className="helper-note">Após abrir o WhatsApp, toque em enviar. Só o vendedor confirma o pedido no Condovery.</p>
           <button className="primary-button" disabled={busy} onClick={checkout}>{busy?'Registrando pedido...':'Continuar no WhatsApp'}<ArrowRight size={18}/></button>
-          <small>Seu pedido será registrado e ficará aguardando confirmação da loja.</small>
+          <small>O pedido fica registrado mesmo se você fechar o WhatsApp. Apenas a loja poderá confirmá-lo.</small>
         </aside></div>}
       </>}
 
@@ -797,6 +805,11 @@ export default function Page(){
             <Pill tone={o.status==='completed'?'green':o.status==='cancelled'?'neutral':'orange'}>{statusLabel[o.status]??o.status}</Pill></div>
           <p>{o.items.map(i=>i.quantity+'× '+i.name).join(' · ')}</p><OrderProgress status={o.status}/>
           <div className="order-bottom"><small>{new Date(o.created_at).toLocaleDateString('pt-BR')} · {o.fulfillment==='delivery'?'Entrega':'Retirada'}</small><strong>{money(o.total_cents)}</strong></div>
+          {(o.status==='awaiting_confirmation'||o.status==='confirmed')&&
+            <div className="order-contact"><p>{o.status==='awaiting_confirmation'?'Aguardando confirmação do vendedor.':'Confirmado pelo vendedor.'} Se precisar, reabra a conversa.</p>
+              <button type="button" className="outline-button" onClick={()=>reopenOrderWhatsApp(o.id)}>
+                <MessageCircle size={17}/> Abrir WhatsApp</button>
+            </div>}
           {o.status==='completed'&&(!o.review_status?
             <div className="review-order-action">
               {reviewOrderId===o.id?<form className="review-form" onSubmit={sendReview}>
@@ -831,7 +844,12 @@ export default function Page(){
       {view==='account'&&<><div className="page-title"><h1>Meu perfil</h1><p>Seu endereço, seus pedidos e tudo sobre sua conta.</p></div>
         <div className="account-grid"><div className="white-panel"><div className="account-welcome"><IllustrationSlot className="account-approved-art"
   src={artwork.accountApproved} alt="Conta de morador aprovada"
-  fallback={<CheckCircle2 size={23}/>}/><div className="avatar">{viewer.name[0]}</div><div><strong>{viewer.name}</strong><p>{viewer.email}</p></div></div><form onSubmit={saveProfile} className="form-stack">
+  fallback={<CheckCircle2 size={23}/>}/><div className="avatar">{profile.avatar_image?<img src={profile.avatar_image} alt="Minha foto"/>:viewer.name[0]}</div><div><strong>{viewer.name}</strong><p>{viewer.email}</p></div></div>
+          <label className="simple-photo-uploader"><ImagePlus size={18}/>
+            {profile.avatar_image?'Trocar foto de perfil':'Adicionar foto de perfil'}
+            <input aria-label="Enviar foto de perfil" type="file" accept="image/jpeg,image/png,image/webp"
+              disabled={busy} onChange={e=>{const file=e.target.files?.[0];if(file)upload(file,'avatar');}}/>
+          </label><form onSubmit={saveProfile} className="form-stack">
           <label>Nome<input required value={profile.name} onChange={e=>setProfile(s=>({...s,name:e.target.value}))}/></label>
           <label>WhatsApp<input required type="tel" value={profile.phone} onChange={e=>setProfile(s=>({...s,phone:e.target.value}))}/></label>
           <div className="field-grid"><label>Torre<select value={profile.tower} onChange={e=>setProfile(s=>({...s,tower:e.target.value}))}>{viewer.towers.map(t=><option key={t} value={t}>{t}</option>)}</select></label><label>Apartamento<input required value={profile.apartment} onChange={e=>setProfile(s=>({...s,apartment:e.target.value}))}/></label></div>
@@ -849,6 +867,9 @@ export default function Page(){
           <label>Nome da loja<input required minLength={3} value={shopForm.name} onChange={e=>setShopForm(s=>({...s,name:e.target.value}))} placeholder="Ex.: Bolos da Gabi"/></label>
           <label>O que você vende?<textarea maxLength={500} value={shopForm.description} onChange={e=>setShopForm(s=>({...s,description:e.target.value}))} rows={3} placeholder="Conte um pouco sobre seus produtos"/></label>
           <label>WhatsApp para pedidos<input required type="tel" value={shopForm.whatsapp} onChange={e=>setShopForm(s=>({...s,whatsapp:e.target.value}))} placeholder="(19) 99999-9999"/></label>
+          <button type="button" className="outline-button" onClick={testShopWhatsApp}>
+            <MessageCircle size={17}/> Testar WhatsApp</button>
+          <p className="form-hint">Confira se a conversa abre no número correto. Não enviamos mensagens automaticamente.</p>
           <button className="primary-button" disabled={busy} type="submit">Solicitar abertura <ArrowRight size={18}/></button>
         </form></div>:<>
           <div className="seller-overview"><div><strong>{myShop.name}</strong><p>Seu painel de vendas</p></div>
@@ -857,7 +878,22 @@ export default function Page(){
               {myShop.status==='approved'&&<button className="shop-share-button" onClick={()=>shareShop(myShop.id,myShop.name)}>
                 <Share2 size={16}/> Compartilhar loja</button>}
             </div></div>
-          {myShop.status!=='approved'&&<div className="info-banner"><Clock3 size={19}/> Sua loja ainda não foi aprovada. Você poderá publicar produtos após a aprovação.</div>}
+          <div className={'seller-activation'+(myShop.status==='approved'?' approved':myShop.status==='suspended'?' suspended':'')}>
+            <div className="activation-symbol">{myShop.status==='approved'?<CheckCircle2 size={28}/>:<Clock3 size={28}/>}</div>
+            <div><strong>{myShop.status==='approved'?'Loja aprovada!':myShop.status==='suspended'?'Loja suspensa':'Cadastro enviado!'}</strong>
+              <p>{myShop.status==='approved'?(myProducts.length?'Sua loja está pronta para receber pedidos.':'Agora adicione seus produtos para começar a vender.'):
+                myShop.status==='suspended'?'Fale com a administração do condomínio.':'Aguardando aprovação do condomínio.'}</p>
+            </div>
+          </div>
+          {myShop.status==='pending'&&<div className="seller-activation-help">
+            <div className="activation-steps"><span className="done"><Check size={14}/> Loja cadastrada</span>
+              <span className="current"><Clock3 size={14}/> Em análise</span><span><Package size={14}/> Vender</span></div>
+            <label className="simple-photo-uploader"><ImagePlus size={17}/>
+              {myShop.logo_image?'Trocar foto da loja':'Adicionar foto da loja'}
+              <input type="file" accept="image/jpeg,image/png,image/webp" disabled={busy}
+                onChange={e=>{const file=e.target.files?.[0];if(file)upload(file,'logo');}}/>
+            </label>
+          </div>}
           <div className="seller-metrics"><div><small>Pedidos aguardando</small><strong>{sellerOrders.filter(o=>o.status==='awaiting_confirmation').length}</strong></div><div><small>Vendas concluídas</small><strong>{money(sellerOrders.filter(o=>o.status==='completed').reduce((n,o)=>n+o.total_cents,0))}</strong></div></div>
           <div className="seller-tabs">
             <button className={sellerTab==='orders'?'active':''} onClick={()=>{setSellerTab('orders');loadSellerOrders().catch(fail);}}>Pedidos</button>
@@ -912,13 +948,38 @@ export default function Page(){
               <label>Categoria<select required value={productForm.category_id} onChange={e=>setProductForm(s=>({...s,category_id:e.target.value}))}><option value="">Selecione</option>{home.categories.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></label>
               <div className="field-grid"><label>Preço (R$)<input required type="number" min=".01" step=".01" value={productForm.price} onChange={e=>setProductForm(s=>({...s,price:e.target.value}))}/></label><label>Promocional (opcional)<input type="number" min=".01" step=".01" value={productForm.promo} onChange={e=>setProductForm(s=>({...s,promo:e.target.value}))}/></label></div>
               <div className="field-grid"><label>Estoque (opcional)<input type="number" min="0" step="1" value={productForm.stock} onChange={e=>setProductForm(s=>({...s,stock:e.target.value}))}/></label><label>Prazo de preparo<input maxLength={100} value={productForm.lead_time} onChange={e=>setProductForm(s=>({...s,lead_time:e.target.value}))} placeholder="Ex.: 1 dia"/></label></div>
-              <label className="check-label"><input type="checkbox" checked={productForm.is_available} onChange={e=>setProductForm(s=>({...s,is_available:e.target.checked}))}/> Produto disponível na vitrine</label>
+              <label>Exibição do produto
+                <select value={productForm.visibility} onChange={e=>setProductForm(s=>({...s,visibility:e.target.value as Product['visibility']}))}>
+                  <option value="available">Disponível — pode comprar</option>
+                  <option value="unavailable">Indisponível — aparece em cinza</option>
+                  <option value="hidden">Oculto — só você vê</option>
+                </select>
+              </label>
               <button className="primary-button" disabled={busy} type="submit">{busy?'Salvando...':'Salvar produto'}<Check size={18}/></button>
-            </form>:myProducts.length?<div className="seller-product-list">{myProducts.map(p=><button key={p.id} onClick={()=>editProduct(p)}><ProductPicture src={p.image_url} name={p.name}/><span><strong>{p.name}</strong><small>{money(price(p))} · {p.is_available?'Disponível':'Indisponível'}</small></span><ChevronRight size={18}/></button>)}</div>:<Empty title="Seu catálogo está vazio" subtitle="Adicione o primeiro produto para começar a vender."/>}</>}
+            </form>:myProducts.length?<div className="seller-product-list">
+              {myProducts.map(p=><article className={'seller-product-item'+(p.visibility==='unavailable'?' is-unavailable':'')} key={p.id}>
+                <button className="seller-product-edit" onClick={()=>editProduct(p)}>
+                  <ProductPicture src={p.image_url} name={p.name}/><span><strong>{p.name}</strong>
+                    <small>{money(price(p))} · {p.visibility==='available'?'Disponível':
+                      p.visibility==='unavailable'?'Indisponível':'Oculto'}</small></span>
+                  <ChevronRight size={18}/>
+                </button>
+                <div className="product-visibility-actions" role="group" aria-label={'Exibição de '+p.name}>
+                  {(['available','unavailable','hidden'] as const).map(v=><button key={v} type="button"
+                    disabled={busy} aria-pressed={p.visibility===v}
+                    className={p.visibility===v?'selected':''}
+                    onClick={()=>changeProductVisibility(p.id,v)}>
+                      {v==='available'?'Disponível':v==='unavailable'?'Indisponível':'Oculto'}
+                  </button>)}
+                </div>
+              </article>)}
+            </div>:<Empty title="Seu catálogo está vazio" subtitle="Adicione o primeiro produto para começar a vender."/>}</>}
           {sellerTab==='settings'&&<form className="white-panel form-stack" onSubmit={saveShop}>
             <label>Nome da loja<input required minLength={3} value={shopForm.name} onChange={e=>setShopForm(s=>({...s,name:e.target.value}))}/></label>
             <label>Descrição<textarea rows={3} maxLength={500} value={shopForm.description} onChange={e=>setShopForm(s=>({...s,description:e.target.value}))}/></label>
             <label>WhatsApp<input required value={shopForm.whatsapp} onChange={e=>setShopForm(s=>({...s,whatsapp:e.target.value}))}/></label>
+            <button type="button" className="outline-button" onClick={testShopWhatsApp}><MessageCircle size={17}/> Testar número no WhatsApp</button>
+            <label>Foto de perfil da loja<div className="image-upload">{shopForm.logo_image?<img src={shopForm.logo_image} alt="Perfil da loja"/>:<ImagePlus size={30}/>}<span>Adicionar foto da loja</span><input aria-label="Enviar foto do perfil da loja" type="file" accept="image/jpeg,image/png,image/webp" disabled={busy} onChange={e=>{const file=e.target.files?.[0];if(file)upload(file,'logo');}}/></div></label>
             <label>Foto de capa<div className="image-upload">{shopForm.cover_image?<img src={shopForm.cover_image} alt="Capa"/>:<ImagePlus size={30}/>}<span>Enviar foto de capa</span><input aria-label="Enviar foto de capa" type="file" accept="image/jpeg,image/png,image/webp" onChange={e=>{const f=e.target.files?.[0];if(f)upload(f,'cover');}}/></div></label>
             <label>Prazo de preparo<input maxLength={100} value={shopForm.lead_time} onChange={e=>setShopForm(s=>({...s,lead_time:e.target.value}))} placeholder="Ex.: Até 2 horas"/></label>
             <label>Orientações para retirada<textarea rows={2} maxLength={250} value={shopForm.pickup_instructions} onChange={e=>setShopForm(s=>({...s,pickup_instructions:e.target.value}))}/></label>
