@@ -619,15 +619,17 @@ await request('admin/towers',{method:'PATCH',cookie:lifecycleBuyer,
   body:{scheme:'letters',count:30},expected:403});
 await request('admin/towers',{method:'PATCH',cookie:adminCookie,
   body:{scheme:'letters',count:31},expected:400});
+await request('admin/towers',{method:'PATCH',cookie:adminCookie,
+  body:{scheme:'letters',count:1},expected:409});
 const numericTowers=await request('admin/towers',{method:'PATCH',cookie:adminCookie,
   body:{scheme:'numbers',count:30}});
 assert.equal(numericTowers.data.towers[0],'Torre 1');
 assert.equal(numericTowers.data.towers[29],'Torre 30');
-assert.equal((await request('me',{cookie:buyerCookie})).data.viewer.tower,'Torre 1');
+assert.equal((await request('me',{cookie:newLogin.cookie})).data.viewer.tower,'Torre 1');
 const newLetters=await request('admin/towers',{method:'PATCH',cookie:adminCookie,
   body:{scheme:'letters',count:30}});
 assert.equal(newLetters.data.towers[29],'Torre AD');
-assert.equal((await request('me',{cookie:buyerCookie})).data.viewer.tower,'Torre A');
+assert.equal((await request('me',{cookie:newLogin.cookie})).data.viewer.tower,'Torre A');
 assert.equal((await request('orders',{cookie:lifecycleSeller})).data.orders.some(order=>order.id===selfOrder.id),true);
 console.log('Tower management PASS: 30 alphabetic/numeric labels, safe resident remapping and permissions.');
 
