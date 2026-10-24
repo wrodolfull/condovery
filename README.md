@@ -94,6 +94,16 @@ antes da publicação. Consulte [docs/SHOP_REVIEWS.md](docs/SHOP_REVIEWS.md).
 
 Um único login permite comprar e vender. A loja exige WhatsApp válido e aceitação das regras de convivência, mas não aprovação administrativa. Produtos têm os estados disponível, indisponível (visível em cinza) e oculto (somente vendedor). A nova gestão inclui fotos de perfil pessoal e da loja. O pedido fica registrado antes do WhatsApp, com opção de reabrir a conversa. Veja [docs/SELLER_ONBOARDING.md](docs/SELLER_ONBOARDING.md).
 
+## Compartilhamento, exclusão de produtos e torres
+
+O botão **Compartilhar loja** abre o compartilhamento nativo em navegadores compatíveis quando a página está em HTTPS (ou localhost no próprio dispositivo). Em acesso por IP da rede local sem HTTPS, o navegador não permite abrir o painel do sistema operacional; nesse caso o Condovery oferece um painel alternativo com WhatsApp e cópia do link. Links locais só funcionam dentro da mesma rede: configure um domínio HTTPS para compartilhar com outros moradores.
+
+O dono da loja pode **Excluir produto** pelo editor ou pela lista, com confirmação. A exclusão é lógica: o produto some do catálogo e dos controles do vendedor, não poderá ser comprado novamente e as referências e valores dos pedidos antigos são preservados.
+
+Em **Administração do condomínio → Torres do condomínio**, é possível selecionar **Letras** (A até AD) ou **Números** (1 até 30) e definir de 1 a 30 torres. Os moradores são remapeados pela posição da torre ao trocar os formatos (ex.: Torre 1 → Torre A). Reduções que eliminariam uma torre ocupada são bloqueadas. O script de inicialização usa 30 torres alfabéticas por padrão em condomínios novos e pode ser configurado por `BOOTSTRAP_TOWER_FORMAT` e `BOOTSTRAP_TOWER_COUNT`. Condomínios existentes só mudam ao salvar a configuração no painel administrativo.
+
+**Para instalações atualizadas:** execute `npm run db:migrate` depois do merge para adicionar o campo de exclusão lógica. Não execute `db:bootstrap` para alterar as torres existentes.
+
 ## Cadastro imediato e regras
 
 Não há aprovação prévia para moradores ou lojas. Com código do condomínio e autenticação Supabase, moradores podem entrar e vender imediatamente. Lojas aceitam regras de convivência e podem ser denunciadas, ocultadas ou suspensas pela administração. Detalhes em [docs/INSTANT_ACCESS.md](docs/INSTANT_ACCESS.md). Não há detecção automática de imagens inadequadas nesta versão.
