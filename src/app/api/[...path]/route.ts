@@ -7,6 +7,7 @@ import { clearSession, inviteHash, issueSession, sessionViewer, tokenHash, type 
 import { normalizeWhatsApp, orderMessage, unitPrice } from '@/lib/orders';
 import { googleAuthClient,googleConfigured,storageAdmin,storageConfigured,STORAGE_BUCKET } from '@/lib/supabase';
 import { oauthCookie,randomToken,safeAppOrigin } from '@/lib/security';
+import { passwordRecoveryConfigured,sendPasswordResetEmail } from '@/lib/mail';
 
 export const runtime='nodejs';
 export const dynamic='force-dynamic';
@@ -82,7 +83,7 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
     if(!result.rowCount)bad('Código de convite inválido.',404);
     return out({name:result.rows[0].name,towers:result.rows[0].towers});
   }
-  if(path==='auth/providers'&&method==='GET')return out({google:googleConfigured()});
+  if(path==='auth/providers'&&method==='GET')return out({google:googleConfigured(),passwordRecovery:passwordRecoveryConfigured()});
   if(path==='auth/google'&&method==='GET'){
     if(!googleConfigured())bad('Login Google não configurado.',503);
     const {client,pkceValues}=googleAuthClient();
@@ -174,6 +175,55 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
     issueSession(response,result);
     response.cookies.set(oauthCookie('condovery_google_signup','',0));
     return response;
+  }
+  if(path==='auth/password/request'&&method==='POST'){
+    if(!passwordRecoveryConfigured())bad('Recuperação por e-mail ainda não configurada.',503);
+    const b=z.object({email:z.string().email().max(250).transform(v=>v.trim().toLowerCase())}).parse(await body(req));
+    const ip=clean(req.headers.get('x-real-ip')||req.headers.get('cf-connecting-ip')||'unknown',80);
+    const hits=await query(
+      "SELECT (SELECT count(*)::int FROM password_reset_attempts WHERE email=$1 AND created_at>now()-interval '1 hour') AS email_count,(SELECT count(*)::int FROM password_reset_attempts WHERE ip=$2 AND created_at>now()-interval '1 hour') AS ip_count",
+      [b.email,ip]
+    );
+    const generic='Se houver uma conta elegível, você receberá um link para redefinir sua senha.';
+    if(hits.rows[0].email_count>=3||hits.rows[0].ip_count>=15)return out({message:generic});
+    await query('INSERT INTO password_reset_attempts(email,ip) VALUES($1,$2)',[b.email,ip]);
+    const user=await query("SELECT id FROM users WHERE email=$1 AND password_hash IS NOT NULL AND status<>'suspended'",[b.email]);
+    if(user.rowCount){
+      const token=randomToken();
+      await transaction(async tx=>{
+        await tx.query('DELETE FROM password_reset_tokens WHERE user_id=$1',[user.rows[0].id]);
+        await tx.query(
+          "INSERT INTO password_reset_tokens(token_hash,user_id,expires_at) VALUES($1,$2,now()+interval '30 minutes')",
+          [tokenHash(token),user.rows[0].id]
+        );
+      });
+      try{
+        await sendPasswordResetEmail(b.email,token);
+      }catch(e){
+        await query('DELETE FROM password_reset_tokens WHERE token_hash=$1',[tokenHash(token)]);
+        console.error('password_reset_delivery_failed',e instanceof Error?e.message:'unknown');
+      }
+    }
+    return out({message:generic});
+  }
+  if(path==='auth/password/confirm'&&method==='POST'){
+    const b=z.object({
+      token:z.string().regex(/^[0-9a-f]{64}$/),
+      password:z.string().min(10).max(100)
+    }).parse(await body(req));
+    const hash=await bcrypt.hash(b.password,12);
+    await transaction(async tx=>{
+      const r=await tx.query(
+        'DELETE FROM password_reset_tokens WHERE token_hash=$1 AND expires_at>now() RETURNING user_id',
+        [tokenHash(b.token)]
+      );
+      if(!r.rowCount)bad('Link expirado ou já utilizado.',400);
+      const updated=await tx.query('UPDATE users SET password_hash=$1 WHERE id=$2 AND password_hash IS NOT NULL RETURNING id',
+        [hash,r.rows[0].user_id]);
+      if(!updated.rowCount)bad('Esta conta utiliza o login Google.',400);
+      await tx.query('DELETE FROM sessions WHERE user_id=$1',[r.rows[0].user_id]);
+    });
+    return out({message:'Senha redefinida. Faça login novamente.'});
   }
   if(path==='auth/register'&&method==='POST'){
     const b=signup.parse(await body(req));
