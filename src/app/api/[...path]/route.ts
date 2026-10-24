@@ -589,8 +589,6 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
     if(violatesCommunityLanguage(b.name,b.description))bad('Revise o texto do produto: linguagem imprópria não é permitida.');
     if(violatesCommunityLanguage(...b.option_groups.flatMap(g=>[g.name,...g.options.map(o=>o.name)])))
       bad('Revise as opções de personalização: linguagem imprópria não é permitida.');
-    if(violatesCommunityLanguage(...b.option_groups.flatMap(g=>[g.name,...g.options.map(o=>o.name)])))
-      bad('Revise as opções de personalização: linguagem imprópria não é permitida.');
     if(b.promo_price_cents!=null&&b.promo_price_cents>=b.price_cents)bad('O preço promocional deve ser menor que o original.');
     const category=await query('SELECT id FROM categories WHERE id=$1 AND condominium_id=$2',[b.category_id,u.condominium_id]);
     if(!category.rowCount)bad('Categoria inválida.');
@@ -635,6 +633,8 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
       visibility:z.enum(['available','unavailable','hidden']).optional(),
       is_available:z.boolean().optional(),lead_time:z.string().max(100),option_groups:optionGroupsSchema.default([])}).parse(await body(req));
     if(violatesCommunityLanguage(b.name,b.description))bad('Revise o texto do produto: linguagem imprópria não é permitida.');
+    if(violatesCommunityLanguage(...b.option_groups.flatMap(g=>[g.name,...g.options.map(o=>o.name)])))
+      bad('Revise as opções de personalização: linguagem imprópria não é permitida.');
     if(b.promo_price_cents!=null&&b.promo_price_cents>=b.price_cents)bad('Preço promocional inválido.');
     const cat=await query('SELECT id FROM categories WHERE id=$1 AND condominium_id=$2',[b.category_id,u.condominium_id]);
     if(!cat.rowCount)bad('Categoria inválida.');

@@ -213,7 +213,7 @@ export default function Page(){
     setMyShop(data.shop);setMyProducts(data.products);
     if(data.shop)setShopForm({
       name:data.shop.name,description:data.shop.description,whatsapp:data.shop.whatsapp??'',
-      is_open:data.shop.is_open,delivery_enabled:data.shop.delivery_enabled,pickup_enabled:data.shop.pickup_enabled,
+      is_open:data.shop.is_open,delivery_enabled:data.shop.delivery_enabled,delivery_fee_cents:data.shop.delivery_fee_cents??0,pickup_enabled:data.shop.pickup_enabled,
       lead_time:data.shop.lead_time??'',pickup_instructions:data.shop.pickup_instructions??'',cover_image:data.shop.cover_image??'',logo_image:data.shop.logo_image??''
     });
   },[]);
