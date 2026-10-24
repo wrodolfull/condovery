@@ -1116,6 +1116,30 @@ export default function Page(){
         </button>}</div></div>
       </>}
 
+      {showDeleteShop&&myShop&&view==='seller'&&<div className="account-delete-overlay" role="presentation"
+        onClick={()=>!busy&&setShowDeleteShop(false)}>
+        <section className="account-delete-dialog" role="dialog" aria-modal="true" aria-labelledby="delete-shop-title"
+          onClick={event=>event.stopPropagation()}>
+          <button className="account-delete-close" type="button" aria-label="Cancelar exclusão" disabled={busy}
+            onClick={()=>setShowDeleteShop(false)}><X size={20}/></button>
+          <h2 id="delete-shop-title">Excluir loja definitivamente</h2>
+          <p>Esta ação é irreversível. A loja e os produtos deixarão de aparecer para os moradores.
+            O histórico de pedidos será preservado e sua conta continuará ativa.</p>
+          <p>Conclua ou cancele todos os pedidos em andamento antes de excluir a loja.</p>
+          <form className="form-stack" onSubmit={deleteShop}>
+            <label>Digite <strong>EXCLUIR LOJA</strong> para confirmar
+              <input autoComplete="off" required value={shopDeleteConfirmation}
+                onChange={event=>setShopDeleteConfirmation(event.target.value)}
+                placeholder="EXCLUIR LOJA"/>
+            </label>
+            {error&&<p className="account-delete-error" role="alert">{error}</p>}
+            <button type="submit" className="account-delete-submit" disabled={busy||shopDeleteConfirmation!=='EXCLUIR LOJA'}>
+              {busy?'Excluindo...':'Excluir minha loja definitivamente'}
+            </button>
+            <button type="button" className="outline-button" onClick={()=>setShowDeleteShop(false)} disabled={busy}>Cancelar</button>
+          </form>
+        </section>
+      </div>}
       {showDeleteAccount&&view==='account'&&viewer.role==='resident'&&
         <div className="account-delete-overlay" onClick={()=>!busy&&setShowDeleteAccount(false)}>
           <section className="account-delete-dialog" role="dialog" aria-modal="true"
@@ -1167,13 +1191,18 @@ export default function Page(){
           <div className="seller-overview"><div><strong>{myShop.name}</strong><p>Seu painel de vendas</p></div>
             <div className="seller-overview-actions">
               <Pill tone={myShop.status==='approved'?'green':'orange'}>{statusLabel[myShop.status??'pending']}</Pill>
-              {myShop.status==='approved'&&<button className="shop-share-button" onClick={()=>shareShop(myShop.id,myShop.name)}>
-                <Share2 size={16}/> Compartilhar loja</button>}
+              {myShop.status==='approved'&&<>
+                <button className="outline-button seller-pause-button" disabled={busy} type="button" onClick={toggleShopOpen}>
+                  {myShop.is_open?<PauseCircle size={17}/>:<PlayCircle size={17}/>}
+                  {myShop.is_open?'Pausar loja':'Reabrir loja'}</button>
+                <button className="shop-share-button" onClick={()=>shareShop(myShop.id,myShop.name)}>
+                  <Share2 size={16}/> Compartilhar loja</button>
+              </>}
             </div></div>
           <div className={'seller-activation'+(myShop.status==='approved'?' approved':myShop.status==='suspended'?' suspended':'')}>
             <div className="activation-symbol">{myShop.status==='approved'?<CheckCircle2 size={28}/>:<Clock3 size={28}/>}</div>
             <div><strong>{myShop.status==='approved'?'Sua loja está ativa!':myShop.status==='suspended'?'Loja suspensa':'Ativando sua loja'}</strong>
-              <p>{myShop.status==='approved'?(myProducts.length?'Sua loja está pronta para receber pedidos.':'Agora adicione seus produtos para começar a vender.'):
+              <p>{myShop.status==='approved'?(!myShop.is_open?'A loja está pausada e não recebe novos pedidos. Reabra quando quiser.':myProducts.length?'Sua loja está pronta para receber pedidos.':'Agora adicione seus produtos para começar a vender.'):
                 myShop.status==='suspended'?'Fale com a administração do condomínio.':'Sua loja ficará disponível automaticamente.'}</p>
             </div>
           </div>
@@ -1313,7 +1342,7 @@ export default function Page(){
             <label>Foto de capa<div className="image-upload">{shopForm.cover_image?<img src={shopForm.cover_image} alt="Capa"/>:<ImagePlus size={30}/>}<span>Enviar foto de capa</span><input aria-label="Enviar foto de capa" type="file" accept="image/jpeg,image/png,image/webp" onChange={e=>{const f=e.target.files?.[0];e.target.value='';choosePhoto(f,'cover');}}/></div></label>
             <label>Prazo de preparo<input maxLength={100} value={shopForm.lead_time} onChange={e=>setShopForm(s=>({...s,lead_time:e.target.value}))} placeholder="Ex.: Até 2 horas"/></label>
             <label>Orientações para retirada<textarea rows={2} maxLength={250} value={shopForm.pickup_instructions} onChange={e=>setShopForm(s=>({...s,pickup_instructions:e.target.value}))}/></label>
-            <label className="check-label"><input type="checkbox" checked={shopForm.is_open} onChange={e=>setShopForm(s=>({...s,is_open:e.target.checked}))}/> Loja aceitando pedidos</label>
+            <p className="muted seller-pause-note">Para abrir ou pausar as vendas imediatamente, use o botão {myShop.is_open?'Pausar loja':'Reabrir loja'} no topo deste painel.</p>
             <label className="check-label"><input type="checkbox" checked={shopForm.delivery_enabled} onChange={e=>setShopForm(s=>({...s,delivery_enabled:e.target.checked}))}/> Oferecer entrega</label>
             {shopForm.delivery_enabled&&<label>Taxa de entrega (R$)
               <MoneyInput cents={shopForm.delivery_fee_cents}
@@ -1321,6 +1350,13 @@ export default function Page(){
             </label>}
             <label className="check-label"><input type="checkbox" checked={shopForm.pickup_enabled} onChange={e=>setShopForm(s=>({...s,pickup_enabled:e.target.checked}))}/> Oferecer retirada</label>
             <button className="primary-button" disabled={busy} type="submit">Salvar configurações <Check size={18}/></button>
+            <div className="shop-danger-zone"><h3>Encerrar loja</h3>
+              <p>A exclusão remove sua loja da vitrine e seus produtos. Pedidos anteriores são preservados.
+                Para excluir, finalize ou cancele os pedidos em andamento. Sua conta de morador continuará ativa.</p>
+              <button type="button" className="shop-delete-trigger" disabled={busy}
+                onClick={()=>{setShowDeleteShop(true);setShopDeleteConfirmation('');setError('');}}>
+                <Trash2 size={17}/> Excluir minha loja</button>
+            </div>
           </form>}
         </>}
       </>}
