@@ -25,3 +25,6 @@ CREATE TABLE IF NOT EXISTS public.content_reports (
 CREATE INDEX IF NOT EXISTS content_reports_moderator_queue_idx
   ON public.content_reports(condominium_id,status,created_at DESC);
 ALTER TABLE public.content_reports ENABLE ROW LEVEL SECURITY;
+
+-- A product hidden after a confirmed complaint cannot be republished by the seller until cleared.
+ALTER TABLE public.products ADD COLUMN IF NOT EXISTS moderation_blocked boolean NOT NULL DEFAULT false;
