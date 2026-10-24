@@ -16,7 +16,7 @@ type Order={id:string;code:number;status:string;total_cents:number;shop_name:str
 type CartItem={product:Product;quantity:number;note:string};
 type HomeData={categories:Category[];shops:Shop[];products:Product[]};
 type AdminData={residents:{id:string;name:string;email:string;tower:string;apartment:string;status:string}[];shops:{id:string;name:string;owner_name:string;status:string}[];stats:{residents:number;shops:number;orders:number};categories:Category[]};
-type View='home'|'categories'|'orders'|'account'|'shop'|'product'|'cart'|'success'|'seller'|'admin';
+type View='home'|'categories'|'favorites'|'orders'|'account'|'shop'|'product'|'cart'|'success'|'seller'|'admin';
 const money=(n:number)=>new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(n/100);
 const price=(p:Product)=>p.promo_price_cents??p.price_cents;
 const statusLabel:Record<string,string>={awaiting_confirmation:'Aguardando confirmação',confirmed:'Confirmado',completed:'Concluído',cancelled:'Cancelado',pending:'Em análise',approved:'Aprovado',suspended:'Suspenso'};
@@ -53,14 +53,19 @@ function SectionHeader({title,action,onAction}:{title:string;action?:string;onAc
 function Empty({title,subtitle,action,onAction}:{title:string;subtitle:string;action?:string;onAction?:()=>void}){
   return <div className="empty-state"><div className="empty-icon"><ShoppingBasket size={35}/></div><h3>{title}</h3><p>{subtitle}</p>{action&&<button className="outline-button" onClick={onAction}>{action}</button>}</div>;
 }
-function ProductCard({p,onClick}:{p:Product;onClick:()=>void}){
-  return <button className="product-card" onClick={onClick}>
-    <ProductPicture src={p.image_url} name={p.name}/>
-    {p.promo_price_cents!=null&&<span className="card-offer">Oferta</span>}
-    <div className="product-meta"><span className="product-name">{p.name}</span><span className="muted ellipsis">{p.shop_name??''}</span>
-      <div className="product-prices">{p.promo_price_cents!=null&&<del>{money(p.price_cents)}</del>}<strong>{money(price(p))}</strong></div>
-    </div>
-  </button>;
+function ProductCard({p,onClick,favorite,onFavorite}:{p:Product;onClick:()=>void;favorite:boolean;onFavorite:(id:string)=>void}){
+  return <article className="product-card">
+    <button className="product-open" onClick={onClick} aria-label={'Ver '+p.name}>
+      <ProductPicture src={p.image_url} name={p.name}/>
+      {p.promo_price_cents!=null&&<span className="card-offer">Oferta</span>}
+      <div className="product-meta"><span className="product-name">{p.name}</span><span className="muted ellipsis">{p.shop_name??''}</span>
+        <div className="product-prices">{p.promo_price_cents!=null&&<del>{money(p.price_cents)}</del>}<strong>{money(price(p))}</strong></div>
+      </div>
+    </button>
+    <button className={'favorite-heart'+(favorite?' is-favorite':'')} onClick={()=>onFavorite(p.id)} aria-label={favorite?'Remover dos favoritos':'Salvar nos favoritos'} aria-pressed={favorite}>
+      <Heart size={19} fill={favorite?'currentColor':'none'}/>
+    </button>
+  </article>;
 }
 
 export default function Page(){
@@ -76,6 +81,8 @@ export default function Page(){
   const [toast,setToast]=useState('');
   const [view,setView]=useState<View>('home');
   const [home,setHome]=useState<HomeData>(emptyHome);
+  const [favoriteIds,setFavoriteIds]=useState<string[]>([]);
+  const [favoriteProducts,setFavoriteProducts]=useState<Product[]>([]);
   const [query,setQuery]=useState('');
   const [category,setCategory]=useState('');
   const [catalogProducts,setCatalogProducts]=useState<Product[]>([]);
@@ -111,6 +118,10 @@ export default function Page(){
   const fail=(e:unknown)=>setError(e instanceof Error?e.message:'Não foi possível concluir.');
   const go=(next:View)=>{setError('');setView(next);window.scrollTo({top:0,behavior:'smooth'});};
   const loadHome=useCallback(async()=>{setHome(await api<HomeData>('home'));},[]);
+  const loadFavorites=useCallback(async()=>{
+    const result=await api<{ids:string[];products:Product[]}>('favorites');
+    setFavoriteIds(result.ids);setFavoriteProducts(result.products);
+  },[]);
   const loadMine=useCallback(async()=>{
     const data=await api<{shop:Shop|null;products:Product[]}>('shops/mine');
     setMyShop(data.shop);setMyProducts(data.products);
@@ -128,8 +139,8 @@ export default function Page(){
   },[]);
   const loadAdmin=useCallback(async()=>setAdminData(await api<AdminData>('admin/summary')),[]);
   const refresh=useCallback(async(u:Viewer)=>{
-    await Promise.all([loadHome(),loadMine(),loadOrders(),...(u.role==='admin'?[loadAdmin()]:[])]);
-  },[loadHome,loadMine,loadOrders,loadAdmin]);
+    await Promise.all([loadHome(),loadMine(),loadOrders(),loadFavorites(),...(u.role==='admin'?[loadAdmin()]:[])]);
+  },[loadHome,loadMine,loadOrders,loadFavorites,loadAdmin]);
 
   useEffect(()=>{
     api<{google:boolean}>('auth/providers').then(r=>setGoogleEnabled(r.google)).catch(()=>{});
@@ -189,6 +200,14 @@ export default function Page(){
   const featured=home.products.filter(p=>p.promo_price_cents!=null||p.is_featured).slice(0,8);
   const newest=home.products.slice(0,10);
 
+  async function toggleFavorite(id:string){
+    const exists=favoriteIds.includes(id);
+    setFavoriteIds(old=>exists?old.filter(x=>x!==id):[id,...old]);
+    try{
+      await api(exists?'favorites/'+id:'favorites',{method:exists?'DELETE':'POST',...(!exists?{body:payload({product_id:id})}:{})});
+      await loadFavorites();
+    }catch(e){await loadFavorites().catch(()=>{});fail(e);}
+  }
   async function lookupCondo(){
     if(authForm.invite.trim().length<10){setCondoLookup(null);return;}
     try{
@@ -225,7 +244,7 @@ export default function Page(){
   }
   async function logout(){
     try{await api('auth/logout',{method:'POST'});}catch{}
-    setViewer(null);setGoogleSignup(null);setHome(emptyHome);setCart([]);setMyShop(null);setOrders([]);go('home');
+    setViewer(null);setGoogleSignup(null);setHome(emptyHome);setFavoriteIds([]);setFavoriteProducts([]);setCart([]);setMyShop(null);setOrders([]);go('home');
   }
   async function openShop(id:string){
     setBusy(true);try{setSelectedShop(await api<{shop:Shop;products:Product[]}>('shops/'+id));go('shop');}catch(e){fail(e);}finally{setBusy(false);}
@@ -326,7 +345,7 @@ export default function Page(){
       const r=await api<{viewer:Viewer}>('me');setViewer(r.viewer);notify('Perfil atualizado.');
     }catch(e){fail(e);}finally{setBusy(false);}
   }
-  const bottomNav:[View,React.ElementType,string][]=[['home',Home,'Início'],['categories',LayoutGrid,'Categorias'],['orders',Receipt,'Pedidos'],['account',UserRound,'Conta']];
+  const bottomNav:[View,React.ElementType,string][]=[['home',Home,'Início'],['categories',LayoutGrid,'Explorar'],['favorites',Heart,'Salvos'],['orders',Receipt,'Pedidos'],['account',UserRound,'Conta']];
 
   if(loading)return <main className="loading-page"><div className="spinner"/><strong>condovery.</strong><span>Preparando sua vizinhança</span></main>;
   if(!viewer)return <main className="auth-layout">
@@ -387,9 +406,9 @@ export default function Page(){
         <div className="category-track">
           {home.categories.map(c=><button key={c.id} className="category-card" onClick={()=>{setCategory(c.id);go('categories');}}><div><CategorySymbol name={c.name} icon={c.icon}/></div><span>{c.name}</span></button>)}
         </div>
-        {!query&&featured.length>0&&<><SectionHeader title="Ofertas e destaques" action="Ver tudo" onAction={()=>go('categories')}/><div className="product-track">{featured.map(p=><ProductCard key={p.id} p={p} onClick={()=>openProduct(p)}/>)}</div></>}
+        {!query&&featured.length>0&&<><SectionHeader title="Ofertas e destaques" action="Ver tudo" onAction={()=>go('categories')}/><div className="product-track">{featured.map(p=><ProductCard key={p.id} p={p} onClick={()=>openProduct(p)} favorite={favoriteIds.includes(p.id)} onFavorite={toggleFavorite}/>)}</div></>}
         <SectionHeader title={query?'Resultados da busca':'Feito e vendido por vizinhos'} action={!query?'Ver produtos':undefined} onAction={()=>go('categories')}/>
-        {filtered.length?<div className="product-grid">{(query?filtered:newest).map(p=><ProductCard key={p.id} p={p} onClick={()=>openProduct(p)}/>)}</div>
+        {filtered.length?<div className="product-grid">{(query?filtered:newest).map(p=><ProductCard key={p.id} p={p} onClick={()=>openProduct(p)} favorite={favoriteIds.includes(p.id)} onFavorite={toggleFavorite}/>)}</div>
           :<Empty title={query?'Nada por aqui ainda':'A vitrine está começando!'} subtitle={query?'Tente outro termo ou explore as categorias.':'As primeiras lojas e produtos vão aparecer aqui assim que forem aprovados.'} action={!query?'Quero vender':undefined} onAction={()=>go('seller')}/>}
         {query&&catalogHasMore&&<button className="outline-button load-more" disabled={catalogLoading} onClick={()=>setCatalogPage(p=>p+1)}>
           {catalogLoading?'Carregando...':'Mostrar mais produtos'} <ArrowRight size={17}/>
@@ -407,7 +426,7 @@ export default function Page(){
         <div className="search-container"><Search size={20}/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Buscar por produto ou loja" aria-label="Buscar"/>{query&&<button onClick={()=>setQuery('')}><X size={16}/></button>}</div>
         <div className="filter-chips"><button className={!category?'chosen':''} onClick={()=>setCategory('')}>Todos</button>{home.categories.map(c=><button key={c.id} className={category===c.id?'chosen':''} onClick={()=>setCategory(c.id)}>{c.name}</button>)}</div>
         <SectionHeader title={categoryName??'Produtos dos vizinhos'}/>
-        {filtered.length?<div className="product-grid">{filtered.map(p=><ProductCard key={p.id} p={p} onClick={()=>openProduct(p)}/>)}</div>:
+        {filtered.length?<div className="product-grid">{filtered.map(p=><ProductCard key={p.id} p={p} onClick={()=>openProduct(p)} favorite={favoriteIds.includes(p.id)} onFavorite={toggleFavorite}/>)}</div>:
           catalogLoading?<div className="loading-inline"><div className="spinner"/> Buscando produtos...</div>:
           <Empty title="Nenhum produto encontrado" subtitle="Tente outra categoria ou volte mais tarde."/>}
         {catalogHasMore&&<button className="outline-button load-more" disabled={catalogLoading} onClick={()=>setCatalogPage(p=>p+1)}>
@@ -473,7 +492,13 @@ export default function Page(){
         <a className="primary-button" href={lastOrder.whatsapp_url} target="_blank" rel="noopener noreferrer">Abrir conversa no WhatsApp <ArrowRight size={18}/></a>
         <button className="outline-button" onClick={()=>{loadOrders();go('orders');}}>Acompanhar meus pedidos</button><small>Abrir o WhatsApp não significa que o vendedor recebeu ou confirmou o pedido.</small></div>}
 
-      {view==='orders'&&<><div className="page-title"><h1>Meus pedidos</h1><p>Seu histórico de compras com os vizinhos.</p></div>
+      {view==='favorites'&&<>
+        <div className="page-title"><h1>Meus favoritos</h1><p>Seus produtos preferidos, sempre à mão.</p></div>
+        {favoriteProducts.length?<div className="product-grid">{favoriteProducts.map(p=>
+          <ProductCard key={p.id} p={p} onClick={()=>openProduct(p)} favorite={favoriteIds.includes(p.id)} onFavorite={toggleFavorite}/>
+        )}</div>:<Empty title="Nenhum favorito por enquanto" subtitle="Toque no coração de um produto para encontrá-lo facilmente depois." action="Explorar produtos" onAction={()=>go('categories')}/>}
+      </>}
+            {view==='orders'&&<><div className="page-title"><h1>Meus pedidos</h1><p>Seu histórico de compras com os vizinhos.</p></div>
         {!orders.length?<Empty title="Ainda não fez pedidos?" subtitle="Encontre algo gostoso ou útil vendido pertinho de você." action="Começar a comprar" onAction={()=>go('home')}/>:
         <div className="order-list">{orders.map(o=><article className="order-card" key={o.id}><div className="order-top"><strong>#{o.code} · {o.shop_name}</strong><Pill tone={o.status==='completed'?'green':o.status==='cancelled'?'neutral':'orange'}>{statusLabel[o.status]??o.status}</Pill></div><p>{o.items.map(i=>i.quantity+'× '+i.name).join(' · ')}</p><div className="order-bottom"><small>{new Date(o.created_at).toLocaleDateString('pt-BR')} · {o.fulfillment==='delivery'?'Entrega':'Retirada'}</small><strong>{money(o.total_cents)}</strong></div></article>)}</div>}</>}
 
