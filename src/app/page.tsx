@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import {IllustrationSlot} from '@/components/IllustrationSlot';
 import {RoundedStars} from '@/components/RoundedStars';
 import {artwork,getCategoryArtwork} from '@/lib/artwork';
+import {selectedOptions, extrasTotal, type OptionGroup, type Selection} from '@/lib/orders';
 import {
   ArrowLeft, ArrowRight, Bell, Building2, CakeSlice, Check, CheckCircle2, ChevronDown, ChevronRight,
   CircleHelp, Clock3, Coffee, Gift, Heart, Home, ImagePlus, LayoutGrid, LogOut, MapPin,
@@ -14,16 +15,25 @@ import {
 
 type Viewer={id:string;name:string;email:string;phone:string;avatar_image:string|null;role:'admin'|'resident';status:'pending'|'approved'|'suspended';tower:string;apartment:string;condominium_name:string;towers:string[]};
 type Category={id:string;name:string;icon:string};
-type Shop={id:string;name:string;description:string;cover_image:string|null;logo_image:string|null;status?:string;is_open:boolean;delivery_enabled:boolean;pickup_enabled:boolean;lead_time:string;pickup_instructions?:string;whatsapp?:string};
-type Product={id:string;shop_id:string;shop_name?:string;visibility:'available'|'unavailable'|'hidden';category_id:string;name:string;description:string;price_cents:number;promo_price_cents:number|null;image_url:string|null;stock:number|null;is_available?:boolean;lead_time?:string;is_featured?:boolean};
-type Order={id:string;code:number;status:string;review_status?:'pending'|'approved'|'rejected'|null;total_cents:number;shop_name:string;buyer_name:string;buyer_phone:string;tower:string;apartment:string;fulfillment:string;delivery_day:string|null;delivery_window:string;delivery_instructions:string[];note:string;items:{name:string;quantity:number;unit_price_cents:number;note:string}[];created_at:string};
+type Shop={id:string;name:string;description:string;cover_image:string|null;logo_image:string|null;status?:string;is_open:boolean;delivery_enabled:boolean;delivery_fee_cents:number;pickup_enabled:boolean;lead_time:string;pickup_instructions?:string;whatsapp?:string};
+type Product={id:string;shop_id:string;shop_name?:string;visibility:'available'|'unavailable'|'hidden';category_id:string;name:string;description:string;price_cents:number;promo_price_cents:number|null;image_url:string|null;stock:number|null;is_available?:boolean;lead_time?:string;is_featured?:boolean;option_groups?:OptionGroup[]};
+type Order={id:string;code:number;status:string;review_status?:'pending'|'approved'|'rejected'|null;total_cents:number;shop_name:string;buyer_name:string;buyer_phone:string;tower:string;apartment:string;fulfillment:string;delivery_day:string|null;delivery_window:string;delivery_instructions:string[];note:string;subtotal_cents:number;delivery_fee_cents:number;items:{name:string;quantity:number;unit_price_cents:number;note:string;options?:{group:string;name:string;price_cents:number}[]}[];created_at:string};
 type ReviewStatus='pending'|'approved'|'rejected';
 type PublicReview={id:string;rating:number;description:string;created_at:string};
 type ReviewSummary={average:number|null;count:number};
 type PublicReviews={summary:ReviewSummary;reviews:PublicReview[]};
 type SellerReview={id:string;order_id:string;order_code:number;rating:number;description:string;status:ReviewStatus;created_at:string;moderated_at:string|null};
 type ContentReport={id:string;target_type:'shop'|'product';target_id:string;target_name:string;reason:string;details:string;product_blocked:boolean;status:'open'|'resolved';created_at:string};
-type CartItem={product:Product;quantity:number;note:string};
+type CartItem={product:Product;quantity:number;note:string;selections?:Selection;line_key?:string};
+type CheckoutQuote={subtotal_cents:number;delivery_fee_cents:number;total_cents:number;lines:{
+  name:string;quantity:number;unit_price_cents:number;total_cents:number;
+  options:{group:string;name:string;price_cents:number}[];note:string
+}[]};
+const addOns=(p:Product,choices:Selection={})=>{
+  try{return extrasTotal(selectedOptions(p.option_groups??[],choices));}catch{return 0;}
+};
+const cartUnitPrice=(i:CartItem)=>price(i.product)+addOns(i.product,i.selections);
+const moneyInput=(v:number)=>Number.isFinite(v)?(v/100).toFixed(2):'0.00';
 type HomeData={categories:Category[];shops:Shop[];products:Product[]};
 type AdminData={residents:{id:string;name:string;email:string;tower:string;apartment:string;status:string}[];shops:{id:string;name:string;owner_name:string;status:string}[];stats:{residents:number;shops:number;orders:number};categories:Category[]};
 type View='home'|'categories'|'favorites'|'orders'|'account'|'shop'|'product'|'cart'|'success'|'seller'|'admin';
@@ -31,6 +41,10 @@ const money=(n:number)=>new Intl.NumberFormat('pt-BR',{style:'currency',currency
 const price=(p:Product)=>p.promo_price_cents??p.price_cents;
 const statusLabel:Record<string,string>={awaiting_confirmation:'Aguardando confirmação',confirmed:'Confirmado',completed:'Concluído',cancelled:'Cancelado',pending:'Em análise',approved:'Ativo',suspended:'Suspenso'};
 const emptyHome:HomeData={categories:[],shops:[],products:[]};
+const cartShopSafe=(cart:CartItem[],shops:Shop[],selected:{shop:Shop}|null)=>{
+  return shops.find(s=>s.id===cart[0]?.product.shop_id)||
+    (selected?.shop.id===cart[0]?.product.shop_id?selected.shop:undefined);
+};
 type OrderFilter='all'|'awaiting_confirmation'|'confirmed'|'completed'|'cancelled';
 const orderFilters:{key:OrderFilter;label:string}[]=[
   {key:'all',label:'Todos'},
@@ -144,6 +158,7 @@ export default function Page(){
   const [selectedProduct,setSelectedProduct]=useState<Product|null>(null);
   const [qty,setQty]=useState(1);
   const [itemNote,setItemNote]=useState('');
+  const [productChoices,setProductChoices]=useState<Selection>({});
   const [cart,setCart]=useState<CartItem[]>([]);
   const [fulfillment,setFulfillment]=useState<'delivery'|'pickup'>('delivery');
   const [deliveryDay,setDeliveryDay]=useState('');
@@ -152,6 +167,7 @@ export default function Page(){
   const [checkoutNote,setCheckoutNote]=useState('');
   const [lastOrder,setLastOrder]=useState<{code:number;whatsapp_url:string}|null>(null);
   const [checkoutKey,setCheckoutKey]=useState<string|null>(null);
+  const [revisedQuote,setRevisedQuote]=useState<CheckoutQuote|null>(null);
   const [orders,setOrders]=useState<Order[]>([]);
   const [orderFilter,setOrderFilter]=useState<OrderFilter>('all');
   const [ordersLoading,setOrdersLoading]=useState(false);
@@ -160,8 +176,8 @@ export default function Page(){
   const [myProducts,setMyProducts]=useState<Product[]>([]);
   const [adminData,setAdminData]=useState<AdminData|null>(null);
   const [sellerTab,setSellerTab]=useState<'orders'|'products'|'reviews'|'settings'>('orders');
-  const [shopForm,setShopForm]=useState({name:'',description:'',whatsapp:'',is_open:true,delivery_enabled:true,pickup_enabled:true,lead_time:'',pickup_instructions:'',cover_image:'',logo_image:''});
-  const [productForm,setProductForm]=useState({id:'',name:'',description:'',category_id:'',price:'',promo:'',stock:'',image_url:'',visibility:'available' as Product['visibility'],lead_time:''});
+  const [shopForm,setShopForm]=useState({name:'',description:'',whatsapp:'',is_open:true,delivery_enabled:true,delivery_fee_cents:0,pickup_enabled:true,lead_time:'',pickup_instructions:'',cover_image:'',logo_image:''});
+  const [productForm,setProductForm]=useState({id:'',name:'',description:'',category_id:'',price:'',promo:'',stock:'',image_url:'',visibility:'available' as Product['visibility'],lead_time:'',option_groups:[] as OptionGroup[]});
   const [editingProduct,setEditingProduct]=useState(false);
   const [profile,setProfile]=useState({name:'',phone:'',tower:'',apartment:'',avatar_image:''});
   const [invite,setInvite]=useState('');
@@ -268,6 +284,9 @@ export default function Page(){
     try{const raw=window.localStorage.getItem('condovery_cart');if(raw){const parsed=JSON.parse(raw);if(Array.isArray(parsed))setCart(parsed);}}catch{}
   },[]);
   useEffect(()=>{try{window.localStorage.setItem('condovery_cart',JSON.stringify(cart));}catch{}},[cart]);
+  useEffect(()=>{
+    setCheckoutKey(null);setRevisedQuote(null);
+  },[cart,fulfillment,deliveryDay,deliveryWindow,instructions,checkoutNote]);
   useEffect(()=>{if(!toast)return;const timer=setTimeout(()=>setToast(''),4000);return()=>clearTimeout(timer);},[toast]);
   useEffect(()=>{if(view==='seller'&&myShop?.status==='approved'){
     loadSellerOrders().catch(fail);
@@ -307,7 +326,11 @@ export default function Page(){
   const categoryName=home.categories.find(c=>c.id===category)?.name;
   const filtered=useMemo(()=>view==='categories'||query.trim()?catalogProducts:home.products,
     [view,query,catalogProducts,home.products]);
-  const cartTotal=cart.reduce((n,i)=>n+price(i.product)*i.quantity,0);
+  const cartSubtotal=cart.reduce((n,i)=>n+cartUnitPrice(i)*i.quantity,0);
+  const actualFulfillment: 'delivery'|'pickup'=cartShopSafe(cart,home.shops,selectedShop)?.delivery_enabled===false?'pickup':
+    (cartShopSafe(cart,home.shops,selectedShop)?.pickup_enabled===false?'delivery':fulfillment);
+  const fee=actualFulfillment==='delivery'?Number(cartShopSafe(cart,home.shops,selectedShop)?.delivery_fee_cents??0):0;
+  const cartTotal=cartSubtotal+fee;
   const cartCount=cart.reduce((n,i)=>n+i.quantity,0);
   const cartShop=home.shops.find(s=>s.id===cart[0]?.product.shop_id)||selectedShop?.shop;
   const featured=home.products.filter(p=>p.promo_price_cents!=null||p.is_featured).slice(0,8);
@@ -429,7 +452,16 @@ export default function Page(){
       notify(status==='approved'?'Avaliação publicada.':'Avaliação não publicada.');
     }catch(e){fail(e);}finally{setBusy(false);}
   }
-  function openProduct(p:Product){setSelectedProduct(p);setQty(1);setItemNote('');go('product');}
+  function openProduct(p:Product){setSelectedProduct(p);setQty(1);setItemNote('');setProductChoices({});go('product');}
+  function changeChoice(group:OptionGroup,id:string){
+    setProductChoices(current=>{
+      const currentIds=current[group.id]??[];
+      const selected=group.multiple
+        ?currentIds.includes(id)?currentIds.filter(x=>x!==id):[...currentIds,id]
+        :[id];
+      return {...current,[group.id]:selected};
+    });
+  }
   const productCanBuy=(p:Product)=>p.visibility==='available'&&p.stock!==0;
   async function changeProductVisibility(id:string,visibility:Product['visibility']){
     setBusy(true);setError('');
@@ -455,35 +487,60 @@ export default function Page(){
   function addToCart(){
     if(!selectedProduct)return;
     if(!productCanBuy(selectedProduct)){notify('Este produto está indisponível.');return;}
+    try{selectedOptions(selectedProduct.option_groups??[],productChoices);}
+    catch(e){fail(e);return;}
     if(cart.length&&cart[0].product.shop_id!==selectedProduct.shop_id){
       if(!window.confirm('Seu carrinho é de outra loja. Deseja substituí-lo?'))return;
-      setCart([]);
     }
     setCart(current=>{
       const base=current.length&&current[0].product.shop_id!==selectedProduct.shop_id?[]:current;
-      const same=base.find(i=>i.product.id===selectedProduct.id&&i.note===itemNote);
-      return same?base.map(i=>i===same?{...i,quantity:i.quantity+qty}:i):[...base,{product:selectedProduct,quantity:qty,note:itemNote}];
+      const selected={...productChoices};
+      const same=base.find(i=>i.product.id===selectedProduct.id&&i.note===itemNote
+        &&JSON.stringify(i.selections??{})===JSON.stringify(selected));
+      return same?base.map(i=>i===same?{...i,quantity:i.quantity+qty}:i):
+        [...base,{product:selectedProduct,quantity:qty,note:itemNote,selections:selected,line_key:crypto.randomUUID()}];
     });
     notify('Produto adicionado ao carrinho.');go('cart');
   }
-  async function checkout(){
+  function checkoutPayload(key:string){
+    return {
+      shop_id:cart[0].product.shop_id,
+      items:cart.map(i=>({id:i.product.id,quantity:i.quantity,note:i.note,selections:i.selections??{}})),
+      fulfillment:actualFulfillment,delivery_day:deliveryDay||null,delivery_window:deliveryWindow,
+      instructions:actualFulfillment==='delivery'?instructions:[],note:checkoutNote,client_order_key:key
+    };
+  }
+  async function checkout(confirmed=false){
     if(!cart.length||busy)return;
     setBusy(true);setError('');
     const key=checkoutKey??crypto.randomUUID();
     if(!checkoutKey)setCheckoutKey(key);
     try{
+      const payloadData=checkoutPayload(key);
+      const latest=await api<{quote:CheckoutQuote}>('orders/quote',{method:'POST',body:payload(payloadData)});
+      const quote=latest.quote;
+      const changed=quote.total_cents!==cartTotal||
+        quote.lines.some((line,i)=>line.unit_price_cents!==cartUnitPrice(cart[i]));
+      const newerConfirmation=confirmed&&revisedQuote&&(
+        quote.total_cents!==revisedQuote.total_cents||
+        quote.lines.some((line,i)=>line.unit_price_cents!==revisedQuote.lines[i]?.unit_price_cents)
+      );
+      if((changed&&!confirmed)||newerConfirmation){
+        setRevisedQuote(quote);
+        notify('Confira o valor atualizado antes de registrar o pedido.');
+        return;
+      }
       const result=await api<{order:{code:number};whatsapp_url:string}>('orders',{method:'POST',body:payload({
-        shop_id:cart[0].product.shop_id,
-        items:cart.map(i=>({id:i.product.id,quantity:i.quantity,note:i.note})),
-        fulfillment,delivery_day:deliveryDay||null,delivery_window:deliveryWindow,
-        instructions,note:checkoutNote,client_order_key:key
+        ...payloadData,expected_total_cents:quote.total_cents
       })});
       setLastOrder({code:result.order.code,whatsapp_url:result.whatsapp_url});
-      setCheckoutKey(null);setCart([]);go('success');
-      // A saída para o WhatsApp não deve depender de atualizar a vitrine.
+      setCheckoutKey(null);setRevisedQuote(null);setCart([]);go('success');
       void Promise.allSettled([loadOrders(),loadHome()]);
       window.location.assign(result.whatsapp_url);
-    }catch(e){fail(e);}finally{setBusy(false);}
+    }catch(e){
+      setRevisedQuote(null);
+      fail(e);
+    }finally{setBusy(false);}
   }
   async function updateStatus(id:string,status:string){
     setBusy(true);try{
@@ -526,8 +583,8 @@ export default function Page(){
     }catch(e){fail(e);}finally{setBusy(false);}
   }
   function editProduct(p?:Product){
-    setProductForm(p?{id:p.id,name:p.name,description:p.description,category_id:p.category_id,price:(p.price_cents/100).toFixed(2),promo:p.promo_price_cents?(p.promo_price_cents/100).toFixed(2):'',stock:p.stock==null?'':String(p.stock),image_url:p.image_url??'',visibility:p.visibility??(p.is_available?'available':'hidden'),lead_time:p.lead_time??''}
-      :{id:'',name:'',description:'',category_id:home.categories[0]?.id??'',price:'',promo:'',stock:'',image_url:'',visibility:'available',lead_time:''});
+    setProductForm(p?{id:p.id,name:p.name,description:p.description,category_id:p.category_id,price:(p.price_cents/100).toFixed(2),promo:p.promo_price_cents?(p.promo_price_cents/100).toFixed(2):'',stock:p.stock==null?'':String(p.stock),image_url:p.image_url??'',visibility:p.visibility??(p.is_available?'available':'hidden'),lead_time:p.lead_time??'',option_groups:p.option_groups??[]}
+      :{id:'',name:'',description:'',category_id:home.categories[0]?.id??'',price:'',promo:'',stock:'',image_url:'',visibility:'available',lead_time:'',option_groups:[]});
     setEditingProduct(true);
   }
   async function saveProduct(e:React.FormEvent){
@@ -537,7 +594,7 @@ export default function Page(){
         price_cents:Math.round(Number(productForm.price.replace(',','.'))*100),
         promo_price_cents:productForm.promo?Math.round(Number(productForm.promo.replace(',','.'))*100):null,
         stock:productForm.stock===''?null:Number(productForm.stock),image_url:productForm.image_url||null,
-        visibility:productForm.visibility,lead_time:productForm.lead_time};
+        visibility:productForm.visibility,lead_time:productForm.lead_time,option_groups:productForm.option_groups};
       await api(productForm.id?'products/'+productForm.id:'products',{method:productForm.id?'PATCH':'POST',body:payload(b)});
       setEditingProduct(false);await Promise.all([loadMine(),loadHome()]);notify('Produto salvo.');
     }catch(e){fail(e);}finally{setBusy(false);}
