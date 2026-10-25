@@ -32,6 +32,8 @@ try {
   await client.query(shopLifecycle);
   const productDeletion=await readFile(new URL('../db/012_deleted_products.sql',import.meta.url),'utf8');
   await client.query(productDeletion);
+  const payments=await readFile(new URL('../db/013_offline_payment_methods.sql',import.meta.url),'utf8');
+  await client.query(payments);
   console.log('Condovery database schema applied successfully.');
 } finally {
   await client.end();
