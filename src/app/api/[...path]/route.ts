@@ -47,11 +47,14 @@ const signup=credentials.extend({
   tower:z.string().trim().min(1).max(60),apartment:z.string().trim().min(1).max(24)
 });
 // The allowed arrival values and conflicts are checked against a shared rule.
+const paymentMethodSchema=z.enum(['pix','credit_card','debit_card','cash']);
+const paymentMethodsSchema=z.array(paymentMethodSchema).min(1).max(4).refine(items=>new Set(items).size===items.length,'Não repita meios de pagamento.');
 const orderSchema=z.object({
   shop_id:z.string().uuid(),
   items:z.array(z.object({id:z.string().uuid(),quantity:z.number().int().min(1).max(30),
     note:z.string().max(200).optional(),
     selections:z.record(z.array(z.string().uuid()).max(15)).optional()})).min(1).max(25),
+  payment_method:paymentMethodSchema,
   fulfillment:z.enum(['delivery','pickup']),delivery_day:z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
   delivery_window:z.string().max(70).optional(),instructions:z.array(z.enum(['Bater na porta','Tocar a campainha','Não tocar a campainha','Deixar na porta','Entregar pessoalmente','Retirar na portaria']))
     .max(5).optional().refine(values=>validArrivalInstructions(values??[]),{
@@ -70,6 +73,7 @@ const googleRegister=z.object({
 });
 type SavedOrder={
   id:string;code:number;shop_name:string;whatsapp:string;total_cents:number;subtotal_cents:number;delivery_fee_cents:number;
+  payment_method?:'pix'|'credit_card'|'debit_card'|'cash'|null;
   fulfillment:'delivery'|'pickup';delivery_day?:string|null;delivery_window?:string;
   delivery_instructions?:string[];note?:string
 };
@@ -84,7 +88,7 @@ async function savedWhatsApp(order:SavedOrder,u:Viewer){
       note:String(i.note??''),options:i.options??[]})),
     total_cents:order.total_cents,subtotal_cents:order.subtotal_cents,delivery_fee_cents:order.delivery_fee_cents,fulfillment:order.fulfillment,
     delivery_day:order.delivery_day,delivery_window:order.delivery_window,
-    instructions:order.delivery_instructions??[],note:order.note
+    instructions:order.delivery_instructions??[],note:order.note,payment_method:order.payment_method
   });
   return 'https://wa.me/'+normalizeWhatsApp(order.whatsapp)+'?text='+encodeURIComponent(message);
 }
@@ -540,7 +544,7 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
   if(path==='home'&&method==='GET'){
     const [categories,shops,products]=await Promise.all([
       query('SELECT id,name,icon FROM categories WHERE condominium_id=$1 AND is_active=true ORDER BY sort_order,name',[u.condominium_id]),
-      query("SELECT id,name,description,cover_image,logo_image,is_open,delivery_enabled,pickup_enabled,delivery_fee_cents,lead_time FROM shops WHERE condominium_id=$1 AND status='approved' ORDER BY is_open DESC,created_at DESC LIMIT 100",[u.condominium_id]),
+      query("SELECT id,name,description,cover_image,logo_image,is_open,delivery_enabled,pickup_enabled,delivery_fee_cents,payment_methods,lead_time FROM shops WHERE condominium_id=$1 AND status='approved' ORDER BY is_open DESC,created_at DESC LIMIT 100",[u.condominium_id]),
       query("SELECT p.id,p.shop_id,p.category_id,p.name,p.description,p.price_cents,p.promo_price_cents,p.image_url,p.stock,p.visibility,p.lead_time,p.is_featured,p.option_groups,s.name AS shop_name,s.is_open FROM products p JOIN categories c ON c.id=p.category_id AND c.condominium_id=p.condominium_id AND c.is_active=true JOIN shops s ON s.id=p.shop_id WHERE p.condominium_id=$1 AND s.condominium_id=$1 AND p.visibility<>'hidden' AND p.deleted_at IS NULL AND s.status='approved' ORDER BY p.is_featured DESC,p.created_at DESC LIMIT 48",[u.condominium_id])
     ]);
     return out({categories:categories.rows,shops:shops.rows,products:products.rows});
@@ -708,19 +712,19 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
       const b=z.object({name:z.string().trim().min(3).max(75),description:z.string().max(500),
         whatsapp:z.string().min(10).max(20),logo_image:z.string().nullable().optional(),is_open:z.boolean(),delivery_enabled:z.boolean(),
         pickup_enabled:z.boolean(),delivery_fee_cents:z.number().int().min(0).max(1_000_000).default(0),lead_time:z.string().max(100),pickup_instructions:z.string().max(250),
-        cover_image:z.string().nullable().optional()}).parse(await body(req));
+        cover_image:z.string().nullable().optional(),payment_methods:paymentMethodsSchema}).parse(await body(req));
       normalizeWhatsApp(b.whatsapp);
       if(violatesCommunityLanguage(b.name,b.description,b.pickup_instructions))bad('Revise o texto: linguagem imprópria não é permitida.');
       if(!b.delivery_enabled&&!b.pickup_enabled)bad('Habilite entrega ou retirada.');
       const r=await query(
-        'UPDATE shops SET name=$1,description=$2,whatsapp=$3,is_open=$4,delivery_enabled=$5,pickup_enabled=$6,lead_time=$7,pickup_instructions=$8,cover_image=$9,logo_image=$12,delivery_fee_cents=$13 WHERE id=$10 AND condominium_id=$11 RETURNING *',
-        [b.name,b.description,b.whatsapp,b.is_open,b.delivery_enabled,b.pickup_enabled,b.lead_time,b.pickup_instructions,imagePath(b.cover_image),shop.id,u.condominium_id,imagePath(b.logo_image),b.delivery_fee_cents]);
+        'UPDATE shops SET name=$1,description=$2,whatsapp=$3,is_open=$4,delivery_enabled=$5,pickup_enabled=$6,lead_time=$7,pickup_instructions=$8,cover_image=$9,logo_image=$12,delivery_fee_cents=$13,payment_methods=$14::text[] WHERE id=$10 AND condominium_id=$11 RETURNING *',
+        [b.name,b.description,b.whatsapp,b.is_open,b.delivery_enabled,b.pickup_enabled,b.lead_time,b.pickup_instructions,imagePath(b.cover_image),shop.id,u.condominium_id,imagePath(b.logo_image),b.delivery_fee_cents,b.payment_methods]);
       return out({shop:r.rows[0]});
     }
   }
   if(parts[0]==='shops'&&parts[1]&&parts[1]!=='mine'&&method==='GET'){
     if(!uuid(parts[1]))bad('Loja inválida.');
-    const s=await query("SELECT id,name,description,cover_image,logo_image,is_open,delivery_enabled,pickup_enabled,delivery_fee_cents,lead_time,pickup_instructions FROM shops WHERE id=$1 AND condominium_id=$2 AND status='approved'",[parts[1],u.condominium_id]);
+    const s=await query("SELECT id,name,description,cover_image,logo_image,is_open,delivery_enabled,pickup_enabled,delivery_fee_cents,payment_methods,lead_time,pickup_instructions FROM shops WHERE id=$1 AND condominium_id=$2 AND status='approved'",[parts[1],u.condominium_id]);
     if(!s.rowCount)bad('Loja não encontrada.',404);
     const p=await query("SELECT id,shop_id,category_id,name,description,price_cents,promo_price_cents,image_url,stock,visibility,lead_time,option_groups FROM products p WHERE shop_id=$1 AND condominium_id=$2 AND visibility<>'hidden' AND deleted_at IS NULL AND EXISTS (SELECT 1 FROM categories c WHERE c.id=p.category_id AND c.condominium_id=p.condominium_id AND c.is_active=true) ORDER BY created_at DESC",[parts[1],u.condominium_id]);
     return out({shop:s.rows[0],products:p.rows});
@@ -892,6 +896,7 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
         if(previous.rowCount)return {order:previous.rows[0],whatsapp_url:await savedWhatsApp(previous.rows[0] as SavedOrder,u)};
       }
       if(!shop||!shop.is_open)bad('Loja não está recebendo pedidos.');
+       if(!Array.isArray(shop.payment_methods)||!shop.payment_methods.includes(b.payment_method))bad('Este meio de pagamento não é aceito pela loja.',409);
       if((b.fulfillment==='delivery'&&!shop.delivery_enabled)||
          (b.fulfillment==='pickup'&&!shop.pickup_enabled))bad('Forma de recebimento indisponível.');
       const ids=[...new Set(b.items.map(i=>i.id))];
@@ -931,10 +936,10 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
         bad('O valor foi atualizado. Confira o novo total antes de finalizar.',409);
       const created=await tx.query(
         "INSERT INTO orders(condominium_id,buyer_id,shop_id,fulfillment,delivery_day,delivery_window,"+
-        "delivery_instructions,note,total_cents,client_order_key,subtotal_cents,delivery_fee_cents) "+
-        "VALUES($1,$2,$3,$4,$5,$6,$7::jsonb,$8,$9,$10,$11,$12) RETURNING *",
+        "delivery_instructions,note,total_cents,client_order_key,subtotal_cents,delivery_fee_cents,payment_method) "+
+        "VALUES($1,$2,$3,$4,$5,$6,$7::jsonb,$8,$9,$10,$11,$12,$13) RETURNING *",
         [u.condominium_id,u.id,shop.id,b.fulfillment,b.delivery_day??null,b.delivery_window??'',
-          JSON.stringify(b.instructions??[]),b.note??'',total,b.client_order_key??null,subtotal,fee]
+          JSON.stringify(b.instructions??[]),b.note??'',total,b.client_order_key??null,subtotal,fee,b.payment_method]
       );
       for(const item of items){
         await tx.query(
@@ -947,7 +952,7 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
         apartment:u.apartment,items:items.map(i=>({name:i.name,quantity:i.quantity,unit_price_cents:i.unit_price_cents,
           note:i.note,options:i.options})),total_cents:total,subtotal_cents:subtotal,delivery_fee_cents:fee,
         fulfillment:b.fulfillment,delivery_day:b.delivery_day,delivery_window:b.delivery_window,
-        instructions:b.instructions,note:b.note});
+        instructions:b.instructions,note:b.note,payment_method:b.payment_method});
       return {order:created.rows[0],
         whatsapp_url:'https://wa.me/'+normalizeWhatsApp(shop.whatsapp)+'?text='+encodeURIComponent(message)};
     });

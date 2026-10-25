@@ -11,6 +11,9 @@ import pg from 'pg';
 
 const origin=process.env.SMOKE_URL||'http://127.0.0.1:3000';
 async function request(path, {method='GET', body, cookie, expected=200}={}) {
+  // Existing checkout scenarios use Pix unless they explicitly test another method.
+  if(body&&method==='POST'&&(path==='orders'||path==='orders/quote'))body={payment_method:'pix',...body};
+  if(body&&method==='PATCH'&&path==='shops/mine')body={payment_methods:['pix','credit_card','debit_card','cash'],...body};
   const response=await fetch(origin+'/api/'+path,{
     method,
     headers:{...(body?{'Content-Type':'application/json'}:{}),...(cookie?{'Cookie':cookie}:{})},
@@ -94,8 +97,11 @@ const created=await request('orders',{method:'POST',cookie:buyerCookie,body:chec
 const retry=await request('orders',{method:'POST',cookie:buyerCookie,body:checkoutBody,expected:200});
 assert.equal(retry.data.order.id,created.data.order.id);
 assert.equal(retry.data.whatsapp_url,created.data.whatsapp_url);
+assert.equal(created.data.order.payment_method,'pix');
+assert.ok(decodeURIComponent(created.data.whatsapp_url).includes('Forma de pagamento: Pix'));
 const contact=(await request('orders/'+created.data.order.id+'/whatsapp',{cookie:buyerCookie})).data;
 assert.match(contact.whatsapp_url,/^https:\/\/wa\.me\/55/);
+assert.ok(decodeURIComponent(contact.whatsapp_url).includes('Forma de pagamento: Pix'));
 assert.ok(decodeURIComponent(contact.whatsapp_url).includes('Bater na porta; Não tocar a campainha'));
 await request('orders/'+created.data.order.id+'/whatsapp',{cookie:sellerCookie,expected:404});
 const orderId=created.data.order.id;
@@ -257,6 +263,15 @@ const shopSettings={
   is_open:true,delivery_enabled:true,pickup_enabled:true,lead_time:'',pickup_instructions:'',
   cover_image:null,logo_image:null,delivery_fee_cents:550
 };
+await request('shops/mine',{method:'PATCH',cookie:sellerCookie,body:shopSettings});
+// Payment selection is stored with the order but never charged by the platform.
+await request('shops/mine',{method:'PATCH',cookie:sellerCookie,body:{
+  ...shopSettings,payment_methods:['pix','cash']
+}});
+await request('orders/quote',{method:'POST',cookie:buyerCookie,expected:409,body:{
+  shop_id:shopId,items:[{id:customizable.id,quantity:1,selections:{[extraGroup]:[optionNo]}}],
+  fulfillment:'pickup',payment_method:'credit_card'
+}});
 await request('shops/mine',{method:'PATCH',cookie:sellerCookie,body:shopSettings});
 const quoteReq={shop_id:shopId,items:choose,fulfillment:'delivery'};
 await request('orders/quote',{method:'POST',cookie:buyerCookie,expected:400,body:{

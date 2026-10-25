@@ -76,7 +76,7 @@ export function orderMessage(order: {
   code:number|string; shop:string; buyer:string; tower:string; apartment:string;
   items:MessageItem[]; total_cents:number; subtotal_cents?:number;delivery_fee_cents?:number;
   fulfillment:'delivery'|'pickup';delivery_day?:string|null;delivery_window?:string;
-  instructions?:string[];note?:string
+  instructions?:string[];note?:string;payment_method?:'pix'|'credit_card'|'debit_card'|'cash'|null
 }): string {
   const lines=[
     'Olá! Fiz um pedido pelo Condovery.','','Pedido #'+order.code+' — '+order.shop,
@@ -90,6 +90,7 @@ export function orderMessage(order: {
     ...(order.subtotal_cents!==undefined?['Subtotal: '+BRL(order.subtotal_cents)]:[]),
     ...(order.fulfillment==='delivery'?['Taxa de entrega: '+BRL(order.delivery_fee_cents??0)]:[]),
     'Total: '+BRL(order.total_cents),
+    ...(order.payment_method?['Forma de pagamento: '+({pix:'Pix',credit_card:'Cartão de crédito',debit_card:'Cartão de débito',cash:'Dinheiro'}[order.payment_method])]:[]),
     'Recebimento: '+(order.fulfillment==='delivery'?'Entrega no condomínio':'Retirada')
   ];
   if(order.fulfillment==='delivery') lines.push('Endereço: '+order.tower+', apto '+order.apartment);

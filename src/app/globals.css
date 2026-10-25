@@ -1093,3 +1093,12 @@ font-weight:750;padding:12px 20px;cursor:pointer}
 .whatsapp-web-fallback{display:inline-flex;align-items:center;justify-content:center;text-align:center;
   font-size:12px;line-height:1.4;font-weight:750;color:var(--orange);text-decoration:underline;
   text-underline-offset:3px;margin:5px 0 10px;min-height:36px}
+
+/* Seller-side offline payment preferences and buyer selection. */
+.offline-payment-settings,.offline-payment-options{display:flex;flex-direction:column;gap:10px;
+  padding:17px;border-radius:17px;background:#fffaf5;border:1px solid #f0e7dc}
+.offline-payment-settings h3,.offline-payment-options h3{font-size:16px;margin:0}
+.offline-payment-settings .muted{font-size:12px;line-height:1.55}
+.offline-payment-settings .check-label{padding:8px 0;min-height:36px;display:flex;align-items:center;gap:10px}
+.offline-payment-options .choice-row{flex-wrap:wrap;gap:8px}
+.offline-payment-options .choice-row button{flex:1 1 130px}
