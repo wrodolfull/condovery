@@ -1088,3 +1088,8 @@ font-weight:750;padding:12px 20px;cursor:pointer}
 .share-fallback-actions a:hover,.share-fallback-actions button:hover{background:#fff6e9}
 @media(max-width:450px){.product-editor-footer>*{width:100%;justify-content:center}
  .product-delete-dialog-actions>*{flex:1 1 100px}}
+
+/* Secondary fallback after an Android WhatsApp Messenger intent. */
+.whatsapp-web-fallback{display:inline-flex;align-items:center;justify-content:center;text-align:center;
+  font-size:12px;line-height:1.4;font-weight:750;color:var(--orange);text-decoration:underline;
+  text-underline-offset:3px;margin:5px 0 10px;min-height:36px}
