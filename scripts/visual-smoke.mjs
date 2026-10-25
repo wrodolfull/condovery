@@ -7,6 +7,16 @@ await mkdir('artifacts/visual',{recursive:true});
 const browser=await chromium.launch({headless:true,args:['--no-sandbox']});
 const widths=[320,360,390,430,768,1280];
 let checked=0;
+async function verifyRoundCategories(page,selector,width){
+  const results=await page.locator(selector+' .category-art').evaluateAll(elements=>elements.map(el=>{
+    const bounds=el.getBoundingClientRect();
+    const style=getComputedStyle(el);
+    return {width:bounds.width,height:bounds.height,radius:style.borderRadius};
+  }));
+  if(!results.length||results.some(item=>Math.abs(item.width-item.height)>1||item.radius!=='50%')){
+    throw new Error('Categories must be true circles at '+width+'px: '+JSON.stringify(results));
+  }
+}
 async function verify(page,scene,width) {
   await page.waitForTimeout(130);
   const data=await page.evaluate(()=>{
@@ -42,11 +52,13 @@ try{
     await page.getByRole('button',{name:'Entrar com e-mail'}).click();
     await page.locator('.hero-banner').waitFor({state:'visible',timeout:15000});
     await verify(page,'home',width);
+    await verifyRoundCategories(page,'.category-track:not(.explore-category-track)',width);
     const nav=(label)=>page.locator(width<900?'.bottom-nav':'.desktop-nav')
       .getByRole('button',{name:label,exact:true});
     await nav('Explorar').click();
     await page.locator('.explore-category-track').waitFor({state:'visible'});
     await verify(page,'explore',width);
+    await verifyRoundCategories(page,'.explore-category-track',width);
     await page.locator('.shops-list .shop-row').first().click();
     await page.locator('.shop-rating').waitFor({state:'visible'});
     await verify(page,'shop',width);

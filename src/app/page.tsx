@@ -6,6 +6,7 @@ import {RoundedStars} from '@/components/RoundedStars';
 import {ImageCropper,type ImageKind} from '@/components/ImageCropper';
 import {clientUUID} from '@/lib/client-uuid';
 import {parseMoneyInput} from '@/lib/money-input';
+import {supportsMessengerIntent,whatsappMessengerHref} from '@/lib/whatsapp-launch';
 import {towerLabels,currentTowerScheme,type TowerScheme} from '@/lib/towers';
 import {artwork,getCategoryArtwork} from '@/lib/artwork';
 import {IMAGE_MIME_TYPES, imageSizeIsAllowed} from '@/lib/image-limits';
@@ -216,6 +217,7 @@ export default function Page(){
   const [instructions,setInstructions]=useState<string[]>([]);
   const [checkoutNote,setCheckoutNote]=useState('');
   const [lastOrder,setLastOrder]=useState<{code:number;whatsapp_url:string}|null>(null);
+  const [reopenWhatsAppUrl,setReopenWhatsAppUrl]=useState<string|null>(null);
   const [checkoutKey,setCheckoutKey]=useState<string|null>(null);
   const [revisedQuote,setRevisedQuote]=useState<CheckoutQuote|null>(null);
   const [orders,setOrders]=useState<Order[]>([]);
@@ -555,17 +557,34 @@ export default function Page(){
         visibility==='unavailable'?'Produto marcado como indisponível.':'Produto ocultado da vitrine.');
     }catch(e){fail(e);}finally{setBusy(false);}
   }
+  function preferWhatsAppMessenger(){
+    return supportsMessengerIntent(navigator.userAgent);
+  }
+  function orderWhatsAppLink(url:string){
+    return whatsappMessengerHref(url,navigator.userAgent);
+  }
   async function reopenOrderWhatsApp(id:string){
     try{
       const result=await api<{whatsapp_url:string}>('orders/'+id+'/whatsapp');
-      window.location.assign(result.whatsapp_url);
+      if(preferWhatsAppMessenger()){
+        // Chrome only launches an external app intent after a real user gesture.
+        // Give the buyer a link to tap, rather than trying after an awaited API call.
+        setReopenWhatsAppUrl(result.whatsapp_url);
+      }else{
+        window.location.assign(result.whatsapp_url);
+      }
     }catch(e){fail(e);}
   }
   function testShopWhatsApp(){
     const digits=shopForm.whatsapp.replace(/\D/g,'');
     if(!/^(?:55)?\d{10,11}$/.test(digits)){setError('Informe um número brasileiro com DDD.');return;}
     const number=digits.startsWith('55')&&digits.length>11?digits:'55'+digits;
-    window.open('https://wa.me/'+number,'_blank','noopener,noreferrer');
+    const link='https://wa.me/'+number;
+    if(preferWhatsAppMessenger()){
+      window.location.assign(orderWhatsAppLink(link));
+    }else{
+      window.open(link,'_blank','noopener,noreferrer');
+    }
   }
   function addToCart(){
     if(!selectedProduct)return;
@@ -619,7 +638,13 @@ export default function Page(){
       setLastOrder({code:result.order.code,whatsapp_url:result.whatsapp_url});
       setCheckoutKey(null);setRevisedQuote(null);setCart([]);go('success');
       void Promise.allSettled([loadOrders(),loadHome()]);
-      window.location.assign(result.whatsapp_url);
+      if(preferWhatsAppMessenger()){
+        // Saving the order requires API requests; direct Android app launch
+        // must instead happen from the explicit link on the success page.
+        notify('Pedido registrado. Toque em Abrir WhatsApp normal para enviar.');
+      }else{
+        window.location.assign(result.whatsapp_url);
+      }
     }catch(e){
       setRevisedQuote(null);
       fail(e);
@@ -1056,7 +1081,7 @@ export default function Page(){
           {actualFulfillment==='delivery'&&<div className="total-line"><span>Taxa de entrega</span><strong>{fee?money(fee):'Grátis'}</strong></div>}
           <div className="total-line bold"><span>Total do pedido</span><strong>{money(cartTotal)}</strong></div><p>O pagamento será combinado diretamente com o vendedor.</p>
           <div className="whatsapp-reminder"><MessageCircle size={19}/>
-            <span>O WhatsApp abrirá com a mensagem pronta. <strong>Você precisa tocar em Enviar.</strong> Apenas o vendedor confirma o pedido.</span>
+            <span>{preferWhatsAppMessenger()?'Depois de registrar o pedido, toque em Abrir WhatsApp normal para conversar com o vendedor.':'O WhatsApp abrirá com a mensagem pronta.'} <strong>Você precisa tocar em Enviar.</strong> Apenas o vendedor confirma o pedido.</span>
           </div>
           {revisedQuote&&<div className="price-changed" role="alert">
             <strong>O valor foi atualizado</strong>
@@ -1069,7 +1094,7 @@ export default function Page(){
             <button type="button" className="outline-button" onClick={()=>setRevisedQuote(null)}>Revisar carrinho</button>
           </div>}
           {!revisedQuote&&<button className="primary-button" disabled={busy} onClick={()=>checkout()}>
-            {busy?'Conferindo valores...':'Continuar no WhatsApp'}<ArrowRight size={18}/>
+            {busy?'Conferindo valores...':preferWhatsAppMessenger()?'Registrar pedido':'Continuar no WhatsApp'}<ArrowRight size={18}/>
           </button>}
           <small>O pedido fica registrado mesmo se você fechar o WhatsApp. Apenas a loja poderá confirmá-lo.</small>
         </aside></div>}
@@ -1078,7 +1103,11 @@ export default function Page(){
       {view==='success'&&lastOrder&&<div className="success-page"><IllustrationSlot className="success-art" src={artwork.orderSuccess} alt="Pedido registrado com sucesso"
   fallback={<Check size={44}/>}/><Pill tone="green">Pedido registrado</Pill><h1>Seu pedido foi registrado!</h1><p>Seu pedido <strong>#{lastOrder.code}</strong> foi criado. Envie a mensagem para o vendedor pelo WhatsApp para combinar disponibilidade, entrega e pagamento.</p>
         <div className="whatsapp-reminder"><MessageCircle size={18}/> <strong>Importante: toque em Enviar dentro do WhatsApp.</strong> O Condovery não envia a mensagem sozinho.</div>
-        <a className="primary-button" href={lastOrder.whatsapp_url} target="_blank" rel="noopener noreferrer">Abrir conversa no WhatsApp <ArrowRight size={18}/></a>
+        <a className="primary-button" href={orderWhatsAppLink(lastOrder.whatsapp_url)}
+           target={preferWhatsAppMessenger()?undefined:'_blank'} rel="noopener noreferrer">
+           {preferWhatsAppMessenger()?'Abrir WhatsApp normal':'Abrir conversa no WhatsApp'} <ArrowRight size={18}/></a>
+         {preferWhatsAppMessenger()&&<a className="whatsapp-web-fallback" href={lastOrder.whatsapp_url}
+           target="_blank" rel="noopener noreferrer">WhatsApp normal não abriu? Usar link padrão</a>}
         <button className="outline-button" onClick={()=>{loadOrders();go('orders');}}>Acompanhar meus pedidos</button><small>Abrir o WhatsApp não significa que o vendedor recebeu ou confirmou o pedido.</small></div>}
 
       {view==='favorites'&&<>
@@ -1506,6 +1535,23 @@ export default function Page(){
 </section>
         </>:<Empty title="Carregando administração" subtitle="Confira sua conexão e tente novamente." action="Recarregar" onAction={()=>loadAdmin().catch(fail)}/>}
       </>}
+      {reopenWhatsAppUrl&&<div className="share-fallback-overlay" role="presentation"
+        onClick={()=>setReopenWhatsAppUrl(null)}>
+        <section className="share-fallback-dialog" role="dialog" aria-modal="true"
+          aria-label="Abrir conversa do pedido" onClick={event=>event.stopPropagation()}>
+          <div className="share-fallback-heading"><div><h2>Abrir conversa do pedido</h2>
+            <p>Seu pedido continua registrado no Condovery.</p></div>
+            <button type="button" aria-label="Fechar opções do WhatsApp" onClick={()=>setReopenWhatsAppUrl(null)}><X size={19}/></button>
+          </div>
+          <div className="share-fallback-actions">
+            <a href={orderWhatsAppLink(reopenWhatsAppUrl)} onClick={()=>setReopenWhatsAppUrl(null)}>
+              <MessageCircle size={20}/> Abrir WhatsApp normal</a>
+            <a href={reopenWhatsAppUrl} target="_blank" rel="noopener noreferrer"
+              onClick={()=>setReopenWhatsAppUrl(null)}>
+              <Share2 size={20}/> Usar link padrão do WhatsApp</a>
+          </div>
+        </section>
+      </div>}
       {shareFallback&&<div className="share-fallback-overlay" role="presentation"
         onClick={()=>setShareFallback(null)}>
         <section className="share-fallback-dialog" role="dialog" aria-modal="true" aria-label="Compartilhar loja"

@@ -64,7 +64,7 @@ button:focus-visible,a:focus-visible{outline:3px solid #be9e1b;outline-offset:3p
 .category-track{display:flex;gap:12px;overflow-x:auto;scrollbar-width:none;padding:2px 0 7px;margin-bottom:7px}
 .category-track::-webkit-scrollbar,.product-track::-webkit-scrollbar{display:none}
 .category-card{display:flex;flex:0 0 102px;flex-direction:column;gap:9px;text-align:center;align-items:center;border:0;background:none;padding:0;font-weight:700;font-size:11px;line-height:1.25}
-.category-card div{width:82px;height:78px;border-radius:22px;background:#fff0e9;color:#de6d50;display:grid;place-items:center;transition:transform .2s}
+.category-card div{width:82px;height:82px;border-radius:50%;background:#fff0e9;color:#de6d50;display:grid;place-items:center;transition:transform .2s}
 .category-card:nth-child(4n + 2) div{background:#ebf1df;color:#628755}
 .category-card:nth-child(4n + 3) div{background:#e9e9ff;color:#7974bc}
 .category-card:nth-child(4n + 4) div{background:#fff0bf;color:#c59114}
@@ -294,7 +294,7 @@ button:focus-visible,a:focus-visible{outline:3px solid #be9e1b;outline-offset:3p
   .hero-banner{min-height:245px;padding:35px}
   .hero-banner>img{max-height:285px}
   .category-card{flex-basis:122px}
-  .category-card div{width:93px;height:87px}
+  .category-card div{width:92px;height:92px}
   .instructions{grid-template-columns:1fr 1fr}
   .shop-cover{height:245px}
   .product-detail{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
@@ -391,7 +391,7 @@ body {background:var(--bg);letter-spacing:-.08px}
 .section-heading{margin-top:31px}
 .section-heading h2{letter-spacing:-.5px;font-size:21px}
 .quiet-link{color:#d65c39}
-.category-card div{border-radius:25px;background:#fff0dd}
+.category-card div{border-radius:50%;background:#fff0dd}
 .category-card:nth-child(4n + 2) div{background:#e8f2e3}
 .category-card:nth-child(4n + 3) div{background:#eae6f5}
 .category-card:nth-child(4n + 4) div{background:#ffe8d7}
@@ -725,7 +725,7 @@ img{height:auto}
 
 /* Round category images: menu data determines labels, image mapping only changes decoration. */
 .category-card{min-width:0}
-.category-card .category-art{width:82px;height:78px;flex:0 0 78px;border-radius:23px;overflow:hidden}
+.category-card .category-art{width:82px;height:82px;flex:0 0 82px;aspect-ratio:1;border-radius:50%;overflow:hidden}
 .category-card .category-art .illustration-fallback{width:100%;height:100%;background:transparent;color:inherit}
 .category-card .category-art .illustration-image{width:100%;height:100%;object-fit:contain}
 .category-card.selected .category-art{outline:2px solid var(--orange);outline-offset:3px}
@@ -783,7 +783,7 @@ img{height:auto}
   .admin-stats strong{font-size:20px}
 }
 @media(min-width:600px){
-  .category-card .category-art{width:93px;height:87px;flex-basis:87px}
+  .category-card .category-art{width:92px;height:92px;flex-basis:92px}
   .explore-category-track .category-art{width:90px;height:90px;flex-basis:90px}
 }
 @media(min-width:900px){
@@ -1088,3 +1088,8 @@ font-weight:750;padding:12px 20px;cursor:pointer}
 .share-fallback-actions a:hover,.share-fallback-actions button:hover{background:#fff6e9}
 @media(max-width:450px){.product-editor-footer>*{width:100%;justify-content:center}
  .product-delete-dialog-actions>*{flex:1 1 100px}}
+
+/* Secondary fallback after an Android WhatsApp Messenger intent. */
+.whatsapp-web-fallback{display:inline-flex;align-items:center;justify-content:center;text-align:center;
+  font-size:12px;line-height:1.4;font-weight:750;color:var(--orange);text-decoration:underline;
+  text-underline-offset:3px;margin:5px 0 10px;min-height:36px}
