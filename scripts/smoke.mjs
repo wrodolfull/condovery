@@ -97,8 +97,11 @@ const created=await request('orders',{method:'POST',cookie:buyerCookie,body:chec
 const retry=await request('orders',{method:'POST',cookie:buyerCookie,body:checkoutBody,expected:200});
 assert.equal(retry.data.order.id,created.data.order.id);
 assert.equal(retry.data.whatsapp_url,created.data.whatsapp_url);
+assert.equal(created.data.order.payment_method,'pix');
+assert.ok(decodeURIComponent(created.data.whatsapp_url).includes('Forma de pagamento: Pix'));
 const contact=(await request('orders/'+created.data.order.id+'/whatsapp',{cookie:buyerCookie})).data;
 assert.match(contact.whatsapp_url,/^https:\/\/wa\.me\/55/);
+assert.ok(decodeURIComponent(contact.whatsapp_url).includes('Forma de pagamento: Pix'));
 assert.ok(decodeURIComponent(contact.whatsapp_url).includes('Bater na porta; Não tocar a campainha'));
 await request('orders/'+created.data.order.id+'/whatsapp',{cookie:sellerCookie,expected:404});
 const orderId=created.data.order.id;
