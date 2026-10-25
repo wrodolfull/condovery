@@ -75,6 +75,7 @@ const duplicateShopName=await request('shops/mine',{method:'POST',cookie:buyerCo
 },expected:201});
 assert.match(duplicateShopName.data.shop.slug,/^bolos-da-gabi-[a-f0-9]{8}$/);
 assert.notEqual(duplicateShopName.data.shop.slug,shopCreated.data.shop.slug);
+await request('shops/mine',{method:'DELETE',cookie:buyerCookie,body:{confirmation:'EXCLUIR LOJA'}});
 
 const sellerHome=(await request('home',{cookie:sellerCookie})).data;
 assert.equal(sellerHome.categories.length,7);
