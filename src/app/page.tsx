@@ -6,6 +6,7 @@ import {RoundedStars} from '@/components/RoundedStars';
 import {ImageCropper,type ImageKind} from '@/components/ImageCropper';
 import {clientUUID} from '@/lib/client-uuid';
 import {parseMoneyInput} from '@/lib/money-input';
+import {PAYMENT_METHODS,PAYMENT_LABELS,allowedPaymentMethods,type PaymentMethod} from '@/lib/payment-methods';
 import {supportsMessengerIntent,whatsappMessengerHref} from '@/lib/whatsapp-launch';
 import {towerLabels,currentTowerScheme,type TowerScheme} from '@/lib/towers';
 import {artwork,getCategoryArtwork} from '@/lib/artwork';
@@ -21,9 +22,9 @@ import {
 
 type Viewer={id:string;name:string;email:string;phone:string;avatar_image:string|null;role:'admin'|'resident';status:'pending'|'approved'|'suspended';tower:string;apartment:string;condominium_name:string;towers:string[]};
 type Category={id:string;name:string;icon:string};
-type Shop={id:string;name:string;description:string;cover_image:string|null;logo_image:string|null;status?:string;is_open:boolean;delivery_enabled:boolean;delivery_fee_cents:number;pickup_enabled:boolean;lead_time:string;pickup_instructions?:string;whatsapp?:string};
+type Shop={id:string;name:string;description:string;cover_image:string|null;logo_image:string|null;status?:string;is_open:boolean;delivery_enabled:boolean;delivery_fee_cents:number;pickup_enabled:boolean;lead_time:string;pickup_instructions?:string;whatsapp?:string;payment_methods:PaymentMethod[]};
 type Product={id:string;shop_id:string;shop_name?:string;visibility:'available'|'unavailable'|'hidden';category_id:string;name:string;description:string;price_cents:number;promo_price_cents:number|null;image_url:string|null;stock:number|null;is_available?:boolean;lead_time?:string;is_featured?:boolean;option_groups?:OptionGroup[]};
-type Order={id:string;code:number;status:string;review_status?:'pending'|'approved'|'rejected'|null;can_review?:boolean;is_own_shop?:boolean;total_cents:number;shop_name:string;buyer_name:string;buyer_phone:string;tower:string;apartment:string;fulfillment:string;delivery_day:string|null;delivery_window:string;delivery_instructions:string[];note:string;subtotal_cents:number;delivery_fee_cents:number;items:{name:string;quantity:number;unit_price_cents:number;note:string;options?:{group:string;name:string;price_cents:number}[]}[];created_at:string};
+type Order={id:string;code:number;status:string;review_status?:'pending'|'approved'|'rejected'|null;can_review?:boolean;is_own_shop?:boolean;total_cents:number;shop_name:string;buyer_name:string;buyer_phone:string;tower:string;apartment:string;fulfillment:string;delivery_day:string|null;delivery_window:string;delivery_instructions:string[];note:string;subtotal_cents:number;delivery_fee_cents:number;payment_method?:PaymentMethod|null;items:{name:string;quantity:number;unit_price_cents:number;note:string;options?:{group:string;name:string;price_cents:number}[]}[];created_at:string};
 type ReviewStatus='pending'|'approved'|'rejected';
 type PublicReview={id:string;rating:number;description:string;created_at:string};
 type ReviewSummary={average:number|null;count:number};
@@ -212,6 +213,7 @@ export default function Page(){
   const [productChoices,setProductChoices]=useState<Selection>({});
   const [cart,setCart]=useState<CartItem[]>([]);
   const [fulfillment,setFulfillment]=useState<'delivery'|'pickup'>('delivery');
+  const [paymentMethod,setPaymentMethod]=useState<PaymentMethod|null>(null);
   const [deliveryDay,setDeliveryDay]=useState('');
   const [deliveryWindow,setDeliveryWindow]=useState('');
   const [instructions,setInstructions]=useState<string[]>([]);
@@ -231,7 +233,7 @@ export default function Page(){
   const [myProducts,setMyProducts]=useState<Product[]>([]);
   const [adminData,setAdminData]=useState<AdminData|null>(null);
   const [sellerTab,setSellerTab]=useState<'orders'|'products'|'reviews'|'settings'>('orders');
-  const [shopForm,setShopForm]=useState({name:'',description:'',whatsapp:'',is_open:true,delivery_enabled:true,delivery_fee_cents:0,pickup_enabled:true,lead_time:'',pickup_instructions:'',cover_image:'',logo_image:''});
+  const [shopForm,setShopForm]=useState({name:'',description:'',whatsapp:'',is_open:true,delivery_enabled:true,delivery_fee_cents:0,pickup_enabled:true,lead_time:'',pickup_instructions:'',cover_image:'',logo_image:'',payment_methods:['pix','credit_card','debit_card','cash'] as PaymentMethod[]});
   const [productForm,setProductForm]=useState({id:'',name:'',description:'',category_id:'',price:'',promo:'',stock:'',image_url:'',visibility:'available' as Product['visibility'],lead_time:'',option_groups:[] as OptionGroup[]});
   const [editingProduct,setEditingProduct]=useState(false);
   const [deleteProductTarget,setDeleteProductTarget]=useState<Product|null>(null);
@@ -272,7 +274,7 @@ export default function Page(){
     if(data.shop)setShopForm({
       name:data.shop.name,description:data.shop.description,whatsapp:data.shop.whatsapp??'',
       is_open:data.shop.is_open,delivery_enabled:data.shop.delivery_enabled,delivery_fee_cents:data.shop.delivery_fee_cents??0,pickup_enabled:data.shop.pickup_enabled,
-      lead_time:data.shop.lead_time??'',pickup_instructions:data.shop.pickup_instructions??'',cover_image:data.shop.cover_image??'',logo_image:data.shop.logo_image??''
+      lead_time:data.shop.lead_time??'',pickup_instructions:data.shop.pickup_instructions??'',cover_image:data.shop.cover_image??'',logo_image:data.shop.logo_image??'',payment_methods:allowedPaymentMethods(data.shop.payment_methods)
     });
   },[]);
   const loadOrders=useCallback(async(filter:OrderFilter='all')=>{
@@ -347,7 +349,7 @@ export default function Page(){
   useEffect(()=>{try{window.localStorage.setItem('condovery_cart',JSON.stringify(cart));}catch{}},[cart]);
   useEffect(()=>{
     setCheckoutKey(null);setRevisedQuote(null);
-  },[cart,fulfillment,deliveryDay,deliveryWindow,instructions,checkoutNote]);
+  },[cart,fulfillment,deliveryDay,deliveryWindow,instructions,checkoutNote,paymentMethod]);
   useEffect(()=>{if(!toast)return;const timer=setTimeout(()=>setToast(''),4000);return()=>clearTimeout(timer);},[toast]);
   useEffect(()=>{if(view==='seller'&&myShop?.status==='approved'){
     loadSellerOrders().catch(fail);
@@ -394,6 +396,7 @@ export default function Page(){
   const cartTotal=cartSubtotal+fee;
   const cartCount=cart.reduce((n,i)=>n+i.quantity,0);
   const cartShop=home.shops.find(s=>s.id===cart[0]?.product.shop_id)||selectedShop?.shop;
+  const acceptedPaymentMethods=allowedPaymentMethods(cartShop?.payment_methods);
   const featured=home.products.filter(p=>p.promo_price_cents!=null||p.is_featured).slice(0,8);
   const newest=home.products.slice(0,10);
 
@@ -608,12 +611,14 @@ export default function Page(){
     return {
       shop_id:cart[0].product.shop_id,
       items:cart.map(i=>({id:i.product.id,quantity:i.quantity,note:i.note,selections:i.selections??{}})),
+      payment_method:paymentMethod,
       fulfillment:actualFulfillment,delivery_day:deliveryDay||null,delivery_window:deliveryWindow,
       instructions:actualFulfillment==='delivery'?instructions:[],note:checkoutNote,client_order_key:key
     };
   }
   async function checkout(confirmed=false){
     if(!cart.length||busy)return;
+    if(!paymentMethod||!acceptedPaymentMethods.includes(paymentMethod)){setError('Selecione um meio de pagamento aceito pela loja.');return;}
     setBusy(true);setError('');
     const key=checkoutKey??clientUUID();
     if(!checkoutKey)setCheckoutKey(key);
@@ -658,6 +663,7 @@ export default function Page(){
     }catch(e){fail(e);}finally{setBusy(false);}
   }
   async function saveShop(e:React.FormEvent){
+    if(myShop&&shopForm.payment_methods.length===0){setError('Habilite pelo menos uma forma de pagamento.');return;}
     e.preventDefault();setBusy(true);
     try{
       if(!myShop){
@@ -694,7 +700,7 @@ export default function Page(){
       });
       setShowDeleteShop(false);setShopDeleteConfirmation('');
       setMyShop(null);setMyProducts([]);setSellerOrders([]);setSellerReviews([]);
-      setShopForm({name:'',description:'',whatsapp:'',is_open:true,delivery_enabled:true,delivery_fee_cents:0,pickup_enabled:true,lead_time:'',pickup_instructions:'',cover_image:'',logo_image:''});
+      setShopForm({name:'',description:'',whatsapp:'',is_open:true,delivery_enabled:true,delivery_fee_cents:0,pickup_enabled:true,lead_time:'',pickup_instructions:'',cover_image:'',logo_image:'',payment_methods:['pix','credit_card','debit_card','cash'] as PaymentMethod[]});
       setCart(items=>items.filter(item=>item.product.shop_id!==oldId));
       if(selectedShop?.shop.id===oldId)setSelectedShop(null);
       await loadHome();go('account');notify(result.message);
@@ -1075,11 +1081,17 @@ export default function Page(){
                 checked={instructions.includes(t)}
                 onChange={e=>setInstructions(s=>toggleArrivalInstruction(s,t,e.target.checked))}/>{t}</label>)}
               </div></>}
+            <div className="offline-payment-options"><h3>Como prefere pagar?</h3>
+              <p className="helper-note">O pagamento será combinado diretamente com o vendedor, fora do Condovery.</p>
+              <div className="choice-row">{acceptedPaymentMethods.map(method=><button type="button" key={method}
+                className={paymentMethod===method?'selected':''} aria-pressed={paymentMethod===method}
+                onClick={()=>setPaymentMethod(method)}>{PAYMENT_LABELS[method]}</button>)}</div>
+            </div>
             <label className="field-label">Observações gerais<textarea rows={3} maxLength={400} value={checkoutNote} onChange={e=>setCheckoutNote(e.target.value)} placeholder="Algo mais que o vendedor precisa saber?"/></label>
           </div>
         </section><aside className="checkout-total white-panel"><h2>Resumo do pedido</h2><div className="total-line"><span>{cartCount} {cartCount===1?'item':'itens'}</span><strong>{money(cartSubtotal)}</strong></div>
           {actualFulfillment==='delivery'&&<div className="total-line"><span>Taxa de entrega</span><strong>{fee?money(fee):'Grátis'}</strong></div>}
-          <div className="total-line bold"><span>Total do pedido</span><strong>{money(cartTotal)}</strong></div><p>O pagamento será combinado diretamente com o vendedor.</p>
+          <div className="total-line bold"><span>Total do pedido</span><strong>{money(cartTotal)}</strong></div><p>{paymentMethod?'Pagamento escolhido: '+PAYMENT_LABELS[paymentMethod]+'. ':''}O pagamento será combinado diretamente com o vendedor.</p>
           <div className="whatsapp-reminder"><MessageCircle size={19}/>
             <span>{preferWhatsAppMessenger()?'Depois de registrar o pedido, toque em Abrir WhatsApp normal para conversar com o vendedor.':'O WhatsApp abrirá com a mensagem pronta.'} <strong>Você precisa tocar em Enviar.</strong> Apenas o vendedor confirma o pedido.</span>
           </div>
@@ -1328,7 +1340,8 @@ export default function Page(){
               {item.options?.map((opt,i)=><small key={i}>{opt.group}: {opt.name}{opt.price_cents>0?' (+'+money(opt.price_cents)+')':''}</small>)}
               {item.note&&<small>Obs. do produto: {item.note}</small>}
             </div>)}</div>
-            {o.fulfillment==='delivery'&&<p>Entrega: {o.tower} · Ap. {o.apartment} · Taxa: {money(o.delivery_fee_cents??0)}</p>}
+            {o.payment_method&&<p>Pagamento: {PAYMENT_LABELS[o.payment_method]}</p>}
+             {o.fulfillment==='delivery'&&<p>Entrega: {o.tower} · Ap. {o.apartment} · Taxa: {money(o.delivery_fee_cents??0)}</p>}
             {o.delivery_day&&<p>Data: {String(o.delivery_day).slice(0,10)}</p>}{o.delivery_window&&<p>Preferência: {o.delivery_window}</p>}
             {o.note&&<p>Observação: {o.note}</p>}{o.delivery_instructions?.length>0&&<p>Instruções: {o.delivery_instructions.join(', ')}</p>}
             <div className="order-bottom"><strong>Subtotal {money(o.subtotal_cents??o.total_cents)} · Total {money(o.total_cents)}</strong><div className="inline-actions">{o.status==='awaiting_confirmation'&&<><button disabled={busy} onClick={()=>updateStatus(o.id,'confirmed')}>Confirmar</button><button className="danger-text" disabled={busy} onClick={()=>updateStatus(o.id,'cancelled')}>Cancelar</button></>}
@@ -1454,6 +1467,14 @@ export default function Page(){
                 onValue={cents=>setShopForm(x=>({...x,delivery_fee_cents:cents}))}/>
               <small className="muted">Digite o valor em reais, por exemplo 5,50. Para entrega grátis, use 0,00.</small>
             </label>}
+            <div className="offline-payment-settings"><h3>Formas de pagamento aceitas</h3>
+              <p className="muted">Selecione pelo menos uma opção. O pagamento ocorre diretamente com o comprador.</p>
+              {PAYMENT_METHODS.map(method=><label key={method} className="check-label">
+                <input type="checkbox" checked={shopForm.payment_methods.includes(method)}
+                  onChange={event=>setShopForm(current=>({...current,payment_methods:event.target.checked?
+                    [...current.payment_methods,method]:current.payment_methods.filter(item=>item!==method)}))}/>
+                {PAYMENT_LABELS[method]}</label>)}
+            </div>
             <label className="check-label"><input type="checkbox" checked={shopForm.pickup_enabled} onChange={e=>setShopForm(s=>({...s,pickup_enabled:e.target.checked}))}/> Oferecer retirada</label>
             <button className="primary-button" disabled={busy} type="submit">Salvar configurações <Check size={18}/></button>
             <div className="shop-danger-zone"><h3>Encerrar loja</h3>
