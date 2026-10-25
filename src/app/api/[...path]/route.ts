@@ -739,7 +739,7 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
     if(!uuid(parts[1])&&!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(parts[1]))bad('Loja inválida.');
     const s=await query("SELECT id,name,slug,description,cover_image,logo_image,is_open,delivery_enabled,pickup_enabled,delivery_fee_cents,payment_methods,lead_time,pickup_instructions FROM shops WHERE (id::text=$1 OR slug=$1) AND condominium_id=$2 AND status='approved'",[parts[1],u.condominium_id]);
     if(!s.rowCount)bad('Loja não encontrada.',404);
-    const p=await query("SELECT id,shop_id,category_id,name,description,price_cents,promo_price_cents,image_url,stock,visibility,lead_time,option_groups FROM products p WHERE shop_id=$1 AND condominium_id=$2 AND visibility<>'hidden' AND deleted_at IS NULL AND EXISTS (SELECT 1 FROM categories c WHERE c.id=p.category_id AND c.condominium_id=p.condominium_id AND c.is_active=true) ORDER BY created_at DESC",[parts[1],u.condominium_id]);
+    const p=await query("SELECT id,shop_id,category_id,name,description,price_cents,promo_price_cents,image_url,stock,visibility,lead_time,option_groups FROM products p WHERE shop_id=$1 AND condominium_id=$2 AND visibility<>'hidden' AND deleted_at IS NULL AND EXISTS (SELECT 1 FROM categories c WHERE c.id=p.category_id AND c.condominium_id=p.condominium_id AND c.is_active=true) ORDER BY created_at DESC",[s.rows[0].id,u.condominium_id]);
     return out({shop:s.rows[0],products:p.rows});
   }
   if((path==='media'||path==='media/profile')&&method==='POST'){
