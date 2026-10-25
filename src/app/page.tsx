@@ -1081,7 +1081,7 @@ export default function Page(){
           {actualFulfillment==='delivery'&&<div className="total-line"><span>Taxa de entrega</span><strong>{fee?money(fee):'Grátis'}</strong></div>}
           <div className="total-line bold"><span>Total do pedido</span><strong>{money(cartTotal)}</strong></div><p>O pagamento será combinado diretamente com o vendedor.</p>
           <div className="whatsapp-reminder"><MessageCircle size={19}/>
-            <span>O WhatsApp abrirá com a mensagem pronta. <strong>Você precisa tocar em Enviar.</strong> Apenas o vendedor confirma o pedido.</span>
+            <span>{preferWhatsAppMessenger()?'Depois de registrar o pedido, toque em Abrir WhatsApp normal para conversar com o vendedor.':'O WhatsApp abrirá com a mensagem pronta.'} <strong>Você precisa tocar em Enviar.</strong> Apenas o vendedor confirma o pedido.</span>
           </div>
           {revisedQuote&&<div className="price-changed" role="alert">
             <strong>O valor foi atualizado</strong>
@@ -1094,7 +1094,7 @@ export default function Page(){
             <button type="button" className="outline-button" onClick={()=>setRevisedQuote(null)}>Revisar carrinho</button>
           </div>}
           {!revisedQuote&&<button className="primary-button" disabled={busy} onClick={()=>checkout()}>
-            {busy?'Conferindo valores...':'Continuar no WhatsApp'}<ArrowRight size={18}/>
+            {busy?'Conferindo valores...':preferWhatsAppMessenger()?'Registrar pedido':'Continuar no WhatsApp'}<ArrowRight size={18}/>
           </button>}
           <small>O pedido fica registrado mesmo se você fechar o WhatsApp. Apenas a loja poderá confirmá-lo.</small>
         </aside></div>}
