@@ -62,10 +62,10 @@ try{
     await page.locator('.shops-list .shop-row').first().click();
     await page.locator('.shop-rating').waitFor({state:'visible'});
     await verify(page,'shop',width);
-    const shareId=new URL(page.url()).searchParams.get('loja');
-    if(!shareId)throw Error('Store profile must expose shareable URL');
+    const shopPath=new URL(page.url()).pathname;
+    if(!/^\/loja\/[a-z0-9-]+$/.test(shopPath))throw Error('Store profile must expose readable storefront URL');
     const shared=await context.newPage();
-    await shared.goto(origin+'/?loja='+shareId,{waitUntil:'domcontentloaded'});
+    await shared.goto(origin+shopPath,{waitUntil:'domcontentloaded'});
     await shared.locator('.shop-rating').waitFor({state:'visible',timeout:15000});
     await verify(shared,'shop-link',width);
     await shared.close();
