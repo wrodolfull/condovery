@@ -6,6 +6,7 @@ import {RoundedStars} from '@/components/RoundedStars';
 import {ImageCropper,type ImageKind} from '@/components/ImageCropper';
 import {clientUUID} from '@/lib/client-uuid';
 import {parseMoneyInput} from '@/lib/money-input';
+import {shopSharePath} from '@/lib/shop-slug';
 import {PAYMENT_METHODS,PAYMENT_LABELS,allowedPaymentMethods,type PaymentMethod} from '@/lib/payment-methods';
 import {supportsMessengerIntent,whatsappMessengerHref} from '@/lib/whatsapp-launch';
 import {towerLabels,currentTowerScheme,type TowerScheme} from '@/lib/towers';
@@ -22,7 +23,7 @@ import {
 
 type Viewer={id:string;name:string;email:string;phone:string;avatar_image:string|null;role:'admin'|'resident';status:'pending'|'approved'|'suspended';tower:string;apartment:string;condominium_name:string;towers:string[]};
 type Category={id:string;name:string;icon:string};
-type Shop={id:string;name:string;description:string;cover_image:string|null;logo_image:string|null;status?:string;is_open:boolean;delivery_enabled:boolean;delivery_fee_cents:number;pickup_enabled:boolean;lead_time:string;pickup_instructions?:string;whatsapp?:string;payment_methods:PaymentMethod[]};
+type Shop={id:string;slug:string;name:string;description:string;cover_image:string|null;logo_image:string|null;status?:string;is_open:boolean;delivery_enabled:boolean;delivery_fee_cents:number;pickup_enabled:boolean;lead_time:string;pickup_instructions?:string;whatsapp?:string;payment_methods:PaymentMethod[]};
 type Product={id:string;shop_id:string;shop_name?:string;visibility:'available'|'unavailable'|'hidden';category_id:string;name:string;description:string;price_cents:number;promo_price_cents:number|null;image_url:string|null;stock:number|null;is_available?:boolean;lead_time?:string;is_featured?:boolean;option_groups?:OptionGroup[]};
 type Order={id:string;code:number;status:string;review_status?:'pending'|'approved'|'rejected'|null;can_review?:boolean;is_own_shop?:boolean;total_cents:number;shop_name:string;buyer_name:string;buyer_phone:string;tower:string;apartment:string;fulfillment:string;delivery_day:string|null;delivery_window:string;delivery_instructions:string[];note:string;subtotal_cents:number;delivery_fee_cents:number;payment_method?:PaymentMethod|null;items:{name:string;quantity:number;unit_price_cents:number;note:string;options?:{group:string;name:string;price_cents:number}[]}[];created_at:string};
 type ReviewStatus='pending'|'approved'|'rejected';
@@ -256,9 +257,9 @@ export default function Page(){
     setError('');setView(next);
     if(next!=='shop'){
       const url=new URL(window.location.href);
-      if(url.searchParams.has('loja')){
+      if(url.searchParams.has('loja')||url.pathname.startsWith('/loja/')){
         url.searchParams.delete('loja');
-        window.history.replaceState({},'',url.pathname+url.search);
+        window.history.replaceState({},'/' + url.search);
       }
     }
     window.scrollTo({top:0,behavior:'smooth'});
@@ -303,8 +304,8 @@ export default function Page(){
   },[loadHome,loadMine,loadOrders,loadFavorites,loadAdmin]);
 
   useEffect(()=>{
-    const link=new URLSearchParams(window.location.search).get('loja');
-    if(link&&/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(link)){
+    const link=window.location.pathname.startsWith('/loja/')?decodeURIComponent(window.location.pathname.slice(6).split('/')[0]):new URLSearchParams(window.location.search).get('loja');
+    if(link&&/^(?:[0-9a-f]{8}-[0-9a-f-]{27,}|[a-z0-9]+(?:-[a-z0-9]+)*)$/i.test(link)){
       setSharedShopId(link);
     }
     api<{google:boolean;passwordRecovery:boolean}>('auth/providers').then(r=>{
@@ -487,15 +488,12 @@ export default function Page(){
         api<PublicReviews>('shops/'+id+'/reviews')
       ]);
       setSelectedShop(data);setShopReviews(reviews);go('shop');
-      const url=new URL(window.location.href);
-      url.searchParams.set('loja',id);
-      window.history.replaceState({},'',url.pathname+url.search);
+      window.history.replaceState({},'',shopSharePath(data.shop.slug));
     }catch(e){fail(e);}finally{setBusy(false);}
   }
   async function shareShop(id:string,name:string){
-    const url=new URL('/',window.location.origin);
-    url.searchParams.set('loja',id);
-    const link=url.toString();
+    const shop=home.shops.find(item=>item.id===id)??(selectedShop?.shop.id===id?selectedShop.shop:null)??(myShop?.id===id?myShop:null);
+    const link=new URL(shop?.slug?shopSharePath(shop.slug):'/?loja='+encodeURIComponent(id),window.location.origin).toString();
     // Native Android/iOS share sheet is available on HTTPS (secure context).
     // Call share directly in the user's click, before any other awaited work.
     if(window.isSecureContext&&typeof navigator.share==='function'){
