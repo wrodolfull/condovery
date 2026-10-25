@@ -483,10 +483,8 @@ export default function Page(){
   async function openShop(id:string){
     setBusy(true);
     try{
-      const [data,reviews]=await Promise.all([
-        api<{shop:Shop;products:Product[]}>('shops/'+id),
-        api<PublicReviews>('shops/'+id+'/reviews')
-      ]);
+      const data=await api<{shop:Shop;products:Product[]}>('shops/'+encodeURIComponent(id));
+      const reviews=await api<PublicReviews>('shops/'+data.shop.id+'/reviews');
       setSelectedShop(data);setShopReviews(reviews);go('shop');
       window.history.replaceState({},'',shopSharePath(data.shop.slug));
     }catch(e){fail(e);}finally{setBusy(false);}
