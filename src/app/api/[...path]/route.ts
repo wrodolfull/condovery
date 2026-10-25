@@ -10,6 +10,8 @@ import { oauthCookie,randomToken,safeAppOrigin } from '@/lib/security';
 import { violatesCommunityLanguage } from '@/lib/content-policy';
 import {processAccountDeletionJob} from '@/lib/account-deletion';
 import {processShopDeletionJob} from '@/lib/shop-deletion';
+import {slugifyShopName} from '@/lib/shop-slug';
+import {randomBytes} from 'node:crypto';
 import {towerLabels,currentTowerScheme} from '@/lib/towers';
 import {IMAGE_MIME_TYPES, imageSizeIsAllowed} from '@/lib/image-limits';
 
@@ -544,7 +546,7 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
   if(path==='home'&&method==='GET'){
     const [categories,shops,products]=await Promise.all([
       query('SELECT id,name,icon FROM categories WHERE condominium_id=$1 AND is_active=true ORDER BY sort_order,name',[u.condominium_id]),
-      query("SELECT id,name,description,cover_image,logo_image,is_open,delivery_enabled,pickup_enabled,delivery_fee_cents,payment_methods,lead_time FROM shops WHERE condominium_id=$1 AND status='approved' ORDER BY is_open DESC,created_at DESC LIMIT 100",[u.condominium_id]),
+      query("SELECT id,name,slug,description,cover_image,logo_image,is_open,delivery_enabled,pickup_enabled,delivery_fee_cents,payment_methods,lead_time FROM shops WHERE condominium_id=$1 AND status='approved' ORDER BY is_open DESC,created_at DESC LIMIT 100",[u.condominium_id]),
       query("SELECT p.id,p.shop_id,p.category_id,p.name,p.description,p.price_cents,p.promo_price_cents,p.image_url,p.stock,p.visibility,p.lead_time,p.is_featured,p.option_groups,s.name AS shop_name,s.is_open FROM products p JOIN categories c ON c.id=p.category_id AND c.condominium_id=p.condominium_id AND c.is_active=true JOIN shops s ON s.id=p.shop_id WHERE p.condominium_id=$1 AND s.condominium_id=$1 AND p.visibility<>'hidden' AND p.deleted_at IS NULL AND s.status='approved' ORDER BY p.is_featured DESC,p.created_at DESC LIMIT 48",[u.condominium_id])
     ]);
     return out({categories:categories.rows,shops:shops.rows,products:products.rows});
@@ -704,8 +706,19 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
       normalizeWhatsApp(b.whatsapp);
       const existing=await query("SELECT id FROM shops WHERE owner_id=$1 AND status<>'deleted'",[u.id]);
       if(existing.rowCount)bad('Você já possui uma loja.',409);
-      const r=await query("INSERT INTO shops(condominium_id,owner_id,name,description,whatsapp,status) VALUES($1,$2,$3,$4,$5,'approved') RETURNING *",[u.condominium_id,u.id,b.name,b.description??'',b.whatsapp]);
-      return out({shop:r.rows[0]},201);
+      const base=slugifyShopName(b.name);
+       let created=null;
+       for(let attempt=0;attempt<7;attempt++){
+         const slug=attempt===0?base:base.slice(0,60)+'-'+randomBytes(4).toString('hex');
+         const result=await query(
+           "INSERT INTO shops(condominium_id,owner_id,name,description,whatsapp,status,slug) "+
+           "VALUES($1,$2,$3,$4,$5,'approved',$6) ON CONFLICT (slug) DO NOTHING RETURNING *",
+           [u.condominium_id,u.id,b.name,b.description??'',b.whatsapp,slug]
+         );
+         if(result.rowCount){created=result.rows[0];break;}
+       }
+       if(!created)bad('Não foi possível criar um endereço exclusivo para a loja. Tente novamente.',409);
+       return out({shop:created},201);
     }
     if(method==='PATCH'){
       const shop=await shopOwned(u);
@@ -723,10 +736,10 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
     }
   }
   if(parts[0]==='shops'&&parts[1]&&parts[1]!=='mine'&&method==='GET'){
-    if(!uuid(parts[1]))bad('Loja inválida.');
-    const s=await query("SELECT id,name,description,cover_image,logo_image,is_open,delivery_enabled,pickup_enabled,delivery_fee_cents,payment_methods,lead_time,pickup_instructions FROM shops WHERE id=$1 AND condominium_id=$2 AND status='approved'",[parts[1],u.condominium_id]);
+    if(!uuid(parts[1])&&!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(parts[1]))bad('Loja inválida.');
+    const s=await query("SELECT id,name,slug,description,cover_image,logo_image,is_open,delivery_enabled,pickup_enabled,delivery_fee_cents,payment_methods,lead_time,pickup_instructions FROM shops WHERE (id::text=$1 OR slug=$1) AND condominium_id=$2 AND status='approved'",[parts[1],u.condominium_id]);
     if(!s.rowCount)bad('Loja não encontrada.',404);
-    const p=await query("SELECT id,shop_id,category_id,name,description,price_cents,promo_price_cents,image_url,stock,visibility,lead_time,option_groups FROM products p WHERE shop_id=$1 AND condominium_id=$2 AND visibility<>'hidden' AND deleted_at IS NULL AND EXISTS (SELECT 1 FROM categories c WHERE c.id=p.category_id AND c.condominium_id=p.condominium_id AND c.is_active=true) ORDER BY created_at DESC",[parts[1],u.condominium_id]);
+    const p=await query("SELECT id,shop_id,category_id,name,description,price_cents,promo_price_cents,image_url,stock,visibility,lead_time,option_groups FROM products p WHERE shop_id=$1 AND condominium_id=$2 AND visibility<>'hidden' AND deleted_at IS NULL AND EXISTS (SELECT 1 FROM categories c WHERE c.id=p.category_id AND c.condominium_id=p.condominium_id AND c.is_active=true) ORDER BY created_at DESC",[s.rows[0].id,u.condominium_id]);
     return out({shop:s.rows[0],products:p.rows});
   }
   if((path==='media'||path==='media/profile')&&method==='POST'){

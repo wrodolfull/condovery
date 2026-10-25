@@ -66,6 +66,17 @@ const shopCreated=await request('shops/mine',{method:'POST',cookie:sellerCookie,
 },expected:201});
 const shopId=shopCreated.data.shop.id;
 assert.equal(shopCreated.data.shop.status,'approved');
+assert.equal(shopCreated.data.shop.slug,'bolos-da-gabi');
+const resolvedBySlug=(await request('shops/bolos-da-gabi',{cookie:buyerCookie})).data;
+assert.equal(resolvedBySlug.shop.id,shopId);
+assert.equal(resolvedBySlug.shop.slug,'bolos-da-gabi');
+const duplicateShopName=await request('shops/mine',{method:'POST',cookie:buyerCookie,body:{
+  name:'Bolos da Gabi',description:'Outra loja com mesmo nome',whatsapp:'11999991234',accept_guidelines:true
+},expected:201});
+assert.match(duplicateShopName.data.shop.slug,/^bolos-da-gabi-[a-f0-9]{8}$/);
+assert.notEqual(duplicateShopName.data.shop.slug,shopCreated.data.shop.slug);
+await request('shops/mine',{method:'DELETE',cookie:buyerCookie,body:{confirmation:'EXCLUIR LOJA'}});
+
 const sellerHome=(await request('home',{cookie:sellerCookie})).data;
 assert.equal(sellerHome.categories.length,7);
 const standardNames=[
