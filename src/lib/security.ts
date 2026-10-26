@@ -7,6 +7,16 @@ export const sha256=(value:string)=>crypto.createHash('sha256').update(value).di
 
 export function safeAppOrigin(req:NextRequest):string {
   const allowed=process.env.APP_URL?.replace(/\/$/,'');
+  if(process.env.TENANT_BASE_DOMAIN){
+    const hostname=req.nextUrl.hostname.toLowerCase();
+    const base=process.env.TENANT_BASE_DOMAIN.toLowerCase();
+    const suffix='.'+base;
+    if(hostname.endsWith(suffix)){
+      const label=hostname.slice(0,-suffix.length);
+      if(/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(label)&&!['www','api','admin'].includes(label))
+        return 'https://'+hostname;
+    }
+  }
   if(allowed){
     const origin=new URL(allowed).origin;
     if(process.env.NODE_ENV==='production'&&!origin.startsWith('https://')&&!['127.0.0.1','localhost'].includes(new URL(origin).hostname))throw new Error('APP_URL must use HTTPS in production');
