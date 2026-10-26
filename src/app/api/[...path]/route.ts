@@ -1286,6 +1286,7 @@ async function endpoint(req:NextRequest,method:Verb) {
   const parts=req.nextUrl.pathname.replace(/^\/api\/?/,'').split('/').filter(Boolean);
   try{return await processApi({req,method,parts});}
   catch(error){
+    if(error instanceof Error&&error.message==='TENANT_NOT_FOUND')return out({error:'Condomínio não encontrado neste subdomínio.'},404);
     if(error instanceof ApiError)return out({error:error.message},error.status);
     if(error instanceof ZodError)return out({error:'Confira os campos preenchidos.',details:error.issues.map(i=>i.path.join('.'))},400);
     console.error('condovery_api_error',error instanceof Error?error.message:error);
