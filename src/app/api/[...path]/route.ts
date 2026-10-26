@@ -1184,7 +1184,7 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
       query('SELECT id,name,email,phone,tower,apartment,status,created_at FROM users WHERE condominium_id=$1 AND role=\'resident\' ORDER BY CASE WHEN status=\'pending\' THEN 0 ELSE 1 END,created_at DESC LIMIT 200',[u.condominium_id]),
       query('SELECT s.id,s.name,s.description,s.status,s.is_open,u.name AS owner_name FROM shops s JOIN users u ON u.id=s.owner_id WHERE s.condominium_id=$1 ORDER BY CASE WHEN s.status=\'pending\' THEN 0 ELSE 1 END,s.created_at DESC LIMIT 200',[u.condominium_id]),
       query("SELECT (SELECT count(*)::int FROM users WHERE condominium_id=$1 AND status='approved') AS residents, (SELECT count(*)::int FROM shops WHERE condominium_id=$1 AND status='approved') AS shops,(SELECT count(*)::int FROM orders WHERE condominium_id=$1) AS orders",[u.condominium_id]),
-      query('SELECT id,name,icon FROM categories WHERE condominium_id=$1 AND is_active=true ORDER BY sort_order,name',[u.condominium_id])
+      query('SELECT id,name,icon,is_active FROM categories WHERE condominium_id=$1 ORDER BY sort_order,name',[u.condominium_id])
     ]);
     return out({residents:residents.rows,shops:shops.rows,stats:stats.rows[0],categories:categories.rows,towers:u.towers});
   }
@@ -1287,6 +1287,18 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
     const r=await query("UPDATE shops SET status=$1 WHERE id=$2 AND condominium_id=$3 AND status<>'deleted' RETURNING id",[b.status,parts[2],u.condominium_id]);
     if(!r.rowCount)bad('Loja não encontrada.',404);
     return out({ok:true});
+  }
+  if(path.startsWith('admin/categories/')&&method==='PATCH'){
+    admin(u);
+    const id=parts[2];
+    if(!uuid(id))bad('Categoria inválida.');
+    const b=z.object({is_active:z.boolean()}).parse(await body(req));
+    const changed=await query(
+      "UPDATE categories SET is_active=$1 WHERE id=$2 AND condominium_id=$3 AND name IN ('Serviços','Moda') RETURNING id,name,is_active",
+      [b.is_active,id,u.condominium_id]
+    );
+    if(!changed.rowCount)bad('Somente Serviços e Moda podem ser alternadas neste painel.',404);
+    return out({category:changed.rows[0]});
   }
   if(path==='admin/categories'&&method==='POST'){
     admin(u);
