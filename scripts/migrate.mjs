@@ -38,6 +38,8 @@ try {
   await client.query(slugs);
   const tenants=await readFile(new URL('../db/015_platform_admin_and_tenants.sql',import.meta.url),'utf8');
   await client.query(tenants);
+  const hosts=await readFile(new URL('../db/016_condominium_subdomains.sql',import.meta.url),'utf8');
+  await client.query(hosts);
   console.log('Condovery database schema applied successfully.');
 } finally {
   await client.end();
