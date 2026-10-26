@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {IllustrationSlot} from '@/components/IllustrationSlot';
+import {AdsCarousel,type AdCampaign} from '@/components/AdsCarousel';
+import {AdsAdmin} from '@/components/AdsAdmin';
 import {RoundedStars} from '@/components/RoundedStars';
 import {ImageCropper,type ImageKind} from '@/components/ImageCropper';
 import {clientUUID} from '@/lib/client-uuid';
@@ -193,6 +195,7 @@ export default function Page(){
   const [toast,setToast]=useState('');
   const [view,setView]=useState<View>('home');
   const [home,setHome]=useState<HomeData>(emptyHome);
+  const [ads,setAds]=useState<AdCampaign[]>([]);
   const [favoriteIds,setFavoriteIds]=useState<string[]>([]);
   const [favoriteProducts,setFavoriteProducts]=useState<Product[]>([]);
   const [query,setQuery]=useState('');
@@ -268,7 +271,10 @@ export default function Page(){
     }
     window.scrollTo({top:0,behavior:'smooth'});
   };
-  const loadHome=useCallback(async()=>{setHome(await api<HomeData>('home'));},[]);
+  const loadHome=useCallback(async()=>{
+    const [data,adData]=await Promise.all([api<HomeData>('home'),api<{campaigns:AdCampaign[]}>('ads').catch(()=>({campaigns:[]}))]);
+    setHome(data);setAds(adData.campaigns);
+  },[]);
   const loadFavorites=useCallback(async()=>{
     const result=await api<{ids:string[];products:Product[]}>('favorites');
     setFavoriteIds(result.ids);setFavoriteProducts(result.products);
@@ -967,7 +973,7 @@ export default function Page(){
             <CategoryArtwork category={c}/><span>{c.name}</span></button>)}
         </div>
         {!query&&<>
-          <section className="weekly-offer-banner">
+          {ads.length>0?<AdsCarousel campaigns={ads}/>:<section className="weekly-offer-banner">
             <div className="weekly-offer-copy">
               <span className="eyebrow">ACHADINHOS DA VIZINHANÇA</span>
               <h2>Ofertas da semana</h2>
@@ -977,7 +983,7 @@ export default function Page(){
             <IllustrationSlot className="weekly-offer-art" src={artwork.weeklyOffers}
               alt="Arte promocional das ofertas da semana"
               fallback={<Tag size={54} strokeWidth={1.2}/>}/>
-          </section>
+          </section>}
           {featured.length>0&&<><SectionHeader title="Produtos em destaque" action="Explorar" onAction={()=>go('categories')}/>
             <div className="product-track">{featured.map(p=><ProductCard key={p.id} p={p} onClick={()=>openProduct(p)} favorite={favoriteIds.includes(p.id)} onFavorite={toggleFavorite}/>)}</div></>}
         </>}
@@ -1522,6 +1528,7 @@ export default function Page(){
       {view==='platform'&&viewer.is_superadmin&&<>
         <button className="back-link" onClick={()=>go('account')}><ArrowLeft size={18}/> Minha conta</button>
         <div className="page-title"><h1>Superadmin Condovery</h1><p>Gerencie os condomínios e alterne o ambiente administrado.</p></div>
+        <AdsAdmin tenants={tenants}/>
         <section className="admin-section white-panel"><h2>Condomínios cadastrados</h2>
           <div className="platform-tenants">{tenants.map(tenant=><div className="admin-row" key={tenant.id}>
             <div><strong>{tenant.name}</strong><p>{tenant.subdomain?tenant.subdomain+'.'+(process.env.NEXT_PUBLIC_TENANT_BASE_DOMAIN||'condovery.com'):'/'+tenant.slug} · {tenant.residents} moradores · {tenant.shops} lojas</p>
