@@ -67,6 +67,10 @@ try{
   if(identity.rows[0]?.supabase_auth_user_id!==authId||identity.rows[0].role!=='admin'){
     throw new Error('Administrator identity conflict; manual resolution required.');
   }
+  // The environment-provisioned administrator is the single platform master.
+  // Do not grant platform access based on a client-side role claim or domain.
+  const master=await db.query('SELECT id FROM users WHERE email=$1 AND supabase_auth_user_id=$2',[email,authId]);
+  await db.query('INSERT INTO platform_admins(user_id) VALUES($1) ON CONFLICT DO NOTHING',[master.rows[0].id]);
   const categories=[['Bolos e doces','cake-slice'],['Pães e salgados','sandwich'],['Refeições','utensils'],['Bebidas','coffee'],['Lanches','pizza'],['Sobremesas e sorvetes','ice-cream-cone'],['Mercadinho','shopping-basket']];
   for(let i=0;i<categories.length;i++)await db.query(
     'INSERT INTO categories(condominium_id,name,icon,sort_order) VALUES($1,$2,$3,$4) ON CONFLICT(condominium_id,name) DO NOTHING',

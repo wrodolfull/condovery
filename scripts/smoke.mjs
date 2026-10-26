@@ -47,6 +47,24 @@ for(const email of [buyerEmail,sellerEmail]){
 const adminLogin=await request('auth/login',{method:'POST',body:{email:process.env.BOOTSTRAP_ADMIN_EMAIL,password:process.env.BOOTSTRAP_ADMIN_PASSWORD}});
 const adminCookie=adminLogin.cookie;
 assert.ok(adminCookie);
+// The env-bootstrapped administrator is a platform master; tenant switching
+// must change the active session scope without changing the underlying login.
+const masterTenants=(await request('platform/condominiums',{cookie:adminCookie})).data;
+assert.ok(masterTenants.condominiums.some(c=>c.slug===process.env.BOOTSTRAP_CONDO_SLUG));
+const newTenant=(await request('platform/condominiums',{
+  method:'POST',cookie:adminCookie,expected:201,body:{
+    name:'Residencial Jardins',slug:'residencial-jardins',
+    invite_code:'AnotherPrivateInvite5678',tower_scheme:'numbers',tower_count:12
+  }
+})).data.condominium;
+assert.equal(newTenant.slug,'residencial-jardins');
+const originalTenant=masterTenants.active_condominium_id;
+await request('platform/condominiums/switch',{method:'POST',cookie:adminCookie,body:{condominium_id:newTenant.id}});
+assert.equal((await request('me',{cookie:adminCookie})).data.viewer.condominium_id,newTenant.id);
+assert.equal((await request('admin/summary',{cookie:adminCookie})).data.stats.residents,0);
+await request('platform/condominiums/switch',{method:'POST',cookie:adminCookie,body:{condominium_id:originalTenant}});
+assert.equal((await request('me',{cookie:adminCookie})).data.viewer.condominium_id,originalTenant);
+
 let summary=(await request('admin/summary',{cookie:adminCookie})).data;
 assert.equal(summary.residents.filter(x=>x.status==='approved').length,2);
 assert.equal(summary.residents.filter(x=>x.status==='pending').length,0);
@@ -55,6 +73,8 @@ const buyerLogin=await request('auth/login',{method:'POST',body:{email:buyerEmai
 const sellerCookie=sellerLogin.cookie, buyerCookie=buyerLogin.cookie;
 assert.ok(sellerCookie&&buyerCookie);
 await request('admin/summary',{cookie:buyerCookie,expected:403});
+await request('platform/condominiums',{cookie:buyerCookie,expected:403});
+await request('platform/condominiums/switch',{method:'POST',cookie:buyerCookie,expected:403,body:{condominium_id:newTenant.id}});
 await request('shops/mine',{method:'POST',cookie:sellerCookie,expected:400,body:{
   name:'Bolos da Gabi',description:'Bolos feitos no condomínio',whatsapp:'11999991234'
 }});

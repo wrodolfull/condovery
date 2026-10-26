@@ -36,6 +36,8 @@ try {
   await client.query(payments);
   const slugs=await readFile(new URL('../db/014_shop_slugs.sql',import.meta.url),'utf8');
   await client.query(slugs);
+  const tenants=await readFile(new URL('../db/015_platform_admin_and_tenants.sql',import.meta.url),'utf8');
+  await client.query(tenants);
   console.log('Condovery database schema applied successfully.');
 } finally {
   await client.end();
