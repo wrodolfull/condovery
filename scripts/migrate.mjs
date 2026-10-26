@@ -42,6 +42,8 @@ try {
   await client.query(hosts);
   const ads=await readFile(new URL('../db/017_advertising_campaigns.sql',import.meta.url),'utf8');
   await client.query(ads);
+  const optionalCategories=await readFile(new URL('../db/018_optional_categories.sql',import.meta.url),'utf8');
+  await client.query(optionalCategories);
   console.log('Condovery database schema applied successfully.');
 } finally {
   await client.end();
