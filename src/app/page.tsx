@@ -678,7 +678,7 @@ export default function Page(){
       if(preferWhatsAppMessenger()){
         // Saving the order requires API requests; direct Android app launch
         // must instead happen from the explicit link on the success page.
-        notify('Pedido registrado. Toque em Abrir WhatsApp normal para enviar.');
+        notify('Pedido registrado. Toque em Enviar pedido para continuar.');
       }else{
         window.location.assign(result.whatsapp_url);
       }
@@ -1125,9 +1125,6 @@ export default function Page(){
         </section><aside className="checkout-total white-panel"><h2>Resumo do pedido</h2><div className="total-line"><span>{cartCount} {cartCount===1?'item':'itens'}</span><strong>{money(cartSubtotal)}</strong></div>
           {actualFulfillment==='delivery'&&<div className="total-line"><span>Taxa de entrega</span><strong>{fee?money(fee):'Grátis'}</strong></div>}
           <div className="total-line bold"><span>Total do pedido</span><strong>{money(cartTotal)}</strong></div><p>{paymentMethod?'Pagamento escolhido: '+PAYMENT_LABELS[paymentMethod]+'. ':''}O pagamento será combinado diretamente com o vendedor.</p>
-          <div className="whatsapp-reminder"><MessageCircle size={19}/>
-            <span>{preferWhatsAppMessenger()?'Depois de registrar o pedido, toque em Abrir WhatsApp normal para conversar com o vendedor.':'O WhatsApp abrirá com a mensagem pronta.'} <strong>Você precisa tocar em Enviar.</strong> Apenas o vendedor confirma o pedido.</span>
-          </div>
           {revisedQuote&&<div className="price-changed" role="alert">
             <strong>O valor foi atualizado</strong>
             <p>Anterior: {money(cartTotal)} → <strong>Atual: {money(revisedQuote.total_cents)}</strong></p>
@@ -1150,9 +1147,9 @@ export default function Page(){
         <div className="whatsapp-reminder"><MessageCircle size={18}/> <strong>Importante: toque em Enviar dentro do WhatsApp.</strong> O Condovery não envia a mensagem sozinho.</div>
         <a className="primary-button" href={orderWhatsAppLink(lastOrder.whatsapp_url)}
            target={preferWhatsAppMessenger()?undefined:'_blank'} rel="noopener noreferrer">
-           {preferWhatsAppMessenger()?'Abrir WhatsApp normal':'Abrir conversa no WhatsApp'} <ArrowRight size={18}/></a>
+           Enviar pedido <ArrowRight size={18}/></a>
          {preferWhatsAppMessenger()&&<a className="whatsapp-web-fallback" href={lastOrder.whatsapp_url}
-           target="_blank" rel="noopener noreferrer">WhatsApp normal não abriu? Usar link padrão</a>}
+           target="_blank" rel="noopener noreferrer">Enviar pedido não abriu? Clique aqui</a>}
         <button className="outline-button" onClick={()=>{loadOrders();go('orders');}}>Acompanhar meus pedidos</button><small>Abrir o WhatsApp não significa que o vendedor recebeu ou confirmou o pedido.</small></div>}
 
       {view==='favorites'&&<>
@@ -1647,10 +1644,10 @@ export default function Page(){
           </div>
           <div className="share-fallback-actions">
             <a href={orderWhatsAppLink(reopenWhatsAppUrl)} onClick={()=>setReopenWhatsAppUrl(null)}>
-              <MessageCircle size={20}/> Abrir WhatsApp normal</a>
+              <MessageCircle size={20}/> Enviar pedido</a>
             <a href={reopenWhatsAppUrl} target="_blank" rel="noopener noreferrer"
               onClick={()=>setReopenWhatsAppUrl(null)}>
-              <Share2 size={20}/> Usar link padrão do WhatsApp</a>
+              <Share2 size={20}/> Enviar pedido não abriu? Clique aqui</a>
           </div>
         </section>
       </div>}
