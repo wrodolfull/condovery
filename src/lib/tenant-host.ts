@@ -21,8 +21,15 @@ export async function tenantForRequest(req:NextRequest):Promise<{id:string;name:
   if(!base)return null;
   // Next's parsed request URL is the authoritative host after ingress routing.
   // Never use untrusted X-Forwarded-Host for tenant identification.
-  const label=tenantSubdomainFromHost(req.nextUrl.hostname,base);
-  if(!label)return null;
+  const host=req.nextUrl.hostname.toLowerCase();
+  const label=tenantSubdomainFromHost(host,base);
+  if(!label){
+    // Disallow undeclared nested or malformed wildcard hosts from falling through
+    // to the central tenant-neutral application.
+    if(host.endsWith('.'+base.toLowerCase())&&
+      !['www','api','admin'].includes(host.slice(0,-base.length-1)))throw new Error('TENANT_NOT_FOUND');
+    return null;
+  }
   const found=await query<{id:string;name:string;subdomain:string}>(
     'SELECT id,name,subdomain FROM condominiums WHERE subdomain=$1 AND is_active=true',
     [label]);
