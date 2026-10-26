@@ -1,4 +1,5 @@
 'use client';
+import {prepareMarketplaceImage} from '@/lib/prepare-marketplace-image';
 import {useCallback,useEffect,useState,type FormEvent} from 'react';
 type Campaign={id:string;condominium_id:string;merchant_name:string;headline:string;starts_at:string;expires_at:string;enabled:boolean};
 type Tenant={id:string;name:string};
@@ -34,7 +35,7 @@ export function AdsAdmin({tenants}:{tenants:Tenant[]}){
     if(!['image/jpeg','image/png','image/webp'].includes(file.type)||file.size>10*1024*1024){setError('Selecione JPG, PNG ou WebP de até 10 MB.');return;}
     setUploading(true);setError('');
     try{
-      const data=new FormData();data.append('file',file);
+      const optimized=await prepareMarketplaceImage(file,10);const data=new FormData();data.append('file',optimized);
       const res=await fetch('/api/media/ad',{method:'POST',body:data});
       const result=await res.json();
       if(!res.ok)throw new Error(result.error||'Erro no upload.');
