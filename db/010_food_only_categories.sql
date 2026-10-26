@@ -3,7 +3,7 @@
 ALTER TABLE public.categories ADD COLUMN IF NOT EXISTS is_active boolean NOT NULL DEFAULT true;
 UPDATE public.categories SET is_active=false
 WHERE name IN (
-  'Serviços','Beleza','Saúde e bem-estar','Moda','Casa e decoração',
+  'Beleza','Saúde e bem-estar','Casa e decoração',
   'Eletrônicos','Presentes','Outros'
 ) AND is_active=true;
 CREATE INDEX IF NOT EXISTS categories_condo_active_idx
