@@ -18,10 +18,10 @@ import {
   CircleHelp, Clock3, Coffee, Gift, Heart, Home, ImagePlus, LayoutGrid, LogOut, MapPin,
   Menu, MessageCircle, Minus, Package, Plus, Receipt, Search, Settings, Share2, ShieldCheck, ShoppingBag, ShoppingBasket,
   SlidersHorizontal, Sparkles, Store, Tag, Trash2, Truck, UserRound, Utensils, X, Shirt, Sandwich,
-  Pizza, IceCreamCone, Wrench, HeartPulse, House, Smartphone, PauseCircle, PlayCircle
+  Pizza, IceCreamCone, Wrench, HeartPulse, House, Smartphone, PauseCircle, PlayCircle, Building2
 } from 'lucide-react';
 
-type Viewer={id:string;name:string;email:string;phone:string;avatar_image:string|null;role:'admin'|'resident';status:'pending'|'approved'|'suspended';tower:string;apartment:string;condominium_name:string;towers:string[]};
+type Viewer={id:string;name:string;email:string;phone:string;avatar_image:string|null;role:'admin'|'resident';status:'pending'|'approved'|'suspended';tower:string;apartment:string;condominium_name:string;towers:string[];is_superadmin?:boolean};
 type Category={id:string;name:string;icon:string};
 type Shop={id:string;slug:string;name:string;description:string;cover_image:string|null;logo_image:string|null;status?:string;is_open:boolean;delivery_enabled:boolean;delivery_fee_cents:number;pickup_enabled:boolean;lead_time:string;pickup_instructions?:string;whatsapp?:string;payment_methods:PaymentMethod[]};
 type Product={id:string;shop_id:string;shop_name?:string;visibility:'available'|'unavailable'|'hidden';category_id:string;name:string;description:string;price_cents:number;promo_price_cents:number|null;image_url:string|null;stock:number|null;is_available?:boolean;lead_time?:string;is_featured?:boolean;option_groups?:OptionGroup[]};
@@ -58,7 +58,8 @@ function MoneyInput({cents,onValue}:{cents:number;onValue:(value:number)=>void})
 }
 type HomeData={categories:Category[];shops:Shop[];products:Product[]};
 type AdminData={towers:string[];residents:{id:string;name:string;email:string;tower:string;apartment:string;status:string}[];shops:{id:string;name:string;owner_name:string;status:string}[];stats:{residents:number;shops:number;orders:number};categories:Category[]};
-type View='home'|'categories'|'favorites'|'orders'|'account'|'shop'|'product'|'cart'|'success'|'seller'|'admin';
+type View='home'|'categories'|'favorites'|'orders'|'account'|'shop'|'product'|'cart'|'success'|'seller'|'admin'|'platform';
+type Tenant={id:string;name:string;slug:string;custom_domain:string|null;is_active:boolean;residents:number;shops:number};
 const money=(n:number)=>new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(n/100);
 const price=(p:Product)=>p.promo_price_cents??p.price_cents;
 const statusLabel:Record<string,string>={awaiting_confirmation:'Aguardando confirmação',confirmed:'Confirmado',completed:'Concluído',cancelled:'Cancelado',pending:'Em análise',approved:'Ativo',suspended:'Suspenso',deleted:'Excluído'};
@@ -233,6 +234,9 @@ export default function Page(){
   const [cropRequest,setCropRequest]=useState<{file:File;kind:ImageKind}|null>(null);
   const [myProducts,setMyProducts]=useState<Product[]>([]);
   const [adminData,setAdminData]=useState<AdminData|null>(null);
+  const [tenants,setTenants]=useState<Tenant[]>([]);
+  const [tenantForm,setTenantForm]=useState({name:'',slug:'',invite_code:'',tower_scheme:'letters',tower_count:30,custom_domain:''});
+  const [tenantAdmin,setTenantAdmin]=useState({condominium_id:'',name:'',email:'',password:''});
   const [sellerTab,setSellerTab]=useState<'orders'|'products'|'reviews'|'settings'>('orders');
   const [shopForm,setShopForm]=useState({name:'',description:'',whatsapp:'',is_open:true,delivery_enabled:true,delivery_fee_cents:0,pickup_enabled:true,lead_time:'',pickup_instructions:'',cover_image:'',logo_image:'',payment_methods:['pix','credit_card','debit_card','cash'] as PaymentMethod[]});
   const [productForm,setProductForm]=useState({id:'',name:'',description:'',category_id:'',price:'',promo:'',stock:'',image_url:'',visibility:'available' as Product['visibility'],lead_time:'',option_groups:[] as OptionGroup[]});
@@ -299,6 +303,38 @@ export default function Page(){
     if(scheme)setTowerScheme(scheme);
     setTowerCount(summary.towers?.length||30);
   },[]);
+  const loadTenants=useCallback(async()=>{
+    const result=await api<{condominiums:Tenant[]}>('platform/condominiums');
+    setTenants(result.condominiums);
+  },[]);
+  async function createTenant(e:React.FormEvent){
+    e.preventDefault();setBusy(true);setError('');
+    try{
+      await api('platform/condominiums',{method:'POST',body:payload({
+        ...tenantForm,custom_domain:tenantForm.custom_domain||undefined
+      })});
+      await loadTenants();notify('Condomínio criado. Agora cadastre o administrador.');
+      setTenantForm({name:'',slug:'',invite_code:'',tower_scheme:'letters',tower_count:30,custom_domain:''});
+    }catch(e){fail(e);}finally{setBusy(false);}
+  }
+  async function provisionTenantAdmin(e:React.FormEvent){
+    e.preventDefault();setBusy(true);setError('');
+    try{
+      await api('platform/condominiums/admin',{method:'POST',body:payload(tenantAdmin)});
+      notify('Administrador criado. Compartilhe suas credenciais por canal seguro.');
+      setTenantAdmin({condominium_id:'',name:'',email:'',password:''});
+    }catch(e){fail(e);}finally{setBusy(false);}
+  }
+  async function switchTenant(id:string){
+    setBusy(true);setError('');
+    try{
+      await api('platform/condominiums/switch',{method:'POST',body:payload({condominium_id:id})});
+      setCart([]);setSelectedShop(null);setFavoriteIds([]);setFavoriteProducts([]);setOrders([]);setMyShop(null);
+      const data=await api<{viewer:Viewer}>('me');
+      setViewer(data.viewer);await refresh(data.viewer);
+      go('admin');notify('Condomínio ativo alterado para '+data.viewer.condominium_name+'.');
+    }catch(e){fail(e);}finally{setBusy(false);}
+  }
   const refresh=useCallback(async(u:Viewer)=>{
     await Promise.all([loadHome(),loadMine(),loadOrders(),loadFavorites(),...(u.role==='admin'?[loadAdmin()]:[])]);
   },[loadHome,loadMine,loadOrders,loadFavorites,loadAdmin]);
@@ -903,6 +939,7 @@ export default function Page(){
       {bottomNav.map(([target,Icon,label])=><button key={target} className={view===target?'active':''} onClick={()=>go(target)}><Icon size={18}/>{label}</button>)}
       <button onClick={()=>{loadMine();go('seller');}}><Store size={18}/>Minha loja</button>
       {viewer.role==='admin'&&<button onClick={()=>{loadAdmin();go('admin');}}><ShieldCheck size={18}/>Administração</button>}
+      {viewer.is_superadmin&&<button onClick={()=>{loadTenants();go('platform');}}><Building2 size={18}/>Superadmin</button>}
     </div></div>
     {error&&<div className="global-alert" role="alert"><span>{error}</span><button onClick={()=>setError('')} aria-label="Fechar"><X size={17}/></button></div>}
     {toast&&<div role="status" className="global-toast"><CheckCircle2 size={18}/>{toast}</div>}
@@ -1195,6 +1232,7 @@ export default function Page(){
         <div className="account-shortcuts"><button onClick={()=>{loadMine();go('seller');}}><Store size={23}/><span><strong>{myShop?'Minha loja':'Quero vender'}</strong><small>{myShop?'Gerencie produtos e pedidos':'Crie sua loja e comece a vender'}</small></span><ChevronRight/></button>
         <button onClick={()=>{loadOrders();go('orders');}}><Receipt size={23}/><span><strong>Meus pedidos</strong><small>Acompanhe suas compras</small></span><ChevronRight/></button>
         {viewer.role==='admin'&&<button onClick={()=>{loadAdmin();go('admin');}}><ShieldCheck size={23}/><span><strong>Administração</strong><small>Segurança e configurações</small></span><ChevronRight/></button>}
+        {viewer.is_superadmin&&<button onClick={()=>{loadTenants();go('platform');}}><Building2 size={23}/><span><strong>Painel Superadmin</strong><small>Todos os condomínios</small></span><ChevronRight/></button>}
         <button onClick={logout}><LogOut size={23}/><span><strong>Sair</strong><small>Encerrar sessão neste dispositivo</small></span><ChevronRight/></button>
         {viewer.role==='resident'&&<button className="delete-account-entry"
           onClick={()=>{setShowDeleteAccount(true);setDeleteConfirmation('');setDeletePassword('');setError('');}}>
@@ -1484,6 +1522,53 @@ export default function Page(){
         </>}
       </>}
 
+      {view==='platform'&&viewer.is_superadmin&&<>
+        <button className="back-link" onClick={()=>go('account')}><ArrowLeft size={18}/> Minha conta</button>
+        <div className="page-title"><h1>Superadmin Condovery</h1><p>Gerencie os condomínios e alterne o ambiente administrado.</p></div>
+        <section className="admin-section white-panel"><h2>Condomínios cadastrados</h2>
+          <div className="platform-tenants">{tenants.map(tenant=><div className="admin-row" key={tenant.id}>
+            <div><strong>{tenant.name}</strong><p>/{tenant.slug} · {tenant.residents} moradores · {tenant.shops} lojas</p>
+              {tenant.custom_domain&&<small>{tenant.custom_domain}</small>}</div>
+            <button className="outline-button" type="button" disabled={busy||tenant.id===viewer.condominium_id}
+              onClick={()=>switchTenant(tenant.id)}>{tenant.id===viewer.condominium_id?'Condomínio ativo':'Administrar'}</button>
+          </div>)}</div>
+        </section>
+        <section className="admin-section white-panel"><h2>Criar condomínio</h2>
+          <form className="form-stack" onSubmit={createTenant}>
+            <label>Nome<input required minLength={3} maxLength={100} value={tenantForm.name}
+              onChange={e=>setTenantForm(v=>({...v,name:e.target.value}))}/></label>
+            <label>Identificador no endereço<input required minLength={3} maxLength={60} value={tenantForm.slug}
+              placeholder="morada-do-vale" onChange={e=>setTenantForm(v=>({...v,slug:e.target.value}))}/></label>
+            <label>Código de acesso do condomínio<input required minLength={10} maxLength={150} value={tenantForm.invite_code}
+              onChange={e=>setTenantForm(v=>({...v,invite_code:e.target.value}))}/></label>
+            <div className="field-grid"><label>Identificação das torres<select value={tenantForm.tower_scheme}
+              onChange={e=>setTenantForm(v=>({...v,tower_scheme:e.target.value}))}>
+              <option value="letters">Letras (A, B...)</option><option value="numbers">Números (1, 2...)</option>
+            </select></label>
+            <label>Quantidade de torres<input type="number" min={1} max={30} required value={tenantForm.tower_count}
+              onChange={e=>setTenantForm(v=>({...v,tower_count:Number(e.target.value)}))}/></label></div>
+            <label>Domínio próprio (opcional, exige configuração de DNS e HTTPS)<input value={tenantForm.custom_domain}
+              placeholder="morada.exemplo.com.br" onChange={e=>setTenantForm(v=>({...v,custom_domain:e.target.value}))}/></label>
+            <button className="primary-button" disabled={busy} type="submit">Criar condomínio</button>
+          </form>
+        </section>
+        <section className="admin-section white-panel"><h2>Criar administrador local</h2>
+          <form className="form-stack" onSubmit={provisionTenantAdmin}>
+            <label>Condomínio<select required value={tenantAdmin.condominium_id}
+              onChange={e=>setTenantAdmin(v=>({...v,condominium_id:e.target.value}))}>
+              <option value="">Selecione</option>{tenants.map(t=><option key={t.id} value={t.id}>{t.name}</option>)}
+            </select></label>
+            <label>Nome<input required minLength={2} value={tenantAdmin.name}
+              onChange={e=>setTenantAdmin(v=>({...v,name:e.target.value}))}/></label>
+            <label>E-mail<input required type="email" value={tenantAdmin.email}
+              onChange={e=>setTenantAdmin(v=>({...v,email:e.target.value}))}/></label>
+            <label>Senha inicial (mínimo 12 caracteres)<input required type="password" minLength={12}
+              autoComplete="new-password" value={tenantAdmin.password}
+              onChange={e=>setTenantAdmin(v=>({...v,password:e.target.value}))}/></label>
+            <button className="primary-button" type="submit" disabled={busy}>Criar administrador</button>
+          </form>
+        </section>
+      </>}
       {view==='admin'&&viewer.role==='admin'&&<><button className="back-link" onClick={()=>go('account')}><ArrowLeft size={18}/> Minha conta</button><div className="page-title"><h1>Administração do condomínio</h1><p>Gerencie moradores, lojas e categorias da sua comunidade.</p></div>
         {adminData?<><div className="admin-stats"><div><strong>{adminData.stats.residents}</strong><span>Moradores ativos</span></div><div><strong>{adminData.stats.shops}</strong><span>Lojas ativas</span></div><div><strong>{adminData.stats.orders}</strong><span>Pedidos criados</span></div></div>
         <section className="admin-section"><SectionHeader title="Moradores cadastrados"/>
