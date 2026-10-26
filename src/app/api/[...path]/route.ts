@@ -383,6 +383,59 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
   if(path.startsWith('platform/')&&requestedTenant)bad('A gestão global deve ser acessada pelo domínio principal.',403);
   // Only the server-owned platform_admins table can authorize these routes.
   // Sessions of ordinary condo administrators can never choose another tenant.
+  // Campanhas pagas: nenhum dado de campanha pode ser alterado por administradores locais.
+  if(path==='platform/ads'&&method==='GET'){
+    if(!u.is_superadmin)bad('Acesso exclusivo do superadmin.',403);
+    const [settings,campaigns]=await Promise.all([
+      query('SELECT enabled FROM ads_settings WHERE id=true'),
+      query('SELECT id,condominium_id,merchant_name,headline,description,location,image_url,destination_url,starts_at,expires_at,enabled FROM advertising_campaigns ORDER BY created_at DESC LIMIT 300')
+    ]);
+    return out({enabled:settings.rows[0]?.enabled??false,campaigns:campaigns.rows});
+  }
+  if(path==='platform/ads/settings'&&method==='PATCH'){
+    if(!u.is_superadmin)bad('Acesso exclusivo do superadmin.',403);
+    const b=z.object({enabled:z.boolean()}).parse(await body(req));
+    await query('UPDATE ads_settings SET enabled=$1,updated_at=now() WHERE id=true',[b.enabled]);
+    return out({ok:true});
+  }
+  if(path==='platform/ads'&&method==='POST'){
+    if(!u.is_superadmin)bad('Acesso exclusivo do superadmin.',403);
+    const b=z.object({
+      condominium_id:z.string().uuid(),
+      merchant_name:z.string().trim().min(2).max(100),
+      headline:z.string().trim().min(2).max(140),
+      description:z.string().trim().max(400),
+      location:z.string().trim().min(2).max(120),
+      image_url:z.string().url().max(2000).refine(v=>v.startsWith('https://'),'Use imagem HTTPS.'),
+      destination_url:z.string().url().max(2000).refine(v=>v.startsWith('https://'),'Use link HTTPS.'),
+      starts_at:z.string().datetime({offset:true}),
+      expires_at:z.string().datetime({offset:true}),
+      enabled:z.boolean().default(false)
+    }).parse(await body(req));
+    if(new Date(b.expires_at)<=new Date(b.starts_at))bad('A data de expiração deve ser posterior ao início.');
+    const target=await query('SELECT 1 FROM condominiums WHERE id=$1 AND is_active=true',[b.condominium_id]);
+    if(!target.rowCount)bad('Condomínio inválido.');
+    const result=await query(
+      'INSERT INTO advertising_campaigns(condominium_id,merchant_name,headline,description,location,image_url,destination_url,starts_at,expires_at,enabled) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id',
+      [b.condominium_id,b.merchant_name,b.headline,b.description,b.location,b.image_url,b.destination_url,b.starts_at,b.expires_at,b.enabled]);
+    return out({id:result.rows[0].id},201);
+  }
+  if(path.startsWith('platform/ads/')&&method==='PATCH'&&path!=='platform/ads/settings'){
+    if(!u.is_superadmin)bad('Acesso exclusivo do superadmin.',403);
+    const id=parts[2];
+    if(!uuid(id))bad('Anúncio inválido.');
+    const b=z.object({enabled:z.boolean()}).parse(await body(req));
+    const result=await query('UPDATE advertising_campaigns SET enabled=$1,updated_at=now() WHERE id=$2 RETURNING id',[b.enabled,id]);
+    if(!result.rowCount)bad('Anúncio não encontrado.',404);
+    return out({ok:true});
+  }
+  if(path.startsWith('platform/ads/')&&method==='DELETE'){
+    if(!u.is_superadmin)bad('Acesso exclusivo do superadmin.',403);
+    const id=parts[2];
+    if(!uuid(id))bad('Anúncio inválido.');
+    await query('DELETE FROM advertising_campaigns WHERE id=$1',[id]);
+    return out({ok:true});
+  }
   if(path==='platform/condominiums'&&method==='GET'){
     if(!u.is_superadmin)bad('Acesso exclusivo do superadmin.',403);
     const list=await query(
@@ -644,6 +697,13 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
       [u.condominium_id,category,search?escaped:'',limit+1,page*limit]
     );
     return out({products:result.rows.slice(0,limit),hasMore:result.rows.length>limit,page});
+  }
+  if(path==='ads'&&method==='GET'){
+    const result=await query(
+      "SELECT a.id,a.merchant_name,a.headline,a.description,a.location,a.image_url,a.destination_url FROM advertising_campaigns a JOIN ads_settings settings ON settings.id=true AND settings.enabled=true WHERE a.condominium_id=$1 AND a.enabled=true AND a.starts_at<=now() AND a.expires_at>now() ORDER BY a.created_at DESC LIMIT 20",
+      [u.condominium_id]
+    );
+    return out({campaigns:result.rows});
   }
   if(path==='home'&&method==='GET'){
     const [categories,shops,products]=await Promise.all([
