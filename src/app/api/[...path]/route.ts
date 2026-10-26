@@ -431,7 +431,7 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
     if(!token)bad('Sessão expirada.',401);
     await query(
       "UPDATE sessions SET active_condominium_id=$1 WHERE token_hash=$2 AND user_id=$3",
-      [b.condominium_id,tokenHash(token),u.id]
+      [b.condominium_id,tokenHash(token!),u.id]
     );
     return out({ok:true,condominium_id:b.condominium_id});
   }
@@ -452,15 +452,16 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
       email:b.email,password:b.password,email_confirm:true,user_metadata:{name:b.name}
     });
     if(error||!data.user)bad('Não foi possível criar a identidade do administrador: '+(error?.message??'erro desconhecido'),409);
+    const adminAuthId=data.user!.id;
     try{
       const added=await query(
         "INSERT INTO users(condominium_id,name,email,phone,password_hash,supabase_auth_user_id,role,status,tower,apartment)"+
         " VALUES($1,$2,$3,'',NULL,$4,'admin','approved','Admin','Admin') RETURNING id,name,email",
-        [b.condominium_id,b.name,b.email,data.user.id]
+        [b.condominium_id,b.name,b.email,adminAuthId]
       );
       return out({admin:added.rows[0]},201);
     }catch(error){
-      await supa.auth.admin.deleteUser(data.user.id).catch(()=>{});
+      await supa.auth.admin.deleteUser(adminAuthId).catch(()=>{});
       throw error;
     }
   }
