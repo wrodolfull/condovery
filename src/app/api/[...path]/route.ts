@@ -915,6 +915,14 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
     }
     const shop=personal||adImage||giveawayImage?null:await shopOwned(u);
     const form=await req.formData();
+    let mediaCondoId=u.condominium_id;
+    if(adImage){
+      const requested=form.get('condominium_id');
+      if(typeof requested!=='string'||!uuid(requested))bad('Selecione o condomínio antes de enviar a imagem.');
+      const selected=await query('SELECT id FROM condominiums WHERE id=$1 AND is_active=true',[requested]);
+      if(!selected.rowCount)bad('Condomínio inválido.');
+      mediaCondoId=requested;
+    }
     const input=form.get('file');
     if(!(input instanceof File))throw new ApiError(400,'Selecione uma imagem.');
     const file:File=input;
@@ -934,7 +942,7 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
         .webp({quality:78,effort:4}).toBuffer();
     }catch{bad('Imagem inválida ou com resolução excessiva.');}
     // Only server uses the private Storage service credential.
-    const objectKey=u.condominium_id+'/'+(adImage?'ads':giveawayImage?'giveaways/'+u.id:personal?'profile/'+u.id:shop!.id)+'/'+crypto.randomUUID()+'.webp';
+    const objectKey=mediaCondoId+'/'+(adImage?'ads':giveawayImage?'giveaways/'+u.id:personal?'profile/'+u.id:shop!.id)+'/'+crypto.randomUUID()+'.webp';
     const {error:uploadError}=await storageAdmin().storage.from(STORAGE_BUCKET).upload(
       objectKey,optimized!,{contentType:'image/webp',upsert:false,cacheControl:'86400'}
     );
@@ -942,7 +950,7 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
     try{
       const r=await query(
         'INSERT INTO media_assets(condominium_id,shop_id,user_id,mime,storage_key) VALUES($1,$2,$3,$4,$5) RETURNING id',
-        [u.condominium_id,shop?.id??null,personal?u.id:null,'image/webp',objectKey]
+        [mediaCondoId,shop?.id??null,personal?u.id:null,'image/webp',objectKey]
       );
       return out({url:'/api/media/'+r.rows[0].id},201);
     }catch(e){await storageAdmin().storage.from(STORAGE_BUCKET).remove([objectKey]);throw e;}
