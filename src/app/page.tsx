@@ -18,10 +18,10 @@ import {
   CircleHelp, Clock3, Coffee, Gift, Heart, Home, ImagePlus, LayoutGrid, LogOut, MapPin,
   Menu, MessageCircle, Minus, Package, Plus, Receipt, Search, Settings, Share2, ShieldCheck, ShoppingBag, ShoppingBasket,
   SlidersHorizontal, Sparkles, Store, Tag, Trash2, Truck, UserRound, Utensils, X, Shirt, Sandwich,
-  Pizza, IceCreamCone, Wrench, HeartPulse, House, Smartphone, PauseCircle, PlayCircle, Building2
+  Pizza, IceCreamCone, Wrench, HeartPulse, House, Smartphone, PauseCircle, PlayCircle
 } from 'lucide-react';
 
-type Viewer={id:string;name:string;email:string;phone:string;avatar_image:string|null;role:'admin'|'resident';status:'pending'|'approved'|'suspended';tower:string;apartment:string;condominium_name:string;towers:string[];is_superadmin?:boolean};
+type Viewer={id:string;condominium_id:string;name:string;email:string;phone:string;avatar_image:string|null;role:'admin'|'resident';status:'pending'|'approved'|'suspended';tower:string;apartment:string;condominium_name:string;towers:string[];is_superadmin?:boolean};
 type Category={id:string;name:string;icon:string};
 type Shop={id:string;slug:string;name:string;description:string;cover_image:string|null;logo_image:string|null;status?:string;is_open:boolean;delivery_enabled:boolean;delivery_fee_cents:number;pickup_enabled:boolean;lead_time:string;pickup_instructions?:string;whatsapp?:string;payment_methods:PaymentMethod[]};
 type Product={id:string;shop_id:string;shop_name?:string;visibility:'available'|'unavailable'|'hidden';category_id:string;name:string;description:string;price_cents:number;promo_price_cents:number|null;image_url:string|null;stock:number|null;is_available?:boolean;lead_time?:string;is_featured?:boolean;option_groups?:OptionGroup[]};
