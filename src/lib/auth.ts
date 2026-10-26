@@ -1,6 +1,7 @@
 import crypto from 'node:crypto';
 import { NextRequest, NextResponse } from 'next/server';
 import { query } from './db';
+import {tenantForRequest} from './tenant-host';
 
 export type Viewer = {
   id: string; condominium_id: string; name: string; email: string; phone: string; avatar_image:string|null;
@@ -22,7 +23,12 @@ export async function sessionViewer(req: NextRequest): Promise<Viewer|null> {
     " WHERE s.token_hash=$1 AND s.expires_at>now() AND c.is_active=true",
     [tokenHash(token)]
   );
-  return rows[0] ?? null;
+  const current=rows[0]??null;
+  if(!current)return null;
+  const tenant=await tenantForRequest(req);
+  // Hostname is never a privilege: compare it to the authenticated tenant.
+  if(tenant&&tenant.id!==current.condominium_id)return null;
+  return current;
 }
 export function issueSession(response: NextResponse, token: string) {
   response.cookies.set('condovery_session', token, {

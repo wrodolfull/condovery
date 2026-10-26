@@ -14,6 +14,7 @@ import {slugifyShopName} from '@/lib/shop-slug';
 import {randomBytes} from 'node:crypto';
 import {towerLabels,currentTowerScheme} from '@/lib/towers';
 import {IMAGE_MIME_TYPES, imageSizeIsAllowed} from '@/lib/image-limits';
+import {tenantForRequest,isTenantHostname,tenantLabel} from '@/lib/tenant-host';
 import {normalizeCondominiumSlug,normalizeTenantDomain} from '@/lib/tenancy';
 
 export const runtime='nodejs';
@@ -111,6 +112,7 @@ function oauthRedirect(req:NextRequest,code?:string){
 }
 async function processApi({req,method,parts}:Args):Promise<NextResponse> {
   const path=parts.join('/');
+  const requestedTenant=await tenantForRequest(req);
   if(path==='public/condominium'&&method==='POST'){
     const input=z.object({invite:z.string().min(10).max(150)}).parse(await body(req));
     const invite=input.invite;
@@ -120,6 +122,7 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
       [inviteHash(invite)]
     );
     if(!result.rowCount)bad('Código de convite inválido.',404);
+    if(requestedTenant){const match=await query('SELECT id FROM condominiums WHERE invite_code_hash=$1 AND id=$2',[inviteHash(invite),requestedTenant.id]);if(!match.rowCount)bad('Código não pertence a este condomínio.',403);}
     return out({name:result.rows[0].name,towers:result.rows[0].towers});
   }
   if(path==='auth/providers'&&method==='GET')return out({google:googleConfigured(),email:emailConfigured(),passwordRecovery:recoveryConfigured()});
@@ -203,6 +206,7 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
         [inviteHash(b.invite)]
       );
       if(!condo.rowCount)bad('Convite inválido.');
+      if(requestedTenant&&condo.rows[0].id!==requestedTenant.id)bad('Convite de outro condomínio.',403);
       if(!Array.isArray(condo.rows[0].towers)||!condo.rows[0].towers.includes(b.tower))bad('Torre inválida.');
       const created=await tx.query(
         "INSERT INTO users(condominium_id,name,email,phone,password_hash,google_auth_user_id,supabase_auth_user_id,tower,apartment,status) VALUES($1,$2,$3,$4,NULL,$5,$5,$6,$7,'approved') RETURNING id",
@@ -292,6 +296,7 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
       [inviteHash(b.invite)]
     );
     if(!condo.rowCount)bad('Código de convite inválido.');
+    if(requestedTenant&&condo.rows[0].id!==requestedTenant.id)bad('Código de outro condomínio.',403);
     if(!Array.isArray(condo.rows[0].towers)||!condo.rows[0].towers.includes(b.tower))bad('Torre inválida.');
     const exists=await query('SELECT id FROM users WHERE email=$1',[b.email]);
     if(exists.rowCount)bad('E-mail já cadastrado. Faça login ou recupere a senha.',409);
@@ -348,6 +353,7 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
       bad('Esta conta está vinculada a outra identidade. Entre em contato com a administração.',403);
     }
     if(member.rows[0].status==='suspended')bad('Conta suspensa.',403);
+    if(requestedTenant){const access=await query('SELECT condominium_id FROM users WHERE id=$1',[member.rows[0].id]);if(access.rows[0]?.condominium_id!==requestedTenant.id)bad('Esta conta pertence a outro condomínio.',403);}
     if(!member.rows[0].supabase_auth_user_id){
       await query('UPDATE users SET supabase_auth_user_id=$1 WHERE id=$2 AND supabase_auth_user_id IS NULL',
         [verifiedUser.id,member.rows[0].id]);
@@ -374,12 +380,13 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
     return out({viewer:u,googleSignup});
   }
   const u=await viewer(req);
+  if(path.startsWith('platform/')&&requestedTenant)bad('A gestão global deve ser acessada pelo domínio principal.',403);
   // Only the server-owned platform_admins table can authorize these routes.
   // Sessions of ordinary condo administrators can never choose another tenant.
   if(path==='platform/condominiums'&&method==='GET'){
     if(!u.is_superadmin)bad('Acesso exclusivo do superadmin.',403);
     const list=await query(
-      "SELECT c.id,c.name,c.slug,c.custom_domain,c.is_active,c.created_at,"+
+      "SELECT c.id,c.name,c.slug,c.subdomain,c.custom_domain,c.is_active,c.created_at,"+
       " (SELECT count(*)::int FROM users m WHERE m.condominium_id=c.id AND m.role='resident' AND m.status='approved') AS residents,"+
       " (SELECT count(*)::int FROM shops s WHERE s.condominium_id=c.id AND s.status='approved') AS shops"+
       " FROM condominiums c ORDER BY c.created_at DESC LIMIT 250"
@@ -397,6 +404,9 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
       custom_domain:z.string().trim().max(253).optional()
     }).parse(await body(req));
     const slug=normalizeCondominiumSlug(b.slug);
+    const baseSubdomain=tenantLabel(slug);
+    const existsSubdomain=await query('SELECT id FROM condominiums WHERE subdomain=$1',[baseSubdomain]);
+    const subdomain=existsSubdomain.rowCount?baseSubdomain.slice(0,38)+crypto.randomBytes(4).toString('hex'):baseSubdomain;
     if(slug.length<3)bad('Identificador do condomínio inválido.');
     const hostname=b.custom_domain?normalizeTenantDomain(b.custom_domain):null;
     const hash=inviteHash(b.invite_code);
@@ -404,9 +414,9 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
     if(existing.rowCount)bad('Este código de condomínio já está em uso.',409);
     const created=await transaction(async tx=>{
       const result=await tx.query(
-        "INSERT INTO condominiums(name,slug,invite_code_hash,towers,custom_domain) VALUES($1,$2,$3,$4::jsonb,$5) "+
-        "ON CONFLICT(slug) DO NOTHING RETURNING id,name,slug,custom_domain,is_active",
-        [b.name,slug,hash,JSON.stringify(towerLabels(b.tower_scheme,b.tower_count)),hostname]
+        "INSERT INTO condominiums(name,slug,invite_code_hash,towers,custom_domain,subdomain) VALUES($1,$2,$3,$4::jsonb,$5,$6) "+
+        "ON CONFLICT DO NOTHING RETURNING id,name,slug,subdomain,custom_domain,is_active",
+        [b.name,slug,hash,JSON.stringify(towerLabels(b.tower_scheme,b.tower_count)),hostname,subdomain]
       );
       if(!result.rowCount)bad('Já existe condomínio com este endereço.',409);
       const defaultCategories=[
@@ -1276,6 +1286,7 @@ async function endpoint(req:NextRequest,method:Verb) {
   const parts=req.nextUrl.pathname.replace(/^\/api\/?/,'').split('/').filter(Boolean);
   try{return await processApi({req,method,parts});}
   catch(error){
+    if(error instanceof Error&&error.message==='TENANT_NOT_FOUND')return out({error:'Condomínio não encontrado neste subdomínio.'},404);
     if(error instanceof ApiError)return out({error:error.message},error.status);
     if(error instanceof ZodError)return out({error:'Confira os campos preenchidos.',details:error.issues.map(i=>i.path.join('.'))},400);
     console.error('condovery_api_error',error instanceof Error?error.message:error);
