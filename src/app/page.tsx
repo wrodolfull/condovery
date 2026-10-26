@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import {IllustrationSlot} from '@/components/IllustrationSlot';
 import {AdsCarousel,type AdCampaign} from '@/components/AdsCarousel';
 import {AdsAdmin} from '@/components/AdsAdmin';
+import {Giveaways} from '@/components/Giveaways';
 import {RoundedStars} from '@/components/RoundedStars';
 import {ImageCropper,type ImageKind} from '@/components/ImageCropper';
 import {clientUUID} from '@/lib/client-uuid';
@@ -60,7 +61,7 @@ function MoneyInput({cents,onValue}:{cents:number;onValue:(value:number)=>void})
 }
 type HomeData={categories:Category[];shops:Shop[];products:Product[]};
 type AdminData={towers:string[];residents:{id:string;name:string;email:string;tower:string;apartment:string;status:string}[];shops:{id:string;name:string;owner_name:string;status:string}[];stats:{residents:number;shops:number;orders:number};categories:Category[]};
-type View='home'|'categories'|'favorites'|'orders'|'account'|'shop'|'product'|'cart'|'success'|'seller'|'admin'|'platform';
+type View='home'|'categories'|'favorites'|'orders'|'account'|'shop'|'product'|'cart'|'success'|'seller'|'admin'|'platform'|'giveaways';
 type Tenant={id:string;name:string;slug:string;subdomain:string;custom_domain:string|null;is_active:boolean;residents:number;shops:number};
 const money=(n:number)=>new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(n/100);
 const price=(p:Product)=>p.promo_price_cents??p.price_cents;
@@ -977,7 +978,7 @@ export default function Page(){
               alt="Todas as categorias" fit="contain" fallback={<LayoutGrid size={25}/>}/>
             <span>Todos</span>
           </button>
-          {home.categories.map(c=><button key={c.id} className="category-card" onClick={()=>{setCategory(c.id);go('categories');}}>
+          {home.categories.map(c=><button key={c.id} className="category-card" onClick={()=>{if(c.name==='Desapego')go('giveaways');else {setCategory(c.id);go('categories');}}}>
             <CategoryArtwork category={c}/><span>{c.name}</span></button>)}
         </div>
         {!query&&<>
@@ -1018,11 +1019,11 @@ export default function Page(){
               fallback={<LayoutGrid size={25}/>}/><span>Todos</span>
           </button>
           {home.categories.map(c=><button key={c.id} className={'category-card'+(category===c.id?' selected':'')}
-            onClick={()=>setCategory(c.id)} aria-pressed={category===c.id}>
+            onClick={()=>{if(c.name==='Desapego')go('giveaways');else setCategory(c.id);}} aria-pressed={category===c.id}>
               <CategoryArtwork category={c}/><span>{c.name}</span>
             </button>)}
         </div>
-        <div className="filter-chips"><button className={!category?'chosen':''} onClick={()=>setCategory('')}>Todos</button>{home.categories.map(c=><button key={c.id} className={category===c.id?'chosen':''} onClick={()=>setCategory(c.id)}>{c.name}</button>)}</div>
+        <div className="filter-chips"><button className={!category?'chosen':''} onClick={()=>setCategory('')}>Todos</button>{home.categories.map(c=><button key={c.id} className={category===c.id?'chosen':''} onClick={()=>{if(c.name==='Desapego')go('giveaways');else setCategory(c.id);}}>{c.name}</button>)}</div>
         <SectionHeader title={categoryName??'Produtos dos vizinhos'}/>
         {filtered.length?<div className="product-grid">{filtered.map(p=><ProductCard key={p.id} p={p} onClick={()=>openProduct(p)} favorite={favoriteIds.includes(p.id)} onFavorite={toggleFavorite}/>)}</div>:
           catalogLoading?<div className="loading-inline"><div className="spinner"/> Buscando produtos...</div>:
@@ -1533,6 +1534,7 @@ export default function Page(){
         </>}
       </>}
 
+      {view==='giveaways'&&<><button className="back-link" onClick={()=>go('home')}><ArrowLeft size={18}/> Início</button><Giveaways viewerId={viewer.id}/></>}
       {view==='platform'&&viewer.is_superadmin&&<>
         <button className="back-link" onClick={()=>go('account')}><ArrowLeft size={18}/> Minha conta</button>
         <div className="page-title"><h1>Superadmin Condovery</h1><p>Gerencie os condomínios e alterne o ambiente administrado.</p></div>
@@ -1605,12 +1607,12 @@ export default function Page(){
               Salvar configuração das torres</button>
           </form>
         </section>
-        <section className="admin-section white-panel"><h2><LayoutGrid size={20}/> Categorias</h2><div className="filter-chips">{adminData.categories.filter(c=>c.name!=='Serviços'&&c.name!=='Moda').map(c=><span className="category-tag" key={c.id}>{c.name}</span>)}</div>
+        <section className="admin-section white-panel"><h2><LayoutGrid size={20}/> Categorias</h2><div className="filter-chips">{adminData.categories.filter(c=>c.name!=='Serviços'&&c.name!=='Moda'&&c.name!=='Desapego').map(c=><span className="category-tag" key={c.id}>{c.name}</span>)}</div>
           <div style={{display:'grid',gap:10,margin:'16px 0'}}>
-            {adminData.categories.filter(c=>c.name==='Serviços'||c.name==='Moda').map(c=>
+            {adminData.categories.filter(c=>c.name==='Serviços'||c.name==='Moda'||c.name==='Desapego').map(c=>
               <div key={c.id} className="admin-row">
                 <div style={{display:'flex',alignItems:'center',gap:12}}>
-                  {c.name==='Serviços'?<Wrench size={23}/>:<Shirt size={23}/>}
+                  {c.name==='Serviços'?<Wrench size={23}/>:c.name==='Moda'?<Shirt size={23}/>:<Gift size={23}/>}
                   <div><strong>{c.name}</strong><p>{c.is_active?'Visível na Home e no catálogo':'Desabilitada — oculta para moradores'}</p></div>
                 </div>
                 <label style={{display:'flex',alignItems:'center',gap:8,cursor:'pointer'}}>
