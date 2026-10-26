@@ -32,10 +32,11 @@ export function AdsAdmin({tenants}:{tenants:Tenant[]}){
   }
   async function uploadImage(file:File|undefined){
     if(!file)return;
+    if(!form.condominium_id){setError('Selecione o condomínio antes de enviar a imagem.');return;}
     if(!['image/jpeg','image/png','image/webp'].includes(file.type)||file.size>10*1024*1024){setError('Selecione JPG, PNG ou WebP de até 10 MB.');return;}
     setUploading(true);setError('');
     try{
-      const optimized=await prepareMarketplaceImage(file,10);const data=new FormData();data.append('file',optimized);
+      const optimized=await prepareMarketplaceImage(file,10);const data=new FormData();data.append('file',optimized);data.append('condominium_id',form.condominium_id);
       const res=await fetch('/api/media/ad',{method:'POST',body:data});
       const result=await res.json();
       if(!res.ok)throw new Error(result.error||'Erro no upload.');
