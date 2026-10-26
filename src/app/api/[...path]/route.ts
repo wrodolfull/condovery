@@ -481,7 +481,7 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
         await tx.query("INSERT INTO categories(condominium_id,name,icon,sort_order) VALUES($1,$2,$3,$4)",
           [result.rows[0].id,defaultCategories[i][0],defaultCategories[i][1],i]);
       }
-      for(const [name,icon,order] of [['Serviços','wrench',70],['Moda','shirt',71]] as const){
+      for(const [name,icon,order] of [['Serviços','wrench',70],['Moda','shirt',71],['Desapego','gift',72]] as const){
         await tx.query('INSERT INTO categories(condominium_id,name,icon,sort_order,is_active) VALUES($1,$2,$3,$4,false) ON CONFLICT(condominium_id,name) DO NOTHING',
           [result.rows[0].id,name,icon,order]);
       }
@@ -708,6 +708,38 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
       [u.condominium_id]
     );
     return out({campaigns:result.rows});
+  }
+  // Desapego: classificados gratuitos por morador, sem loja ou pagamento.
+  if(path==='giveaways'||path.startsWith('giveaways/')){
+    const active=await query("SELECT 1 FROM categories WHERE condominium_id=$1 AND name='Desapego' AND is_active=true",[u.condominium_id]);
+    if(!active.rowCount)bad('Desapego não está habilitado neste condomínio.',404);
+    if(path==='giveaways'&&method==='GET'){
+      const listings=await query(
+        "SELECT g.id,g.user_id,g.title,g.description,g.image_url,g.status,g.created_at,m.name AS owner_name,m.phone AS owner_phone FROM giveaway_items g JOIN users m ON m.id=g.user_id AND m.condominium_id=g.condominium_id AND m.status='approved' WHERE g.condominium_id=$1 AND (g.status='available' OR g.user_id=$2) ORDER BY CASE WHEN g.status='available' THEN 0 ELSE 1 END,g.created_at DESC LIMIT 150",
+        [u.condominium_id,u.id]);
+      return out({items:listings.rows});
+    }
+    if(path==='giveaways'&&method==='POST'){
+      approved(u);
+      const b=z.object({title:z.string().trim().min(3).max(120),description:z.string().trim().max(600),image_url:z.union([z.literal(''),z.string().url().max(2000).refine(v=>v.startsWith('https://'))]).default('')}).parse(await body(req));
+      const result=await query("INSERT INTO giveaway_items(condominium_id,user_id,title,description,image_url) VALUES($1,$2,$3,$4,$5) RETURNING id",[u.condominium_id,u.id,b.title,b.description,b.image_url||null]);
+      return out({id:result.rows[0].id},201);
+    }
+    if(path.startsWith('giveaways/')&&method==='PATCH'){
+      approved(u);
+      const id=parts[1];if(!uuid(id))bad('Item inválido.');
+      const b=z.object({status:z.enum(['available','reserved','donated'])}).parse(await body(req));
+      const result=await query('UPDATE giveaway_items SET status=$1,updated_at=now() WHERE id=$2 AND user_id=$3 AND condominium_id=$4 RETURNING id',[b.status,id,u.id,u.condominium_id]);
+      if(!result.rowCount)bad('Item não encontrado ou sem permissão.',404);
+      return out({ok:true});
+    }
+    if(path.startsWith('giveaways/')&&method==='DELETE'){
+      approved(u);
+      const id=parts[1];if(!uuid(id))bad('Item inválido.');
+      const result=await query('DELETE FROM giveaway_items WHERE id=$1 AND user_id=$2 AND condominium_id=$3 RETURNING id',[id,u.id,u.condominium_id]);
+      if(!result.rowCount)bad('Item não encontrado ou sem permissão.',404);
+      return out({ok:true});
+    }
   }
   if(path==='home'&&method==='GET'){
     const [categories,shops,products]=await Promise.all([
@@ -1298,7 +1330,7 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
     if(!uuid(id))bad('Categoria inválida.');
     const b=z.object({is_active:z.boolean()}).parse(await body(req));
     const changed=await query(
-      "UPDATE categories SET is_active=$1 WHERE id=$2 AND condominium_id=$3 AND name IN ('Serviços','Moda') RETURNING id,name,is_active",
+      "UPDATE categories SET is_active=$1 WHERE id=$2 AND condominium_id=$3 AND name IN ('Serviços','Moda','Desapego') RETURNING id,name,is_active",
       [b.is_active,id,u.condominium_id]
     );
     if(!changed.rowCount)bad('Somente Serviços e Moda podem ser alternadas neste painel.',404);
@@ -1308,7 +1340,7 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
     admin(u);
     const b=z.object({name:z.string().trim().min(2).max(60),icon:z.enum(['cake-slice','sandwich','utensils','coffee','pizza','ice-cream-cone','shopping-basket'])}).parse(await body(req));
     const normalized=b.name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
-    if(['servicos','beleza','saude e bem-estar','moda','casa e decoracao','eletronicos','presentes','outros'].includes(normalized))
+    if(['servicos','desapego','beleza','saude e bem-estar','moda','casa e decoracao','eletronicos','presentes','outros'].includes(normalized))
       bad('Somente categorias de alimentação são permitidas.');
     try{
       const r=await query('INSERT INTO categories(condominium_id,name,icon) VALUES($1,$2,$3) RETURNING *',[u.condominium_id,b.name,b.icon]);
