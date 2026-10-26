@@ -481,6 +481,10 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
         await tx.query("INSERT INTO categories(condominium_id,name,icon,sort_order) VALUES($1,$2,$3,$4)",
           [result.rows[0].id,defaultCategories[i][0],defaultCategories[i][1],i]);
       }
+      for(const [name,icon,order] of [['Serviços','wrench',70],['Moda','shirt',71]] as const){
+        await tx.query('INSERT INTO categories(condominium_id,name,icon,sort_order,is_active) VALUES($1,$2,$3,$4,false) ON CONFLICT(condominium_id,name) DO NOTHING',
+          [result.rows[0].id,name,icon,order]);
+      }
       return result.rows[0];
     });
     return out({condominium:created},201);
