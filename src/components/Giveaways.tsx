@@ -1,4 +1,5 @@
 'use client';
+import {prepareMarketplaceImage} from '@/lib/prepare-marketplace-image';
 import {useCallback,useEffect,useState,type FormEvent} from 'react';
 import {Gift,MapPin,Plus} from 'lucide-react';
 type Item={id:string;user_id:string;title:string;description:string;image_url:string|null;status:'available'|'reserved'|'donated';owner_name:string;owner_phone:string;created_at:string};
@@ -21,7 +22,7 @@ export function Giveaways({viewerId}:{viewerId:string}){
   if(!file)return;
   if(!['image/jpeg','image/png','image/webp'].includes(file.type)||file.size>5*1024*1024){setError('Use JPG, PNG ou WebP de até 5 MB.');return;}
   setUploading(true);setError('');
-  try{const data=new FormData();data.append('file',file);
+  try{const optimized=await prepareMarketplaceImage(file,5);const data=new FormData();data.append('file',optimized);
     const response=await fetch('/api/media/giveaway',{method:'POST',body:data});
     const result=await response.json();
     if(!response.ok)throw new Error(result.error||'Não foi possível enviar a foto.');
