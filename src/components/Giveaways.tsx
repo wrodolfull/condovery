@@ -9,12 +9,24 @@ async function request(path:string,init?:RequestInit){
 export function Giveaways({viewerId}:{viewerId:string}){
  const [items,setItems]=useState<Item[]>([]);
  const [title,setTitle]=useState(''),[description,setDescription]=useState(''),[image,setImage]=useState('');
+ const [uploading,setUploading]=useState(false);
  const [busy,setBusy]=useState(false),[error,setError]=useState(''),[newItem,setNewItem]=useState(false);
  const load=useCallback(async()=>setItems((await request('giveaways')).items),[]);
  useEffect(()=>{load().catch(e=>setError(e.message));},[load]);
  async function act(action:()=>Promise<unknown>){
   setBusy(true);setError('');
   try{await action();await load();}catch(e){setError(e instanceof Error?e.message:'Erro ao atualizar.');}finally{setBusy(false);}
+ }
+ async function uploadImage(file:File|undefined){
+  if(!file)return;
+  if(!['image/jpeg','image/png','image/webp'].includes(file.type)||file.size>5*1024*1024){setError('Use JPG, PNG ou WebP de até 5 MB.');return;}
+  setUploading(true);setError('');
+  try{const data=new FormData();data.append('file',file);
+    const response=await fetch('/api/media/giveaway',{method:'POST',body:data});
+    const result=await response.json();
+    if(!response.ok)throw new Error(result.error||'Não foi possível enviar a foto.');
+    setImage(result.url);
+  }catch(e){setError(e instanceof Error?e.message:'Erro no upload.');}finally{setUploading(false);}
  }
  async function submit(e:FormEvent){
   e.preventDefault();
@@ -28,8 +40,14 @@ export function Giveaways({viewerId}:{viewerId:string}){
     <h3>Publicar desapego</h3>
     <label>Nome do item<input minLength={3} maxLength={120} required value={title} onChange={e=>setTitle(e.target.value)} placeholder="Ex.: Livros infantis"/></label>
     <label>Descrição<textarea maxLength={600} rows={3} value={description} onChange={e=>setDescription(e.target.value)} placeholder="Estado do item e detalhes para retirada"/></label>
-    <label>Foto (URL HTTPS, opcional)<input type="url" value={image} onChange={e=>setImage(e.target.value)} placeholder="https://..."/></label>
-    <button type="submit" disabled={busy} className="primary-button">Publicar gratuitamente</button>
+    <label>Foto do item (opcional; JPG, PNG ou WebP; máximo 5 MB)
+      <input type="file" accept="image/jpeg,image/png,image/webp" disabled={busy||uploading} onChange={e=>uploadImage(e.target.files?.[0])}/>
+      <small>Recomendação: imagem quadrada de 800 × 800 pixels; será otimizada automaticamente.</small>
+      {uploading&&<small>Enviando foto...</small>}
+      {image&&<img src={image} alt="Prévia do desapego" style={{height:160,width:160,objectFit:'cover',borderRadius:12}}/>}
+    </label>
+    <p className="muted">Após marcar o item como <strong>Doado</strong>, o anúncio, seus dados e sua foto serão excluídos automaticamente após 48 horas.</p>
+    <button type="submit" disabled={busy||uploading} className="primary-button">Publicar gratuitamente</button>
   </form>}
   <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(min(100%,240px),1fr))',gap:15}}>
     {items.map(item=><article className="white-panel" key={item.id} style={{overflow:'hidden',padding:0}}>
@@ -41,7 +59,7 @@ export function Giveaways({viewerId}:{viewerId:string}){
         <p style={{fontSize:14,whiteSpace:'pre-wrap'}}>{item.description}</p>
         <small>Por {item.owner_name}</small>
         {item.user_id===viewerId?<div className="inline-actions" style={{marginTop:10}}>
-          <select aria-label={'Estado de '+item.title} disabled={busy} value={item.status} onChange={e=>act(()=>request('giveaways/'+item.id,{method:'PATCH',body:JSON.stringify({status:e.target.value})}))}>
+          <select aria-label={'Estado de '+item.title} disabled={busy} value={item.status} onChange={e=>{if(e.target.value==='donated'&&!window.confirm('Marcar como doado? Este anúncio e sua foto serão excluídos automaticamente após 48 horas.'))return;act(()=>request('giveaways/'+item.id,{method:'PATCH',body:JSON.stringify({status:e.target.value})}));}}>
             <option value="available">Disponível</option><option value="reserved">Reservado</option><option value="donated">Doado</option>
           </select>
           <button disabled={busy} type="button" className="danger-text" onClick={()=>{if(window.confirm('Excluir desapego?'))act(()=>request('giveaways/'+item.id,{method:'DELETE'}));}}>Excluir</button>
