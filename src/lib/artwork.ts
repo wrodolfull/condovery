@@ -5,7 +5,7 @@
 export const artwork = {
   login: null,
   homeHero: null,
-  weeklyOffers: null,
+  weeklyOffers: '/illustrations/ofertas-semana.png',
   signupPending: null,
   accountApproved: null,
   recoverPassword: null,

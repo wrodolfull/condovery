@@ -865,7 +865,7 @@ export default function Page(){
 
   if(loading)return <main className="loading-page"><div className="spinner"/><strong>condovery.</strong><span>Preparando sua vizinhança</span></main>;
   if(!viewer&&(authMode==='recover'||authMode==='reset'))return <main className="auth-layout">
-    <div className="auth-aside"><div className="auth-logo">condovery<span>.</span></div><IllustrationSlot className="auth-art" src={artwork.recoverPassword} alt="Ilustração de recuperação de acesso" eager fallback={<img src="/hero.svg" alt=""/>}/><h1>Seu condomínio mais perto de você!</h1><p>Produtos, comida e serviços dos seus vizinhos, com tudo organizado em um só lugar.</p></div>
+    <div className="auth-aside"><div className="auth-logo">condovery<span>.</span></div><IllustrationSlot className="auth-art" src={artwork.recoverPassword} alt="Ilustração de recuperação de acesso" eager fallback={<img src="/hero.png" alt=""/>}/><h1>Seu condomínio mais perto de você!</h1><p>Produtos, comida e serviços dos seus vizinhos, com tudo organizado em um só lugar.</p></div>
     <section className="auth-card">
       <div className="auth-mobile-logo">condovery<span>.</span></div>
       <IllustrationSlot className="auth-state-art" src={authMode==='recover'?artwork.recoverPassword:artwork.resetPassword}
@@ -884,7 +884,7 @@ export default function Page(){
     </section>
   </main>;
   if(!viewer)return <main className="auth-layout">
-    <div className="auth-aside"><div className="auth-logo">condovery<span>.</span></div><IllustrationSlot className="auth-art" src={artwork.login} alt="Ilustração de boas-vindas do Condovery" eager fallback={<img src="/hero.svg" alt=""/>}/><h1>Seu condomínio mais perto de você!</h1><p>Compre dos seus vizinhos. Apoie comércios locais. Receba no seu condomínio.</p></div>
+    <div className="auth-aside"><div className="auth-logo">condovery<span>.</span></div><IllustrationSlot className="auth-art" src={artwork.login} alt="Ilustração de boas-vindas do Condovery" eager fallback={<img src="/hero.png" alt=""/>}/><h1>Seu condomínio mais perto de você!</h1><p>Compre dos seus vizinhos. Apoie comércios locais. Receba no seu condomínio.</p></div>
     <section className="auth-card">
       <div className="auth-mobile-logo">condovery<span>.</span></div>
       <div className="auth-mobile-intro" aria-label="O seu condomínio em um só lugar">
@@ -892,7 +892,7 @@ export default function Page(){
           <strong>Seu condomínio mais perto de você!</strong>
           <small>Compre dos seus vizinhos, apoie comércios locais e receba no condomínio.</small>
         </div>
-        <IllustrationSlot className="auth-mobile-art" src={artwork.login} alt="Ilustração de boas-vindas" eager fallback={<img src="/hero.svg" alt=""/>}/>
+        <IllustrationSlot className="auth-mobile-art" src={artwork.login} alt="Ilustração de boas-vindas" eager fallback={<img src="/hero.png" alt=""/>}/>
       </div>
       <div className="welcome-emoji"><ShoppingBag size={28}/></div>
       <h2>{googleSignup?'Informações do morador':authMode==='login'?'Bem-vindo(a)!':'Cadastrar conta'}</h2>
@@ -953,7 +953,7 @@ export default function Page(){
   <h2>Descubra o melhor <em>da sua vizinhança.</em></h2>
   <p>Produtos, comida e serviços de quem mora pertinho de você.</p>
   <IllustrationSlot className="hero-art" src={artwork.homeHero} alt="Produtos e serviços do condomínio" eager
-    fallback={<img src="/hero.svg" alt=""/>}/>
+    fallback={<img src="/hero.png" alt=""/>}/>
   <button onClick={()=>{setCategory('');go('categories');}}>Começar a explorar <ArrowRight size={17}/></button>
   </div></section>}
         <SectionHeader title="Descubra o que tem por aqui" action="Ver categorias" onAction={()=>go('categories')}/>
