@@ -59,7 +59,7 @@ function MoneyInput({cents,onValue}:{cents:number;onValue:(value:number)=>void})
 type HomeData={categories:Category[];shops:Shop[];products:Product[]};
 type AdminData={towers:string[];residents:{id:string;name:string;email:string;tower:string;apartment:string;status:string}[];shops:{id:string;name:string;owner_name:string;status:string}[];stats:{residents:number;shops:number;orders:number};categories:Category[]};
 type View='home'|'categories'|'favorites'|'orders'|'account'|'shop'|'product'|'cart'|'success'|'seller'|'admin'|'platform';
-type Tenant={id:string;name:string;slug:string;custom_domain:string|null;is_active:boolean;residents:number;shops:number};
+type Tenant={id:string;name:string;slug:string;subdomain:string;custom_domain:string|null;is_active:boolean;residents:number;shops:number};
 const money=(n:number)=>new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(n/100);
 const price=(p:Product)=>p.promo_price_cents??p.price_cents;
 const statusLabel:Record<string,string>={awaiting_confirmation:'Aguardando confirmação',confirmed:'Confirmado',completed:'Concluído',cancelled:'Cancelado',pending:'Em análise',approved:'Ativo',suspended:'Suspenso',deleted:'Excluído'};
@@ -1527,7 +1527,7 @@ export default function Page(){
         <div className="page-title"><h1>Superadmin Condovery</h1><p>Gerencie os condomínios e alterne o ambiente administrado.</p></div>
         <section className="admin-section white-panel"><h2>Condomínios cadastrados</h2>
           <div className="platform-tenants">{tenants.map(tenant=><div className="admin-row" key={tenant.id}>
-            <div><strong>{tenant.name}</strong><p>/{tenant.slug} · {tenant.residents} moradores · {tenant.shops} lojas</p>
+            <div><strong>{tenant.name}</strong><p>{tenant.subdomain?tenant.subdomain+'.'+(process.env.NEXT_PUBLIC_TENANT_BASE_DOMAIN||'condovery.com'):'/'+tenant.slug} · {tenant.residents} moradores · {tenant.shops} lojas</p>
               {tenant.custom_domain&&<small>{tenant.custom_domain}</small>}</div>
             <button className="outline-button" type="button" disabled={busy||tenant.id===viewer.condominium_id}
               onClick={()=>switchTenant(tenant.id)}>{tenant.id===viewer.condominium_id?'Condomínio ativo':'Administrar'}</button>
