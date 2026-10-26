@@ -721,7 +721,7 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
     }
     if(path==='giveaways'&&method==='POST'){
       approved(u);
-      const b=z.object({title:z.string().trim().min(3).max(120),description:z.string().trim().max(600),image_url:z.union([z.literal(''),z.string().url().max(2000).refine(v=>v.startsWith('https://'))]).default('')}).parse(await body(req));
+      const b=z.object({title:z.string().trim().min(3).max(120),description:z.string().trim().max(600),image_url:z.union([z.literal(''),z.string().regex(/^\/api\/media\/[0-9a-f-]{36}$/i)]).default('')}).parse(await body(req));
       const result=await query("INSERT INTO giveaway_items(condominium_id,user_id,title,description,image_url) VALUES($1,$2,$3,$4,$5) RETURNING id",[u.condominium_id,u.id,b.title,b.description,b.image_url||null]);
       return out({id:result.rows[0].id},201);
     }
@@ -940,15 +940,22 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
     const p=await query("SELECT id,shop_id,category_id,name,description,price_cents,promo_price_cents,image_url,stock,visibility,lead_time,option_groups FROM products p WHERE shop_id=$1 AND condominium_id=$2 AND visibility<>'hidden' AND deleted_at IS NULL AND EXISTS (SELECT 1 FROM categories c WHERE c.id=p.category_id AND c.condominium_id=p.condominium_id AND c.is_active=true) ORDER BY created_at DESC",[s.rows[0].id,u.condominium_id]);
     return out({shop:s.rows[0],products:p.rows});
   }
-  if((path==='media'||path==='media/profile')&&method==='POST'){
+  if((path==='media'||path==='media/profile'||path==='media/ad'||path==='media/giveaway')&&method==='POST'){
     const personal=path==='media/profile';
-    const shop=personal?null:await shopOwned(u);
+    const adImage=path==='media/ad',giveawayImage=path==='media/giveaway';
+    if(adImage&&!u.is_superadmin)bad('Acesso restrito ao superadmin.',403);
+    if(giveawayImage){
+      approved(u);
+      const active=await query("SELECT 1 FROM categories WHERE condominium_id=$1 AND name='Desapego' AND is_active=true",[u.condominium_id]);
+      if(!active.rowCount)bad('Desapego desabilitado.',403);
+    }
+    const shop=personal||adImage||giveawayImage?null:await shopOwned(u);
     const form=await req.formData();
     const input=form.get('file');
     if(!(input instanceof File))throw new ApiError(400,'Selecione uma imagem.');
     const file:File=input;
     if(!IMAGE_MIME_TYPES.some(type=>type===file.type))bad('Imagem deve ser JPG, PNG ou WebP.');
-    if(!imageSizeIsAllowed(file.size))bad('A imagem deve ter no máximo 10 MB.');
+    if((giveawayImage&&file.size>5*1024*1024)||(!giveawayImage&&!imageSizeIsAllowed(file.size)))bad(giveawayImage?'A imagem deve ter no máximo 5 MB.':'A imagem deve ter no máximo 10 MB.');
     const buffer=Buffer.from(await file.arrayBuffer());
     const jpg=buffer[0]===255&&buffer[1]===216&&buffer[2]===255;
     const png=buffer.subarray(0,8).equals(Buffer.from([137,80,78,71,13,10,26,10]));
@@ -963,7 +970,7 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
         .webp({quality:78,effort:4}).toBuffer();
     }catch{bad('Imagem inválida ou com resolução excessiva.');}
     // Only server uses the private Storage service credential.
-    const objectKey=u.condominium_id+'/'+(personal?'profile/'+u.id:shop!.id)+'/'+crypto.randomUUID()+'.webp';
+    const objectKey=u.condominium_id+'/'+(adImage?'ads':giveawayImage?'giveaways/'+u.id:personal?'profile/'+u.id:shop!.id)+'/'+crypto.randomUUID()+'.webp';
     const {error:uploadError}=await storageAdmin().storage.from(STORAGE_BUCKET).upload(
       objectKey,optimized!,{contentType:'image/webp',upsert:false,cacheControl:'86400'}
     );
