@@ -431,7 +431,7 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
       headline:z.string().trim().min(2).max(140).optional(),
       description:z.string().trim().max(400).optional(),
       location:z.string().trim().min(2).max(120).optional(),
-      image_url:z.string().regex(/^\\/api\\/media\\/[0-9a-f-]{36}$/i,'Envie a imagem pelo upload.').optional(),
+      image_url:z.string().regex(/^\/api\/media\/[0-9a-f-]{36}$/i,'Envie a imagem pelo upload.').optional(),
       destination_url:z.string().url().max(2000).refine(v=>v.startsWith('https://'),'Use link HTTPS.').optional(),
       starts_at:z.string().datetime({offset:true}).optional(),
       expires_at:z.string().datetime({offset:true}).optional(),
