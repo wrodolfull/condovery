@@ -35,12 +35,14 @@ try{
   for(const c of upgraded.rows)if(ids.has(c.name))assert.equal(c.id,ids.get(c.name),'Retain existing category UUID');
   // Old references are preserved, but non-food choices are deactivated.
   const inactive=await db.query('SELECT name,id FROM categories WHERE condominium_id=$1 AND is_active=false ORDER BY name',[id]);
-  assert.deepEqual(inactive.rows.map(c=>c.name),['Beleza','Moda','Outros','Presentes']);
-  for(const c of inactive.rows)assert.equal(c.id,ids.get(c.name));
+  assert.deepEqual(inactive.rows.map(c=>c.name),['Beleza','Desapego','Moda','Outros','Presentes','Serviços']);
+  for(const c of inactive.rows)if(ids.has(c.name))assert.equal(c.id,ids.get(c.name));
+  // Admin enablement must persist after rerunning all migrations.
+  await db.query("UPDATE categories SET is_active=true WHERE condominium_id=$1 AND name='Moda'",[id]);
   // Reapplying migrations must never duplicate any categories.
   execFileSync(process.execPath,['scripts/migrate.mjs'],{env:process.env,stdio:'pipe'});
   const repeated=await db.query('SELECT count(*)::int AS n FROM categories WHERE condominium_id=$1 AND is_active=true',[id]);
-  assert.equal(repeated.rows[0].n,7);
+  assert.equal(repeated.rows[0].n,8);
   // The first tenant bootstrapped before this test is also unchanged.
   const other=await db.query('SELECT count(*)::int AS n FROM categories WHERE is_active=true AND condominium_id=(SELECT id FROM condominiums WHERE slug=$1)',
     ['teste']);
