@@ -78,6 +78,31 @@ export function Giveaways({viewerId}:{viewerId:string}){
   {!current&&<><div className="section-heading"><h2>Desapego da vizinhança</h2><button className="mini-primary" onClick={()=>setNewItem(v=>!v)}><Plus size={16}/> Anunciar grátis</button></div>
   <p className="muted">Itens gratuitos oferecidos por moradores. Combine a retirada diretamente com quem anunciou.</p>
   {error&&<p role="alert" style={{color:'#b91c1c'}}>{error}</p>}
+  <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(min(100%,240px),1fr))',gap:15}}>
+    {items.map(item=><article className="white-panel" key={item.id} role="button" tabIndex={0} onClick={()=>setSelected(item.id)} onKeyDown={e=>{if(e.key==='Enter'||e.key===' ')setSelected(item.id);}} style={{overflow:'hidden',padding:0,cursor:'pointer'}}>
+      {item.image_url?<img src={item.image_url} alt={item.title} style={{width:'100%',height:175,objectFit:'cover'}}/>:
+        <div style={{height:150,display:'grid',placeItems:'center',background:'#f3f3f3'}}><Gift size={45} color="#777"/></div>}
+      <div style={{padding:16}}>
+        <strong style={{fontSize:17}}>{item.title}</strong>
+        <div style={{margin:'8px 0',fontWeight:700,color:item.status==='available'?'#047857':'#666'}}>{item.status==='available'?'GRÁTIS':item.status==='reserved'?'Reservado':'Doado'}</div>
+        <p style={{fontSize:14,whiteSpace:'pre-wrap'}}>{item.description.length>110?item.description.slice(0,110)+'…':item.description}</p>
+        <small>Por {item.owner_name}</small>
+        <span style={{display:'block',fontSize:12,marginTop:10,color:'#555'}}>Ver detalhes do item</span>
+      </div>
+    </article>)}
+  </div>
+  {loading&&<div className="white-panel" role="status" aria-live="polite" style={{padding:24,display:'grid',gap:14}}>
+    <strong>Carregando desapegos...</strong>
+    <div aria-hidden="true" style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(150px,1fr))',gap:14}}>
+      {[0,1,2].map(i=><div key={i} style={{height:180,borderRadius:14,background:'#f2f2f2'}}/>)}
+    </div>
+  </div>}
+  {!loading&&loaded&&items.length===0&&<div className="white-panel" style={{textAlign:'center',padding:24}}>Nenhum desapego disponível. Seja o primeiro a anunciar!</div>}
+  {!loading&&!loaded&&error&&<button type="button" className="outline-button" onClick={()=>{
+    setError('');setLoading(true);
+    load().catch(e=>setError(e instanceof Error?e.message:'Falha ao carregar desapegos.')).finally(()=>setLoading(false));
+  }}>Tentar carregar novamente</button>}
+  </>}
   {(newItem||editing)&&<form className="white-panel form-stack" onSubmit={submit} style={{marginBottom:18}}>
     <h3>{editing?'Editar meu desapego':'Publicar desapego'}</h3>
     <label>Nome do item<input minLength={3} maxLength={120} required value={title} onChange={e=>setTitle(e.target.value)} placeholder="Ex.: Livros infantis"/></label>
@@ -92,31 +117,6 @@ export function Giveaways({viewerId}:{viewerId:string}){
     <p className="muted">Após marcar o item como <strong>Doado</strong>, o anúncio, seus dados e sua foto serão excluídos automaticamente após 48 horas.</p>
     <button type="submit" disabled={busy||uploading} className="primary-button">{editing?'Salvar alterações':'Publicar gratuitamente'}</button>
   </form>}
-  {!editing&&<div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(min(100%,240px),1fr))',gap:15}}>
-    {items.map(item=><article className="white-panel" key={item.id} role="button" tabIndex={0} onClick={()=>setSelected(item.id)} onKeyDown={e=>{if(e.key==='Enter'||e.key===' ')setSelected(item.id);}} style={{overflow:'hidden',padding:0,cursor:'pointer'}}>
-      {item.image_url?<img src={item.image_url} alt={item.title} style={{width:'100%',height:175,objectFit:'cover'}}/>:
-        <div style={{height:150,display:'grid',placeItems:'center',background:'#f3f3f3'}}><Gift size={45} color="#777"/></div>}
-      <div style={{padding:16}}>
-        <strong style={{fontSize:17}}>{item.title}</strong>
-        <div style={{margin:'8px 0',fontWeight:700,color:item.status==='available'?'#047857':'#666'}}>{item.status==='available'?'GRÁTIS':item.status==='reserved'?'Reservado':'Doado'}</div>
-        <p style={{fontSize:14,whiteSpace:'pre-wrap'}}>{item.description.length>110?item.description.slice(0,110)+'…':item.description}</p>
-        <small>Por {item.owner_name}</small>
-        <span style={{display:'block',fontSize:12,marginTop:10,color:'#555'}}>Ver detalhes do item</span>
-      </div>
-    </article>)}
-  </div>}
-  {loading&&<div className="white-panel" role="status" aria-live="polite" style={{padding:24,display:'grid',gap:14}}>
-    <strong>Carregando desapegos...</strong>
-    <div aria-hidden="true" style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(150px,1fr))',gap:14}}>
-      {[0,1,2].map(i=><div key={i} style={{height:180,borderRadius:14,background:'#f2f2f2'}}/>)}
-    </div>
-  </div>}
-  {!loading&&loaded&&items.length===0&&<div className="white-panel" style={{textAlign:'center',padding:24}}>Nenhum desapego disponível. Seja o primeiro a anunciar!</div>}
-  {!loading&&!loaded&&error&&<button type="button" className="outline-button" onClick={()=>{
-    setError('');setLoading(true);
-    load().catch(e=>setError(e instanceof Error?e.message:'Falha ao carregar desapegos.')).finally(()=>setLoading(false));
-  }}>Tentar carregar novamente</button>}
-  </>}
   {current&&<div style={{maxWidth:1000,margin:'18px auto 40px'}}>
     {!editing&&<article className="white-panel" style={{padding:'clamp(16px,3vw,32px)',borderRadius:20}}>
       {current.image_url?<img src={current.image_url} alt={current.title} style={{width:'100%',maxHeight:320,objectFit:'contain',background:'#f5f5f5',borderRadius:14}}/>:<div style={{height:180,background:'#f5f5f5',borderRadius:14,display:'grid',placeItems:'center'}}><Gift size={54}/></div>}
