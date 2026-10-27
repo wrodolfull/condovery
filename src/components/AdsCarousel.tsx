@@ -6,15 +6,29 @@ export type AdCampaign={id:string;merchant_name:string;headline:string;descripti
 export function AdsCarousel({campaigns}:{campaigns:AdCampaign[]}){
   const [index,setIndex]=useState(0);
   const touch=useRef<number|null>(null);
+  const adSection=useRef<HTMLElement|null>(null);
+  const seen=useRef<Set<string>>(new Set());
   useEffect(()=>setIndex(0),[campaigns]);
   useEffect(()=>{
     if(campaigns.length<2)return;
     const timer=window.setInterval(()=>setIndex(i=>(i+1)%campaigns.length),8500);
     return()=>window.clearInterval(timer);
   },[campaigns]);
+  const activeId=campaigns.length?campaigns[index%campaigns.length]?.id:null;
+  useEffect(()=>{
+    if(!activeId||!adSection.current||typeof IntersectionObserver==='undefined')return;
+    const target=adSection.current;
+    const observer=new IntersectionObserver(entries=>{
+      if(!entries.some(entry=>entry.isIntersecting&&entry.intersectionRatio>=0.5)||document.visibilityState!=='visible'||seen.current.has(activeId))return;
+      seen.current.add(activeId);
+      void fetch('/api/ads/'+activeId+'/impression',{method:'POST',credentials:'same-origin',keepalive:true}).catch(()=>{});
+    },{threshold:[0,0.5,1]});
+    observer.observe(target);
+    return()=>observer.disconnect();
+  },[activeId]);
   if(!campaigns.length)return null;
   const ad=campaigns[index%campaigns.length];
-  return <section aria-label="Ofertas perto de você" style={{margin:'22px 0'}}>
+  return <section ref={adSection} aria-label="Ofertas perto de você" style={{margin:'22px 0'}}>
     <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:12}}>
       <h2 style={{fontSize:'clamp(19px,4vw,25px)',fontWeight:750,margin:0}}>Ofertas perto de você</h2>
     </div>
@@ -31,7 +45,7 @@ export function AdsCarousel({campaigns}:{campaigns:AdCampaign[]}){
         <p style={{fontSize:14,lineHeight:1.5,color:'#626262',margin:'0 0 17px'}}>{ad.description}</p>
         <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:12,flexWrap:'wrap'}}>
           <span style={{display:'inline-flex',alignItems:'center',gap:6,color:'#555',fontSize:13}}><MapPin size={16}/>{ad.location}</span>
-          <a href={ad.destination_url} target="_blank" rel="noopener noreferrer sponsored" style={{display:'inline-flex',alignItems:'center',gap:7,background:'#111',color:'white',fontSize:13,padding:'12px 17px',borderRadius:13,textDecoration:'none',fontWeight:700}}>Ver oferta <ArrowUpRight size={16}/></a>
+          <a href={ad.destination_url} onClick={()=>{void fetch('/api/ads/'+ad.id+'/click',{method:'POST',credentials:'same-origin',keepalive:true}).catch(()=>{});}} target="_blank" rel="noopener noreferrer sponsored" style={{display:'inline-flex',alignItems:'center',gap:7,background:'#111',color:'white',fontSize:13,padding:'12px 17px',borderRadius:13,textDecoration:'none',fontWeight:700}}>Ver oferta <ArrowUpRight size={16}/></a>
         </div>
       </div>
     </article>

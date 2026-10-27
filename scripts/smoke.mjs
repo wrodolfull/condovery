@@ -66,13 +66,79 @@ await request('platform/condominiums/switch',{method:'POST',cookie:adminCookie,b
 assert.equal((await request('me',{cookie:adminCookie})).data.viewer.condominium_id,originalTenant);
 
 let summary=(await request('admin/summary',{cookie:adminCookie})).data;
-assert.equal(summary.residents.filter(x=>x.status==='approved').length,2);
-assert.equal(summary.residents.filter(x=>x.status==='pending').length,0);
+const directory=(await request('admin/directory?kind=users',{cookie:adminCookie})).data;
+assert.equal(summary.stats.residents,2);
+assert.equal(directory.items.filter(x=>x.status==='approved').length,2);
+assert.equal(directory.items.filter(x=>x.status==='pending').length,0);
+
 const sellerLogin=await request('auth/login',{method:'POST',body:{email:sellerEmail,password:pass}});
 const buyerLogin=await request('auth/login',{method:'POST',body:{email:buyerEmail,password:pass}});
 const sellerCookie=sellerLogin.cookie, buyerCookie=buyerLogin.cookie;
 assert.ok(sellerCookie&&buyerCookie);
+// Hardened tenant directory: exact filtering, pagination, CSV and permissions.
+const buyerLookup=(await request('admin/directory?kind=users&search='+encodeURIComponent(buyerEmail),{cookie:adminCookie})).data;
+assert.equal(buyerLookup.total,1);
+assert.equal(buyerLookup.items[0].email,buyerEmail);
+const emptyPage=(await request('admin/directory?kind=users&page=1',{cookie:adminCookie})).data;
+assert.equal(emptyPage.items.length,0);
+await request('admin/directory?kind=users&status=invalid',{cookie:adminCookie,expected:400});
+const exported=await fetch(origin+'/api/admin/directory/export?kind=users&search='+encodeURIComponent(buyerEmail),{
+  headers:{Cookie:adminCookie}
+});
+assert.equal(exported.status,200);
+assert.match(exported.headers.get('content-type')??'',/text\/csv/);
+assert.ok((await exported.text()).includes(buyerEmail));
+
+// Advertising lifecycle: asset ownership, commercial reporting, daily metrics
+// and superadmin-only management. No real Supabase Storage upload required.
+const adsDB=new pg.Client({connectionString:process.env.DATABASE_URL});
+await adsDB.connect();
+let testImageId,adId;
+try{
+  const media=await adsDB.query(
+    "INSERT INTO media_assets(condominium_id,mime,storage_key) VALUES($1,'image/webp',$2) RETURNING id",
+    [originalTenant,'test-ads/'+crypto.randomUUID()+'.webp']);
+  testImageId=media.rows[0].id;
+  const rls=await adsDB.query("SELECT relrowsecurity FROM pg_class WHERE oid='public.platform_admins'::regclass");
+  assert.equal(rls.rows[0].relrowsecurity,true);
+  const campaign={
+    condominium_id:originalTenant,merchant_name:'Padaria Parceira',
+    headline:'Oferta do dia',description:'Teste de publicidade',location:'Valinhos, SP',
+    image_url:'/api/media/'+testImageId,destination_url:'https://example.com/oferta',
+    starts_at:new Date(Date.now()-60000).toISOString(),
+    expires_at:new Date(Date.now()+86400000).toISOString(),enabled:true,
+    contract_amount_cents:12345,billing_status:'pending',commercial_partner:'Parceiro Teste'
+  };
+  await request('platform/ads',{method:'POST',cookie:buyerCookie,body:campaign,expected:403});
+  const createdAd=(await request('platform/ads',{method:'POST',cookie:adminCookie,body:campaign,expected:201})).data;
+  adId=createdAd.id;
+  await request('platform/ads/'+adId,{method:'PATCH',cookie:adminCookie,body:{billing_status:'paid'}});
+  const overview=(await request('platform/ads',{cookie:adminCookie})).data;
+  assert.equal(overview.campaigns.find(c=>c.id===adId).billing_status,'paid');
+  const commercial=(await request('platform/ads/reports',{cookie:adminCookie})).data;
+  assert.ok(Number(commercial.totals.received_cents)>=12345);
+  assert.ok(commercial.partners.find(p=>p.commercial_partner==='Parceiro Teste'));
+  await request('platform/ads/reports',{cookie:buyerCookie,expected:403});
+  await request('platform/ads/settings',{method:'PATCH',cookie:adminCookie,body:{enabled:true}});
+  assert.ok((await request('ads',{cookie:buyerCookie})).data.campaigns.some(c=>c.id===adId));
+  await request('ads/'+adId+'/impression',{method:'POST',cookie:buyerCookie});
+  await request('ads/'+adId+'/impression',{method:'POST',cookie:buyerCookie});
+  await request('ads/'+adId+'/click',{method:'POST',cookie:buyerCookie});
+  const counted=(await request('platform/ads',{cookie:adminCookie})).data.campaigns.find(c=>c.id===adId);
+  assert.equal(counted.impressions,1);
+  assert.equal(counted.clicks,1);
+  await request('platform/ads/settings',{method:'PATCH',cookie:adminCookie,body:{enabled:false}});
+  await request('ads/'+adId+'/impression',{method:'POST',cookie:buyerCookie,expected:404});
+  console.log('Admin directory filters/CSV and advertising reporting/metrics PASS.');
+}finally{
+  if(adId)await request('platform/ads/'+adId,{method:'DELETE',cookie:adminCookie});
+  await adsDB.query("UPDATE ads_settings SET enabled=false WHERE id=true");
+  if(testImageId)await adsDB.query('DELETE FROM media_assets WHERE id=$1',[testImageId]);
+  await adsDB.end();
+}
 await request('admin/summary',{cookie:buyerCookie,expected:403});
+await request('admin/directory?kind=users',{cookie:buyerCookie,expected:403});
+await request('admin/directory/export?kind=users',{cookie:buyerCookie,expected:403});
 await request('platform/condominiums',{cookie:buyerCookie,expected:403});
 await request('platform/condominiums/switch',{method:'POST',cookie:buyerCookie,expected:403,body:{condominium_id:newTenant.id}});
 await request('shops/mine',{method:'POST',cookie:sellerCookie,expected:400,body:{
@@ -391,7 +457,8 @@ const googleWait=(await request('me',{cookie:googleSignup.cookie})).data;
 assert.equal(googleWait.viewer.status,'approved');
 assert.equal(googleWait.viewer.email,googleEmail);
 const newSummary=(await request('admin/summary',{cookie:adminCookie})).data;
-const newResident=newSummary.residents.find(x=>x.email===googleEmail);
+const newDirectory=(await request('admin/directory?kind=users&search='+encodeURIComponent(googleEmail),{cookie:adminCookie})).data;
+const newResident=newDirectory.items.find(x=>x.email===googleEmail);
 assert.ok(newResident);
 const googleHome=(await request('home',{cookie:googleSignup.cookie})).data;
 assert.ok(googleHome.categories.length>0);

@@ -17,13 +17,15 @@ import {IMAGE_MIME_TYPES, imageSizeIsAllowed} from '@/lib/image-limits';
 import {tenantForRequest,isTenantHostname,tenantLabel} from '@/lib/tenant-host';
 import {normalizeCondominiumSlug,normalizeTenantDomain} from '@/lib/tenancy';
 import {logApiRequestMetric} from '@/lib/api-observability';
+import {ApiError,bad} from '@/lib/api-error';
+import {handleAdsApi} from '@/server/ads';
+import {handleAdminDirectory} from '@/server/admin-directory';
+import {handlePlatformCondominiums} from '@/server/platform-condominiums';
 
 export const runtime='nodejs';
 export const dynamic='force-dynamic';
 type Verb='GET'|'POST'|'PUT'|'PATCH'|'DELETE';
 type Args={req:NextRequest;method:Verb;parts:string[]};
-class ApiError extends Error { constructor(public status:number, message:string){super(message);} }
-const bad=(text:string,status=400):never=>{throw new ApiError(status,text);};
 const out=(value:unknown,status=200)=>NextResponse.json(value,{status,headers:{'Cache-Control':'no-store'}});
 const clean=(value:unknown,max=500)=>String(value??'').trim().slice(0,max);
 const uuid=(value:string)=>/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
@@ -384,176 +386,12 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
   if(path.startsWith('platform/')&&requestedTenant)bad('A gestão global deve ser acessada pelo domínio principal.',403);
   // Only the server-owned platform_admins table can authorize these routes.
   // Sessions of ordinary condo administrators can never choose another tenant.
-  // Campanhas pagas: nenhum dado de campanha pode ser alterado por administradores locais.
-  if(path==='platform/ads'&&method==='GET'){
-    if(!u.is_superadmin)bad('Acesso exclusivo do superadmin.',403);
-    const [settings,campaigns]=await Promise.all([
-      query('SELECT enabled FROM ads_settings WHERE id=true'),
-      query('SELECT id,condominium_id,merchant_name,headline,description,location,image_url,destination_url,starts_at,expires_at,enabled FROM advertising_campaigns ORDER BY created_at DESC LIMIT 300')
-    ]);
-    return out({enabled:settings.rows[0]?.enabled??false,campaigns:campaigns.rows});
-  }
-  if(path==='platform/ads/settings'&&method==='PATCH'){
-    if(!u.is_superadmin)bad('Acesso exclusivo do superadmin.',403);
-    const b=z.object({enabled:z.boolean()}).parse(await body(req));
-    await query('UPDATE ads_settings SET enabled=$1,updated_at=now() WHERE id=true',[b.enabled]);
-    return out({ok:true});
-  }
-  if(path==='platform/ads'&&method==='POST'){
-    if(!u.is_superadmin)bad('Acesso exclusivo do superadmin.',403);
-    const b=z.object({
-      condominium_id:z.string().uuid(),
-      merchant_name:z.string().trim().min(2).max(100),
-      headline:z.string().trim().min(2).max(140),
-      description:z.string().trim().max(400),
-      location:z.string().trim().min(2).max(120),
-      image_url:z.string().regex(/^\/api\/media\/[0-9a-f-]{36}$/i,'Envie a imagem pelo upload.'),
-      destination_url:z.string().url().max(2000).refine(v=>v.startsWith('https://'),'Use link HTTPS.'),
-      starts_at:z.string().datetime({offset:true}),
-      expires_at:z.string().datetime({offset:true}),
-      enabled:z.boolean().default(false)
-    }).parse(await body(req));
-    if(new Date(b.expires_at)<=new Date(b.starts_at))bad('A data de expiração deve ser posterior ao início.');
-    const target=await query('SELECT 1 FROM condominiums WHERE id=$1 AND is_active=true',[b.condominium_id]);
-    if(!target.rowCount)bad('Condomínio inválido.');
-    const result=await query(
-      'INSERT INTO advertising_campaigns(condominium_id,merchant_name,headline,description,location,image_url,destination_url,starts_at,expires_at,enabled) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id',
-      [b.condominium_id,b.merchant_name,b.headline,b.description,b.location,b.image_url,b.destination_url,b.starts_at,b.expires_at,b.enabled]);
-    return out({id:result.rows[0].id},201);
-  }
-  if(path.startsWith('platform/ads/')&&method==='PATCH'&&path!=='platform/ads/settings'){
-    if(!u.is_superadmin)bad('Acesso exclusivo do superadmin.',403);
-    const id=parts[2];
-    if(!uuid(id))bad('Anúncio inválido.');
-    const b=z.object({
-      condominium_id:z.string().uuid().optional(),
-      merchant_name:z.string().trim().min(2).max(100).optional(),
-      headline:z.string().trim().min(2).max(140).optional(),
-      description:z.string().trim().max(400).optional(),
-      location:z.string().trim().min(2).max(120).optional(),
-      image_url:z.string().regex(/^\/api\/media\/[0-9a-f-]{36}$/i,'Envie a imagem pelo upload.').optional(),
-      destination_url:z.string().url().max(2000).refine(v=>v.startsWith('https://'),'Use link HTTPS.').optional(),
-      starts_at:z.string().datetime({offset:true}).optional(),
-      expires_at:z.string().datetime({offset:true}).optional(),
-      enabled:z.boolean().optional()
-    }).strict().parse(await body(req));
-    if(!Object.keys(b).length)bad('Informe os campos para atualizar.');
-    const existing=await query('SELECT * FROM advertising_campaigns WHERE id=$1',[id]);
-    if(!existing.rowCount)bad('Anúncio não encontrado.',404);
-    const current=existing.rows[0];
-    const next={...current,...b};
-    if(!next.starts_at||!next.expires_at||new Date(next.expires_at)<=new Date(next.starts_at))bad('A expiração deve ser posterior ao início.');
-    const target=await query('SELECT 1 FROM condominiums WHERE id=$1 AND is_active=true',[next.condominium_id]);
-    if(!target.rowCount)bad('Condomínio inválido.');
-    const result=await query(
-      'UPDATE advertising_campaigns SET condominium_id=$1,merchant_name=$2,headline=$3,description=$4,location=$5,image_url=$6,destination_url=$7,starts_at=$8,expires_at=$9,enabled=$10,updated_at=now() WHERE id=$11 RETURNING id',
-      [next.condominium_id,next.merchant_name,next.headline,next.description,next.location,next.image_url,next.destination_url,next.starts_at,next.expires_at,next.enabled,id]);
-    if(!result.rowCount)bad('Anúncio não encontrado.',404);
-    return out({ok:true});
-  }
-  if(path.startsWith('platform/ads/')&&method==='DELETE'){
-    if(!u.is_superadmin)bad('Acesso exclusivo do superadmin.',403);
-    const id=parts[2];
-    if(!uuid(id))bad('Anúncio inválido.');
-    await query('DELETE FROM advertising_campaigns WHERE id=$1',[id]);
-    return out({ok:true});
-  }
-  if(path==='platform/condominiums'&&method==='GET'){
-    if(!u.is_superadmin)bad('Acesso exclusivo do superadmin.',403);
-    const list=await query(
-      "SELECT c.id,c.name,c.slug,c.subdomain,c.custom_domain,c.is_active,c.created_at,"+
-      " (SELECT count(*)::int FROM users m WHERE m.condominium_id=c.id AND m.role='resident' AND m.status='approved') AS residents,"+
-      " (SELECT count(*)::int FROM shops s WHERE s.condominium_id=c.id AND s.status='approved') AS shops"+
-      " FROM condominiums c ORDER BY c.created_at DESC LIMIT 250"
-    );
-    return out({condominiums:list.rows,active_condominium_id:u.condominium_id});
-  }
-  if(path==='platform/condominiums'&&method==='POST'){
-    if(!u.is_superadmin)bad('Acesso exclusivo do superadmin.',403);
-    const b=z.object({
-      name:z.string().trim().min(3).max(100),
-      slug:z.string().trim().min(3).max(60),
-      invite_code:z.string().trim().min(10).max(150),
-      tower_scheme:z.enum(['letters','numbers']).default('letters'),
-      tower_count:z.number().int().min(1).max(30).default(30),
-      custom_domain:z.string().trim().max(253).optional()
-    }).parse(await body(req));
-    const slug=normalizeCondominiumSlug(b.slug);
-    const baseSubdomain=tenantLabel(slug);
-    const existsSubdomain=await query('SELECT id FROM condominiums WHERE subdomain=$1',[baseSubdomain]);
-    const subdomain=existsSubdomain.rowCount?baseSubdomain.slice(0,38)+crypto.randomBytes(4).toString('hex'):baseSubdomain;
-    if(slug.length<3)bad('Identificador do condomínio inválido.');
-    const hostname=b.custom_domain?normalizeTenantDomain(b.custom_domain):null;
-    const hash=inviteHash(b.invite_code);
-    const existing=await query('SELECT id FROM condominiums WHERE invite_code_hash=$1',[hash]);
-    if(existing.rowCount)bad('Este código de condomínio já está em uso.',409);
-    const created=await transaction(async tx=>{
-      const result=await tx.query(
-        "INSERT INTO condominiums(name,slug,invite_code_hash,towers,custom_domain,subdomain) VALUES($1,$2,$3,$4::jsonb,$5,$6) "+
-        "ON CONFLICT DO NOTHING RETURNING id,name,slug,subdomain,custom_domain,is_active",
-        [b.name,slug,hash,JSON.stringify(towerLabels(b.tower_scheme,b.tower_count)),hostname,subdomain]
-      );
-      if(!result.rowCount)bad('Já existe condomínio com este endereço.',409);
-      const defaultCategories=[
-        ['Bolos e doces','cake-slice'],['Pães e salgados','sandwich'],['Refeições','utensils'],
-        ['Bebidas','coffee'],['Lanches','pizza'],['Sobremesas e sorvetes','ice-cream-cone'],
-        ['Mercadinho','shopping-basket']
-      ];
-      for(let i=0;i<defaultCategories.length;i++){
-        await tx.query("INSERT INTO categories(condominium_id,name,icon,sort_order) VALUES($1,$2,$3,$4)",
-          [result.rows[0].id,defaultCategories[i][0],defaultCategories[i][1],i]);
-      }
-      for(const [name,icon,order] of [['Serviços','wrench',70],['Moda','shirt',71],['Desapego','gift',72]] as const){
-        await tx.query('INSERT INTO categories(condominium_id,name,icon,sort_order,is_active) VALUES($1,$2,$3,$4,false) ON CONFLICT(condominium_id,name) DO NOTHING',
-          [result.rows[0].id,name,icon,order]);
-      }
-      return result.rows[0];
-    });
-    return out({condominium:created},201);
-  }
-  if(path==='platform/condominiums/switch'&&method==='POST'){
-    if(!u.is_superadmin)bad('Acesso exclusivo do superadmin.',403);
-    const b=z.object({condominium_id:z.string().uuid()}).parse(await body(req));
-    const target=await query('SELECT id FROM condominiums WHERE id=$1 AND is_active=true',[b.condominium_id]);
-    if(!target.rowCount)bad('Condomínio indisponível.',404);
-    const token=req.cookies.get('condovery_session')?.value;
-    if(!token)bad('Sessão expirada.',401);
-    await query(
-      "UPDATE sessions SET active_condominium_id=$1 WHERE token_hash=$2 AND user_id=$3",
-      [b.condominium_id,tokenHash(token!),u.id]
-    );
-    return out({ok:true,condominium_id:b.condominium_id});
-  }
-  if(path==='platform/condominiums/admin'&&method==='POST'){
-    if(!u.is_superadmin)bad('Acesso exclusivo do superadmin.',403);
-    const b=z.object({
-      condominium_id:z.string().uuid(),
-      name:z.string().trim().min(2).max(90),
-      email:z.string().email().transform(v=>v.trim().toLowerCase()),
-      password:z.string().min(12).max(100)
-    }).parse(await body(req));
-    const condo=await query('SELECT id FROM condominiums WHERE id=$1 AND is_active=true',[b.condominium_id]);
-    if(!condo.rowCount)bad('Condomínio indisponível.',404);
-    const duplicated=await query('SELECT id FROM users WHERE email=$1',[b.email]);
-    if(duplicated.rowCount)bad('E-mail já cadastrado. Utilize outro e-mail de administrador.',409);
-    const supa=storageAdmin();
-    const {data,error}=await supa.auth.admin.createUser({
-      email:b.email,password:b.password,email_confirm:true,user_metadata:{name:b.name}
-    });
-    if(error||!data.user)bad('Não foi possível criar a identidade do administrador: '+(error?.message??'erro desconhecido'),409);
-    const adminAuthId=data.user!.id;
-    try{
-      const added=await query(
-        "INSERT INTO users(condominium_id,name,email,phone,password_hash,supabase_auth_user_id,role,status,tower,apartment)"+
-        " VALUES($1,$2,$3,'',NULL,$4,'admin','approved','Admin','Admin') RETURNING id,name,email",
-        [b.condominium_id,b.name,b.email,adminAuthId]
-      );
-      return out({admin:added.rows[0]},201);
-    }catch(error){
-      await supa.auth.admin.deleteUser(adminAuthId).catch(()=>{});
-      throw error;
-    }
-  }
+  const adsResponse=await handleAdsApi({req,method,path,parts,u});
+  if(adsResponse)return adsResponse;
+  const adminDirectory=await handleAdminDirectory(req,method,path,u);
+  if(adminDirectory)return adminDirectory;
+  const platformResponse=await handlePlatformCondominiums(req,method,path,u);
+  if(platformResponse)return platformResponse;
   if(path==='me'&&method==='PATCH'){
     approved(u);
     const b=z.object({name:z.string().trim().min(2).max(90),phone:z.string().trim().min(10).max(20),tower:z.string().min(1).max(60),apartment:z.string().min(1).max(24),avatar_image:z.string().nullable().optional()}).parse(await body(req));
@@ -723,13 +561,6 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
       [u.condominium_id,category,search?escaped:'',limit+1,page*limit]
     );
     return out({products:result.rows.slice(0,limit),hasMore:result.rows.length>limit,page});
-  }
-  if(path==='ads'&&method==='GET'){
-    const result=await query(
-      "SELECT a.id,a.merchant_name,a.headline,a.description,a.location,a.image_url,a.destination_url FROM advertising_campaigns a JOIN ads_settings settings ON settings.id=true AND settings.enabled=true WHERE a.condominium_id=$1 AND a.enabled=true AND a.starts_at<=now() AND a.expires_at>now() ORDER BY a.created_at DESC LIMIT 20",
-      [u.condominium_id]
-    );
-    return out({campaigns:result.rows});
   }
   // Desapego: classificados gratuitos por morador, sem loja ou pagamento.
   if(path==='giveaways'||path.startsWith('giveaways/')){
@@ -1035,7 +866,12 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
   }
   if(parts[0]==='media'&&parts[1]&&method==='GET'){
     if(!uuid(parts[1]))bad('Arquivo inválido.');
-    const r=await query('SELECT mime,bytes,storage_key,user_id FROM media_assets WHERE condominium_id=$1 AND id=$2',[u.condominium_id,parts[1]]);
+    let r=await query('SELECT mime,bytes,storage_key,user_id FROM media_assets WHERE condominium_id=$1 AND id=$2',[u.condominium_id,parts[1]]);
+    // Superadmin may preview institutional ADS uploaded for another condominium.
+    // Never allow this cross-tenant fallback for shop or personal media.
+    if(!r.rowCount&&u.is_superadmin){
+      r=await query('SELECT mime,bytes,storage_key,user_id FROM media_assets WHERE id=$1 AND shop_id IS NULL AND user_id IS NULL',[parts[1]]);
+    }
     if(!r.rowCount)bad('Imagem não encontrada.',404);
     if(r.rows[0].user_id&&r.rows[0].user_id!==u.id)bad('Foto pessoal indisponível.',403);
     let bytes:Uint8Array;
@@ -1273,13 +1109,11 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
   }
   if(path==='admin/summary'&&method==='GET'){
     admin(u);
-    const [residents,shops,stats,categories]=await Promise.all([
-      query('SELECT id,name,email,phone,tower,apartment,status,created_at FROM users WHERE condominium_id=$1 AND role=\'resident\' ORDER BY CASE WHEN status=\'pending\' THEN 0 ELSE 1 END,created_at DESC LIMIT 200',[u.condominium_id]),
-      query('SELECT s.id,s.name,s.description,s.status,s.is_open,u.name AS owner_name FROM shops s JOIN users u ON u.id=s.owner_id WHERE s.condominium_id=$1 ORDER BY CASE WHEN s.status=\'pending\' THEN 0 ELSE 1 END,s.created_at DESC LIMIT 200',[u.condominium_id]),
-      query("SELECT (SELECT count(*)::int FROM users WHERE condominium_id=$1 AND status='approved') AS residents, (SELECT count(*)::int FROM shops WHERE condominium_id=$1 AND status='approved') AS shops,(SELECT count(*)::int FROM orders WHERE condominium_id=$1) AS orders",[u.condominium_id]),
+    const [stats,categories]=await Promise.all([
+      query("SELECT (SELECT count(*)::int FROM users WHERE condominium_id=$1 AND role='resident' AND status='approved') AS residents, (SELECT count(*)::int FROM shops WHERE condominium_id=$1 AND status='approved') AS shops, (SELECT count(*)::int FROM orders WHERE condominium_id=$1) AS orders",[u.condominium_id]),
       query('SELECT id,name,icon,is_active FROM categories WHERE condominium_id=$1 ORDER BY sort_order,name',[u.condominium_id])
     ]);
-    return out({residents:residents.rows,shops:shops.rows,stats:stats.rows[0],categories:categories.rows,towers:u.towers});
+    return out({stats:stats.rows[0],categories:categories.rows,towers:u.towers});
   }
   if(path==='reports'&&method==='POST'){
     const b=z.object({

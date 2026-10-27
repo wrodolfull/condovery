@@ -56,6 +56,11 @@ try {
   await client.query(marketingLeads);
   const giveawayContact=await readFile(new URL('../db/022_giveaway_contact_whatsapp.sql',import.meta.url),'utf8');
   await client.query(giveawayContact);
+  // Commercial reporting must exist before locking down client-facing Data API roles.
+  const adReporting=await readFile(new URL('../db/031_ads_reporting.sql',import.meta.url),'utf8');
+  await client.query(adReporting);
+  const accessHardening=await readFile(new URL('../db/032_public_data_api_hardening.sql',import.meta.url),'utf8');
+  await client.query(accessHardening);
   console.log('Condovery database schema applied successfully.');
 } finally {
   await client.end();

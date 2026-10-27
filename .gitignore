@@ -2,6 +2,13 @@ node_modules
 .next
 .env
 .env.local
+.env.*
+!.env.example
 *.log
 .tsbuildinfo
 .DS_Store
+
+# Locally provisioned database CA certificates and keys.
+certs/
+*.key
+*.p12
