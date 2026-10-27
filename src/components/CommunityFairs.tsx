@@ -116,7 +116,7 @@ export function AdminFairs({condominiumId}:{condominiumId:string}){
  const [busy,setBusy]=useState(false),[error,setError]=useState(''),[notice,setNotice]=useState('');
  const load=useCallback(()=>api<AdminData>('fairs/manage').then(setData),[]);
  useEffect(()=>{setData(null);load().catch(e=>setError(e.message));},[load,condominiumId]);
- const set=<K extends keyof Form>(key:K,value:Form[K])=>setForm(v=>({...v,[key]:value}));
+ function updateForm<K extends keyof Form>(key:K,value:Form[K]){setForm(v=>({...v,[key]:value}));}
  function edit(f:Fair){setEditing(f.id);setForm({title:f.title,description:f.description,cover_image_url:f.cover_image_url||'',starts_at:localDateTime(f.starts_at),ends_at:localDateTime(f.ends_at),published:!!f.published});}
  function clear(){setEditing(null);setForm(empty);setCropFile(null);}
  async function action(callback:()=>Promise<unknown>){
@@ -137,7 +137,7 @@ export function AdminFairs({condominiumId}:{condominiumId:string}){
    try{const optimized=await prepareMarketplaceImage(file,10);const body=new FormData();body.append('file',optimized);
      const res=await fetch('/api/media/fair',{method:'POST',body,credentials:'same-origin'});
      const data=await res.json();if(!res.ok)throw Error(data.error||'Falha no envio da capa.');
-     set('cover_image_url',data.url);
+     updateForm('cover_image_url',data.url);
    }catch(e){setError(e instanceof Error?e.message:'Falha no envio.');}finally{setUploading(false);}
  }
  return <section className="admin-section white-panel" style={{marginTop:18}}>
@@ -145,17 +145,17 @@ export function AdminFairs({condominiumId}:{condominiumId:string}){
    {error&&<p role="alert" style={{color:'#b91c1c'}}>{error}</p>}{notice&&<p role="status">{notice}</p>}
    <h3 style={{margin:'18px 0'}}>{editing?'Editar feira':'Nova feira'}</h3>
    <form className="form-stack" onSubmit={save}>
-     <label>Nome<input required minLength={3} maxLength={100} value={form.title} onChange={e=>set('title',e.target.value)} placeholder="Ex.: Feira de Natal"/></label>
-     <label>Descrição<textarea required={false} maxLength={600} rows={3} value={form.description} onChange={e=>set('description',e.target.value)}/></label>
+     <label>Nome<input required minLength={3} maxLength={100} value={form.title} onChange={e=>updateForm('title',e.target.value)} placeholder="Ex.: Feira de Natal"/></label>
+     <label>Descrição<textarea required={false} maxLength={600} rows={3} value={form.description} onChange={e=>updateForm('description',e.target.value)}/></label>
      <label>Capa da feira (opcional; 16:9)<input type="file" accept="image/png,image/jpeg,image/webp" disabled={uploading||busy}
        onChange={e=>{const file=e.target.files?.[0];e.target.value='';if(file)setCropFile(file);}}/>
        {form.cover_image_url&&<img alt="Prévia da capa" src={form.cover_image_url} style={{width:'100%',maxWidth:420,aspectRatio:'16/9',objectFit:'cover',borderRadius:12,marginTop:10}}/>}
      </label>
      <div className="field-grid">
-       <label>Início<input required type="datetime-local" value={form.starts_at} onChange={e=>set('starts_at',e.target.value)}/></label>
-       <label>Encerramento<input required type="datetime-local" value={form.ends_at} onChange={e=>set('ends_at',e.target.value)}/></label>
+       <label>Início<input required type="datetime-local" value={form.starts_at} onChange={e=>updateForm('starts_at',e.target.value)}/></label>
+       <label>Encerramento<input required type="datetime-local" value={form.ends_at} onChange={e=>updateForm('ends_at',e.target.value)}/></label>
      </div>
-     <label style={{display:'flex',gap:8,alignItems:'center'}}><input type="checkbox" checked={form.published} onChange={e=>set('published',e.target.checked)}/> Publicar e abrir inscrições dos vendedores</label>
+     <label style={{display:'flex',gap:8,alignItems:'center'}}><input type="checkbox" checked={form.published} onChange={e=>updateForm('published',e.target.checked)}/> Publicar e abrir inscrições dos vendedores</label>
      <div className="inline-actions"><button className="primary-button" disabled={busy||uploading} type="submit">{editing?'Salvar feira':'Criar feira'}</button>
        {editing&&<button type="button" className="outline-button" onClick={clear}>Cancelar edição</button>}
      </div>
