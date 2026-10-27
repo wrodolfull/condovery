@@ -737,14 +737,15 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
     if(!active.rowCount)bad('Desapego não está habilitado neste condomínio.',404);
     if(path==='giveaways'&&method==='GET'){
       const listings=await query(
-        "SELECT g.id,g.user_id,g.title,g.description,g.image_url,g.status,g.created_at,m.name AS owner_name,m.phone AS owner_phone FROM giveaway_items g JOIN users m ON m.id=g.user_id AND m.condominium_id=g.condominium_id AND m.status='approved' WHERE g.condominium_id=$1 AND (g.status='available' OR g.user_id=$2) ORDER BY CASE WHEN g.status='available' THEN 0 ELSE 1 END,g.created_at DESC LIMIT 150",
+        "SELECT g.id,g.user_id,g.title,g.description,g.image_url,g.status,g.created_at,g.contact_whatsapp,m.name AS owner_name FROM giveaway_items g JOIN users m ON m.id=g.user_id AND m.condominium_id=g.condominium_id AND m.status='approved' WHERE g.condominium_id=$1 AND (g.status='available' OR g.user_id=$2) ORDER BY CASE WHEN g.status='available' THEN 0 ELSE 1 END,g.created_at DESC LIMIT 150",
         [u.condominium_id,u.id]);
       return out({items:listings.rows});
     }
     if(path==='giveaways'&&method==='POST'){
       approved(u);
-      const b=z.object({title:z.string().trim().min(3).max(120),description:z.string().trim().max(600),image_url:z.union([z.literal(''),z.string().regex(/^\/api\/media\/[0-9a-f-]{36}$/i)]).default('')}).parse(await body(req));
-      const result=await query("INSERT INTO giveaway_items(condominium_id,user_id,title,description,image_url) VALUES($1,$2,$3,$4,$5) RETURNING id",[u.condominium_id,u.id,b.title,b.description,b.image_url||null]);
+      const b=z.object({title:z.string().trim().min(3).max(120),description:z.string().trim().max(600),image_url:z.union([z.literal(''),z.string().regex(/^\/api\/media\/[0-9a-f-]{36}$/i)]).default(''),contact_whatsapp:z.string().trim().max(20).default('')}).parse(await body(req));
+      if(b.contact_whatsapp&&!/^\+?[0-9 ()-]{10,20}$/.test(b.contact_whatsapp))bad('Informe um WhatsApp válido ou deixe o campo vazio.');
+      const result=await query("INSERT INTO giveaway_items(condominium_id,user_id,title,description,image_url,contact_whatsapp) VALUES($1,$2,$3,$4,$5,$6) RETURNING id",[u.condominium_id,u.id,b.title,b.description,b.image_url||null,b.contact_whatsapp.replace(/\D/g,'')||null]);
       return out({id:result.rows[0].id},201);
     }
     if(path.startsWith('giveaways/')&&method==='PATCH'){

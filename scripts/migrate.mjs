@@ -54,6 +54,8 @@ try {
   await client.query(catalogPerformance);
   const marketingLeads=await readFile(new URL('../db/030_marketing_leads.sql',import.meta.url),'utf8');
   await client.query(marketingLeads);
+  const giveawayContact=await readFile(new URL('../db/022_giveaway_contact_whatsapp.sql',import.meta.url),'utf8');
+  await client.query(giveawayContact);
   console.log('Condovery database schema applied successfully.');
 } finally {
   await client.end();
