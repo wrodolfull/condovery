@@ -769,7 +769,7 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
       approved(u);
       const id=parts[1];if(!uuid(id))bad('Item inválido.');
       const b=z.object({status:z.enum(['available','reserved','donated'])}).parse(await body(req));
-      const result=await query("UPDATE giveaway_items SET status=$1,donated_at=CASE WHEN $1='donated' THEN COALESCE(donated_at,now()) ELSE NULL END,updated_at=now() WHERE id=$2 AND user_id=$3 AND condominium_id=$4 RETURNING id",[b.status,id,u.id,u.condominium_id]);
+      const result=await query("UPDATE giveaway_items SET status=$1::varchar(16),donated_at=CASE WHEN $1::text='donated' THEN COALESCE(donated_at,now()) ELSE NULL END,updated_at=now() WHERE id=$2 AND user_id=$3 AND condominium_id=$4 RETURNING id",[b.status,id,u.id,u.condominium_id]);
       if(!result.rowCount)bad('Item não encontrado ou sem permissão.',404);
       return out({ok:true});
     }
