@@ -425,8 +425,29 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
     if(!u.is_superadmin)bad('Acesso exclusivo do superadmin.',403);
     const id=parts[2];
     if(!uuid(id))bad('Anúncio inválido.');
-    const b=z.object({enabled:z.boolean()}).parse(await body(req));
-    const result=await query('UPDATE advertising_campaigns SET enabled=$1,updated_at=now() WHERE id=$2 RETURNING id',[b.enabled,id]);
+    const b=z.object({
+      condominium_id:z.string().uuid().optional(),
+      merchant_name:z.string().trim().min(2).max(100).optional(),
+      headline:z.string().trim().min(2).max(140).optional(),
+      description:z.string().trim().max(400).optional(),
+      location:z.string().trim().min(2).max(120).optional(),
+      image_url:z.string().regex(/^\/api\/media\/[0-9a-f-]{36}$/i,'Envie a imagem pelo upload.').optional(),
+      destination_url:z.string().url().max(2000).refine(v=>v.startsWith('https://'),'Use link HTTPS.').optional(),
+      starts_at:z.string().datetime({offset:true}).optional(),
+      expires_at:z.string().datetime({offset:true}).optional(),
+      enabled:z.boolean().optional()
+    }).strict().parse(await body(req));
+    if(!Object.keys(b).length)bad('Informe os campos para atualizar.');
+    const existing=await query('SELECT * FROM advertising_campaigns WHERE id=$1',[id]);
+    if(!existing.rowCount)bad('Anúncio não encontrado.',404);
+    const current=existing.rows[0];
+    const next={...current,...b};
+    if(!next.starts_at||!next.expires_at||new Date(next.expires_at)<=new Date(next.starts_at))bad('A expiração deve ser posterior ao início.');
+    const target=await query('SELECT 1 FROM condominiums WHERE id=$1 AND is_active=true',[next.condominium_id]);
+    if(!target.rowCount)bad('Condomínio inválido.');
+    const result=await query(
+      'UPDATE advertising_campaigns SET condominium_id=$1,merchant_name=$2,headline=$3,description=$4,location=$5,image_url=$6,destination_url=$7,starts_at=$8,expires_at=$9,enabled=$10,updated_at=now() WHERE id=$11 RETURNING id',
+      [next.condominium_id,next.merchant_name,next.headline,next.description,next.location,next.image_url,next.destination_url,next.starts_at,next.expires_at,next.enabled,id]);
     if(!result.rowCount)bad('Anúncio não encontrado.',404);
     return out({ok:true});
   }

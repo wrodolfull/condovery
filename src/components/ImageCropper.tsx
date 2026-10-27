@@ -4,12 +4,13 @@ import {useEffect,useRef,useState} from 'react';
 import {Minus,Plus,Move,X,Check} from 'lucide-react';
 import {cropGeometry} from '@/lib/crop-geometry';
 
-export type ImageKind='avatar'|'logo'|'cover'|'product';
+export type ImageKind='avatar'|'logo'|'cover'|'product'|'ad';
 const cropPreset:Record<ImageKind,{label:string;aspect:number;hint:string}>={
   avatar:{label:'foto de perfil',aspect:1,hint:'Enquadre seu rosto dentro do círculo.'},
   logo:{label:'foto da loja',aspect:1,hint:'Centralize a imagem dentro do círculo.'},
   cover:{label:'capa da loja',aspect:3,hint:'Arraste para escolher o destaque da capa.'},
-  product:{label:'foto do produto',aspect:1.17,hint:'Ajuste o produto dentro da vitrine.'}
+  product:{label:'foto do produto',aspect:1.17,hint:'Ajuste o produto dentro da vitrine.'},
+  ad:{label:'imagem do anúncio',aspect:16/9,hint:'Arraste e ajuste o zoom para preencher o formato horizontal 16:9.'}
 };
 
 export function ImageCropper({file,kind,onCancel,onApply}:{
