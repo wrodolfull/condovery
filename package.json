@@ -10,7 +10,8 @@
     "test": "tsx --test tests/*.test.ts",
     "db:bootstrap": "node --env-file=.env.local scripts/bootstrap.mjs",
     "db:migrate": "node --env-file=.env.local scripts/migrate.mjs",
-    "db:cleanup-shops": "node --env-file=.env.local scripts/cleanup-deleted-shops.mjs"
+    "db:cleanup-shops": "node --env-file=.env.local scripts/cleanup-deleted-shops.mjs",
+    "cleanup:giveaways": "node --env-file=.env.local scripts/cleanup-donated-giveaways.mjs"
   },
   "dependencies": {
     "next": "^15.5.0",
