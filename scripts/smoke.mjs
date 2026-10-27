@@ -66,13 +66,18 @@ await request('platform/condominiums/switch',{method:'POST',cookie:adminCookie,b
 assert.equal((await request('me',{cookie:adminCookie})).data.viewer.condominium_id,originalTenant);
 
 let summary=(await request('admin/summary',{cookie:adminCookie})).data;
-assert.equal(summary.residents.filter(x=>x.status==='approved').length,2);
-assert.equal(summary.residents.filter(x=>x.status==='pending').length,0);
+const directory=(await request('admin/directory?kind=users',{cookie:adminCookie})).data;
+assert.equal(summary.stats.residents,2);
+assert.equal(directory.items.filter(x=>x.status==='approved').length,2);
+assert.equal(directory.items.filter(x=>x.status==='pending').length,0);
+
 const sellerLogin=await request('auth/login',{method:'POST',body:{email:sellerEmail,password:pass}});
 const buyerLogin=await request('auth/login',{method:'POST',body:{email:buyerEmail,password:pass}});
 const sellerCookie=sellerLogin.cookie, buyerCookie=buyerLogin.cookie;
 assert.ok(sellerCookie&&buyerCookie);
 await request('admin/summary',{cookie:buyerCookie,expected:403});
+await request('admin/directory?kind=users',{cookie:buyerCookie,expected:403});
+await request('admin/directory/export?kind=users',{cookie:buyerCookie,expected:403});
 await request('platform/condominiums',{cookie:buyerCookie,expected:403});
 await request('platform/condominiums/switch',{method:'POST',cookie:buyerCookie,expected:403,body:{condominium_id:newTenant.id}});
 await request('shops/mine',{method:'POST',cookie:sellerCookie,expected:400,body:{
@@ -391,7 +396,8 @@ const googleWait=(await request('me',{cookie:googleSignup.cookie})).data;
 assert.equal(googleWait.viewer.status,'approved');
 assert.equal(googleWait.viewer.email,googleEmail);
 const newSummary=(await request('admin/summary',{cookie:adminCookie})).data;
-const newResident=newSummary.residents.find(x=>x.email===googleEmail);
+const newDirectory=(await request('admin/directory?kind=users&search='+encodeURIComponent(googleEmail),{cookie:adminCookie})).data;
+const newResident=newDirectory.items.find(x=>x.email===googleEmail);
 assert.ok(newResident);
 const googleHome=(await request('home',{cookie:googleSignup.cookie})).data;
 assert.ok(googleHome.categories.length>0);
