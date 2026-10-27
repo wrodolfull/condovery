@@ -755,12 +755,12 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
         title:z.string().trim().min(3).max(120),
         description:z.string().trim().max(600),
         contact_whatsapp:z.string().trim().max(20).default(''),
-        image_url:z.union([z.literal(''),z.string().regex(/^\\/api\\/media\\/[0-9a-f-]{36}$/i)])
+        image_url:z.union([z.literal(''),z.string().regex(/^\/api\/media\/[0-9a-f-]{36}$/i)])
       }).parse(await body(req));
-      if(b.contact_whatsapp&&!/^\\+?[0-9 ()-]{10,20}$/.test(b.contact_whatsapp))bad('Informe um WhatsApp válido ou deixe o campo vazio.');
+      if(b.contact_whatsapp&&!/^\+?[0-9 ()-]{10,20}$/.test(b.contact_whatsapp))bad('Informe um WhatsApp válido ou deixe o campo vazio.');
       const result=await query(
         "UPDATE giveaway_items SET title=$1,description=$2,contact_whatsapp=$3,image_url=$4,updated_at=now() WHERE id=$5 AND user_id=$6 AND condominium_id=$7 AND status<>'donated' RETURNING id",
-        [b.title,b.description,b.contact_whatsapp.replace(/\\D/g,'')||null,b.image_url||null,id,u.id,u.condominium_id]
+        [b.title,b.description,b.contact_whatsapp.replace(/\D/g,'')||null,b.image_url||null,id,u.id,u.condominium_id]
       );
       if(!result.rowCount)bad('Anúncio não encontrado ou já doado.',404);
       return out({ok:true});
