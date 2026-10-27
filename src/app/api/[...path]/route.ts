@@ -866,7 +866,12 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
   }
   if(parts[0]==='media'&&parts[1]&&method==='GET'){
     if(!uuid(parts[1]))bad('Arquivo inválido.');
-    const r=await query('SELECT mime,bytes,storage_key,user_id FROM media_assets WHERE condominium_id=$1 AND id=$2',[u.condominium_id,parts[1]]);
+    let r=await query('SELECT mime,bytes,storage_key,user_id FROM media_assets WHERE condominium_id=$1 AND id=$2',[u.condominium_id,parts[1]]);
+    // Superadmin may preview institutional ADS uploaded for another condominium.
+    // Never allow this cross-tenant fallback for shop or personal media.
+    if(!r.rowCount&&u.is_superadmin){
+      r=await query('SELECT mime,bytes,storage_key,user_id FROM media_assets WHERE id=$1 AND shop_id IS NULL AND user_id IS NULL',[parts[1]]);
+    }
     if(!r.rowCount)bad('Imagem não encontrada.',404);
     if(r.rows[0].user_id&&r.rows[0].user_id!==u.id)bad('Foto pessoal indisponível.',403);
     let bytes:Uint8Array;
