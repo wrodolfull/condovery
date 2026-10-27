@@ -111,19 +111,21 @@ export async function handleAdsApi({req,method,path,parts,u}:Args):Promise<NextR
       const found=await query('SELECT * FROM advertising_campaigns WHERE id=$1',[id]);
       if(!found.rowCount)bad('Anúncio não encontrado.',404);
       const current=found.rows[0];
-      // Legacy externally hosted ads may keep their existing URL without changes.
-      const next={...current,...patch};
-      const dates={...next,starts_at:new Date(next.starts_at).toISOString(),expires_at:new Date(next.expires_at).toISOString()};
-      if(!imagePattern.test(next.image_url)&&next.image_url===current.image_url){
-        const parsed=campaignSchema.omit({image_url:true}).parse(dates);
-        await validateCampaign({...parsed,image_url:next.image_url});
-      }else{
-        const parsed=campaignSchema.parse(dates);
-        await validateCampaign(parsed);await verifyImage(parsed.image_url,parsed.condominium_id);
-      }
+      // Legacy external image URLs remain valid only when unchanged.
+      const merged={...current,...patch};
+      const dates={
+        ...merged,
+        starts_at:new Date(String(merged.starts_at)).toISOString(),
+        expires_at:new Date(String(merged.expires_at)).toISOString()
+      };
+      const image=String(merged.image_url??'');
+      const parsed=campaignSchema.omit({image_url:true}).parse(dates);
+      await validateCampaign({...parsed,image_url:image});
+      if(imagePattern.test(image))await verifyImage(image,parsed.condominium_id);
+      else if(image!==current.image_url)bad('Envie a imagem pelo upload.');
       const result=await query(
         'UPDATE advertising_campaigns SET condominium_id=$1,merchant_name=$2,headline=$3,description=$4,location=$5,image_url=$6,destination_url=$7,starts_at=$8,expires_at=$9,enabled=$10,contract_amount_cents=$11,billing_status=$12,commercial_partner=$13,updated_at=now() WHERE id=$14 RETURNING id',
-        [next.condominium_id,next.merchant_name,next.headline,next.description,next.location,next.image_url,next.destination_url,next.starts_at,next.expires_at,next.enabled,next.contract_amount_cents,next.billing_status,next.commercial_partner,id]);
+        [parsed.condominium_id,parsed.merchant_name,parsed.headline,parsed.description,parsed.location,image,parsed.destination_url,parsed.starts_at,parsed.expires_at,parsed.enabled,parsed.contract_amount_cents,parsed.billing_status,parsed.commercial_partner,id]);
       if(!result.rowCount)bad('Anúncio não encontrado.',404);
       return respond({ok:true});
     }
