@@ -16,6 +16,7 @@ import {towerLabels,currentTowerScheme} from '@/lib/towers';
 import {IMAGE_MIME_TYPES, imageSizeIsAllowed} from '@/lib/image-limits';
 import {tenantForRequest,isTenantHostname,tenantLabel} from '@/lib/tenant-host';
 import {normalizeCondominiumSlug,normalizeTenantDomain} from '@/lib/tenancy';
+import {logApiRequestMetric} from '@/lib/api-observability';
 
 export const runtime='nodejs';
 export const dynamic='force-dynamic';
@@ -1408,15 +1409,29 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
   return bad('Rota não encontrada.',404);
 }
 async function endpoint(req:NextRequest,method:Verb) {
+  const startedAt=performance.now();
   const parts=req.nextUrl.pathname.replace(/^\/api\/?/,'').split('/').filter(Boolean);
-  try{return await processApi({req,method,parts});}
-  catch(error){
-    if(error instanceof Error&&error.message==='TENANT_NOT_FOUND')return out({error:'Condomínio não encontrado neste subdomínio.'},404);
-    if(error instanceof ApiError)return out({error:error.message},error.status);
-    if(error instanceof ZodError)return out({error:'Confira os campos preenchidos.',details:error.issues.map(i=>i.path.join('.'))},400);
-    console.error('condovery_api_error',error instanceof Error?error.message:error);
-    return out({error:'Não foi possível concluir a operação.'},500);
+  let response:NextResponse;
+  try {
+    response=await processApi({req,method,parts});
+  } catch(error) {
+    if(error instanceof Error&&error.message==='TENANT_NOT_FOUND')
+      response=out({error:'Condomínio não encontrado neste subdomínio.'},404);
+    else if(error instanceof ApiError)response=out({error:error.message},error.status);
+    else if(error instanceof ZodError)
+      response=out({error:'Confira os campos preenchidos.',details:error.issues.map(i=>i.path.join('.'))},400);
+    else {
+      // Do not put exception messages (which may contain private SQL values) in logs.
+      console.error('condovery_api_error',{kind:error instanceof Error?error.name:'UnknownError'});
+      response=out({error:'Não foi possível concluir a operação.'},500);
+    }
   }
+  try {
+    logApiRequestMetric({method,parts,status:response.status,durationMs:performance.now()-startedAt});
+  } catch {
+    // Telemetry must never change the outcome of an API request.
+  }
+  return response;
 }
 export const GET=(req:NextRequest)=>endpoint(req,'GET');
 export const POST=(req:NextRequest)=>endpoint(req,'POST');
