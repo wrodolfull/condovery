@@ -19,7 +19,7 @@ import {selectedOptions, extrasTotal, arrivalInstructionOptions, toggleArrivalIn
 import {
   ArrowLeft, ArrowRight, Bell, Building2, CakeSlice, Check, CheckCircle2, ChevronDown, ChevronRight,
   CircleHelp, Clock3, Coffee, Gift, Heart, Home, ImagePlus, LayoutGrid, LogOut, MapPin,
-  Menu, MessageCircle, Minus, Package, Plus, Receipt, Search, Settings, Share2, ShieldCheck, ShoppingBag, ShoppingBasket,
+  Menu, Megaphone, MessageCircle, Minus, Package, Plus, Receipt, Search, Settings, Share2, ShieldCheck, ShoppingBag, ShoppingBasket,
   SlidersHorizontal, Sparkles, Store, Tag, Trash2, Truck, UserRound, Utensils, X, Shirt, Sandwich,
   Pizza, IceCreamCone, Wrench, HeartPulse, House, Smartphone, PauseCircle, PlayCircle
 } from 'lucide-react';
@@ -61,7 +61,7 @@ function MoneyInput({cents,onValue}:{cents:number;onValue:(value:number)=>void})
 }
 type HomeData={categories:Category[];shops:Shop[];products:Product[]};
 type AdminData={towers:string[];residents:{id:string;name:string;email:string;tower:string;apartment:string;status:string}[];shops:{id:string;name:string;owner_name:string;status:string}[];stats:{residents:number;shops:number;orders:number};categories:Category[]};
-type View='home'|'categories'|'favorites'|'orders'|'account'|'shop'|'product'|'cart'|'success'|'seller'|'admin'|'platform'|'giveaways';
+type View='ads-admin'|'home'|'categories'|'favorites'|'orders'|'account'|'shop'|'product'|'cart'|'success'|'seller'|'admin'|'platform'|'giveaways';
 type Tenant={id:string;name:string;slug:string;subdomain:string;custom_domain:string|null;is_active:boolean;residents:number;shops:number};
 const money=(n:number)=>new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(n/100);
 const price=(p:Product)=>p.promo_price_cents??p.price_cents;
@@ -994,7 +994,7 @@ export default function Page(){
       {bottomNav.map(([target,Icon,label])=><button key={target} className={view===target?'active':''} onClick={()=>go(target)}><Icon size={18}/>{label}</button>)}
       <button onClick={()=>{loadMine();go('seller');}}><Store size={18}/>Minha loja</button>
       {viewer.role==='admin'&&<button onClick={()=>{loadAdmin();go('admin');}}><ShieldCheck size={18}/>Administração</button>}
-      {viewer.is_superadmin&&<button onClick={()=>{loadTenants();go('platform');}}><Building2 size={18}/>Superadmin</button>}
+      {viewer.is_superadmin&&<><button onClick={()=>{loadTenants();go('ads-admin');}}><Megaphone size={18}/>ADS</button><button onClick={()=>{loadTenants();go('platform');}}><Building2 size={18}/>Superadmin</button></>}
     </div></div>
     {error&&<div className="global-alert" role="alert"><span>{error}</span><button onClick={()=>setError('')} aria-label="Fechar"><X size={17}/></button></div>}
     {toast&&<div role="status" className="global-toast"><CheckCircle2 size={18}/>{toast}</div>}
@@ -1284,7 +1284,7 @@ export default function Page(){
         <div className="account-shortcuts"><button onClick={()=>{loadMine();go('seller');}}><Store size={23}/><span><strong>{myShop?'Minha loja':'Quero vender'}</strong><small>{myShop?'Gerencie produtos e pedidos':'Crie sua loja e comece a vender'}</small></span><ChevronRight/></button>
         <button onClick={()=>{loadOrders();go('orders');}}><Receipt size={23}/><span><strong>Meus pedidos</strong><small>Acompanhe suas compras</small></span><ChevronRight/></button>
         {viewer.role==='admin'&&<button onClick={()=>{loadAdmin();go('admin');}}><ShieldCheck size={23}/><span><strong>Administração</strong><small>Segurança e configurações</small></span><ChevronRight/></button>}
-        {viewer.is_superadmin&&<button onClick={()=>{loadTenants();go('platform');}}><Building2 size={23}/><span><strong>Painel Superadmin</strong><small>Todos os condomínios</small></span><ChevronRight/></button>}
+        {viewer.is_superadmin&&<><button onClick={()=>{loadTenants();go('ads-admin');}}><Megaphone size={23}/><span><strong>Condovery ADS</strong><small>Campanhas e publicidade</small></span><ChevronRight/></button><button onClick={()=>{loadTenants();go('platform');}}><Building2 size={23}/><span><strong>Painel Superadmin</strong><small>Todos os condomínios</small></span><ChevronRight/></button></>}
         <button onClick={logout}><LogOut size={23}/><span><strong>Sair</strong><small>Encerrar sessão neste dispositivo</small></span><ChevronRight/></button>
         {viewer.role==='resident'&&<button className="delete-account-entry"
           onClick={()=>{setShowDeleteAccount(true);setDeleteConfirmation('');setDeletePassword('');setError('');}}>
@@ -1575,10 +1575,14 @@ export default function Page(){
       </>}
 
       {view==='giveaways'&&<><button className="back-link" onClick={()=>go('home')}><ArrowLeft size={18}/> Início</button><Giveaways viewerId={viewer.id}/></>}
+      {view==='ads-admin'&&viewer.is_superadmin&&<>
+        <button className="back-link" onClick={()=>go('account')}><ArrowLeft size={18}/> Minha conta</button>
+        <div className="page-title"><h1>Condovery ADS</h1><p>Gerencie os anúncios dos condomínios.</p></div>
+        <AdsAdmin tenants={tenants}/>
+      </>}
       {view==='platform'&&viewer.is_superadmin&&<>
         <button className="back-link" onClick={()=>go('account')}><ArrowLeft size={18}/> Minha conta</button>
         <div className="page-title"><h1>Superadmin Condovery</h1><p>Gerencie os condomínios e alterne o ambiente administrado.</p></div>
-        <AdsAdmin tenants={tenants}/>
         <section className="admin-section white-panel"><h2>Criar condomínio</h2>
           <form className="form-stack" onSubmit={createTenant}>
             <label>Nome<input required minLength={3} maxLength={100} value={tenantForm.name}
