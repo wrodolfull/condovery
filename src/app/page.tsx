@@ -350,9 +350,11 @@ export default function Page(){
       go('admin');notify('Condomínio ativo alterado para '+data.viewer.condominium_name+'.');
     }catch(e){fail(e);}finally{setBusy(false);}
   }
+  // Orders are fetched by the orders-view effect when that screen opens.
+  // Avoid fetching them at login (and again when entering the orders screen).
   const refresh=useCallback(async(u:Viewer)=>{
-    await Promise.all([loadHome(),loadMine(),loadOrders(),loadFavorites(),...(u.role==='admin'?[loadAdmin()]:[])]);
-  },[loadHome,loadMine,loadOrders,loadFavorites,loadAdmin]);
+    await Promise.all([loadHome(),loadMine(),loadFavorites(),...(u.role==='admin'?[loadAdmin()]:[])]);
+  },[loadHome,loadMine,loadFavorites,loadAdmin]);
 
   useEffect(()=>{
     const link=window.location.pathname.startsWith('/loja/')?decodeURIComponent(window.location.pathname.slice(6).split('/')[0]):new URLSearchParams(window.location.search).get('loja');
