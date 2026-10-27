@@ -825,10 +825,7 @@ export default function Page(){
     e.preventDefault();setBusy(true);setError('');
     try{
       const r=await api<{towers:string[];message:string}>('admin/towers',{method:'PATCH',body:payload({scheme:towerScheme,count:towerCount})});
-      setAdminData(prev=>prev?{...prev,towers:r.towers,residents:prev.residents.map(resident=>{
-        const current=adminData?.towers.indexOf(resident.tower)??-1;
-        return current>=0?{...resident,tower:r.towers[current]??resident.tower}:resident;
-      })}:prev);
+      setAdminData(prev=>prev?{...prev,towers:r.towers}:prev);
       setViewer(prev=>prev?{...prev,towers:r.towers}:prev);
       await loadAdmin();
       notify(r.message);
@@ -1619,7 +1616,7 @@ export default function Page(){
       </>}
       {view==='admin'&&viewer.role==='admin'&&<><button className="back-link" onClick={()=>go('account')}><ArrowLeft size={18}/> Minha conta</button><div className="page-title"><h1>Administração do condomínio</h1><p>Gerencie moradores, lojas e categorias da sua comunidade.</p></div>
         {adminData?<><div className="admin-stats"><div><strong>{adminData.stats.residents}</strong><span>Moradores ativos</span></div><div><strong>{adminData.stats.shops}</strong><span>Lojas ativas</span></div><div><strong>{adminData.stats.orders}</strong><span>Pedidos criados</span></div></div>
-        <AdminDirectory kind="users" condominiumId={viewer.condominium_id} towers={adminData.towers}
+        <AdminDirectory key={viewer.condominium_id+'-'+adminData.towers.join('|')} kind="users" condominiumId={viewer.condominium_id} towers={adminData.towers}
           onChanged={()=>{void loadAdmin().catch(fail);void loadHome().catch(fail);}}/>
         <AdminDirectory kind="shops" condominiumId={viewer.condominium_id} towers={adminData.towers}
           onChanged={()=>{void loadAdmin().catch(fail);void loadHome().catch(fail);}}/>
