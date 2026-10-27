@@ -162,8 +162,9 @@ function OrderProgress({status}:{status:string}) {
   </div>;
 }
 function ProductCard({p,onClick,favorite,onFavorite}:{p:Product;onClick:()=>void;favorite:boolean;onFavorite:(id:string)=>void}){
-  return <article className={'product-card'+(p.visibility==='unavailable'?' is-unavailable':'')}>
-    {p.visibility==='unavailable'&&<span className="unavailable-tag">Indisponível</span>}
+  const soldOut=p.stock===0;
+  return <article className={'product-card'+(soldOut||p.visibility==='unavailable'?' is-unavailable':'')}>
+    {(soldOut||p.visibility==='unavailable')&&<span className="unavailable-tag">{soldOut?'Esgotado':'Indisponível'}</span>}
     <button className="product-open" onClick={onClick} aria-label={'Ver '+p.name}>
       <ProductPicture src={p.image_url} name={p.name}/>
       {p.promo_price_cents!=null&&<span className="card-offer">Oferta</span>}
@@ -1110,7 +1111,7 @@ export default function Page(){
         <div className={'product-detail'+(!productCanBuy(selectedProduct)?' is-unavailable':'')}>
           <ProductPicture src={selectedProduct.image_url} name={selectedProduct.name} large/>
           <div className="product-detail-copy">
-            {!productCanBuy(selectedProduct)?<Pill tone="neutral">Indisponível no momento</Pill>:<Pill tone="orange">Da nossa vizinhança</Pill>}<h1>{selectedProduct.name}</h1>
+            {!productCanBuy(selectedProduct)?<Pill tone="neutral">{selectedProduct.stock===0?'Esgotado':'Indisponível no momento'}</Pill>:<Pill tone="orange">Da nossa vizinhança</Pill>}<h1>{selectedProduct.name}</h1>
             <p className="seller-by">Por {selectedProduct.shop_name??home.shops.find(s=>s.id===selectedProduct.shop_id)?.name}</p>
             <div className="detail-price">{selectedProduct.promo_price_cents!=null&&<del>{money(selectedProduct.price_cents)}</del>}<strong>{money(price(selectedProduct))}</strong></div>
             <p>{selectedProduct.description||'Produto disponível diretamente com um morador do condomínio.'}</p>
