@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {safeApiRoute,buildApiRequestMetric} from '../src/lib/api-observability';
 
 test('route labels never expose ids, slugs, e-mails or unrecognized path values',()=>{
-  assert.equal(safeApiRoute(['orders','b2c-123','review']),'/api/orders/:param/reviews'.replace('/reviews','/:param'));
+  assert.equal(safeApiRoute(['orders','b2c-123','review']),'/api/orders/:param/:param');
   assert.equal(safeApiRoute(['auth','login']),'/api/auth/login');
   assert.equal(safeApiRoute(['platform','condominiums','private-condo-name','switch']),
     '/api/platform/condominiums/:param/switch');
