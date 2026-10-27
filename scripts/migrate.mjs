@@ -61,6 +61,8 @@ try {
   await client.query(adReporting);
   const accessHardening=await readFile(new URL('../db/032_public_data_api_hardening.sql',import.meta.url),'utf8');
   await client.query(accessHardening);
+  const fairsMigration=await readFile(new URL('../db/033_community_fairs.sql',import.meta.url),'utf8');
+  await client.query(fairsMigration);
   console.log('Condovery database schema applied successfully.');
 } finally {
   await client.end();
