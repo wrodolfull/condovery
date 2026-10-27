@@ -9,13 +9,27 @@ async function request(path:string,init?:RequestInit){
 }
 export function Giveaways({viewerId}:{viewerId:string}){
  const [items,setItems]=useState<Item[]>([]);
+ const [loading,setLoading]=useState(true);
+ const [loaded,setLoaded]=useState(false);
  const [selected,setSelected]=useState<string|null>(null);
  const current=items.find(item=>item.id===selected);
  const [title,setTitle]=useState(''),[description,setDescription]=useState(''),[image,setImage]=useState(''),[whatsapp,setWhatsapp]=useState('');
  const [uploading,setUploading]=useState(false);
  const [busy,setBusy]=useState(false),[error,setError]=useState(''),[newItem,setNewItem]=useState(false);
- const load=useCallback(async()=>setItems((await request('giveaways')).items),[]);
- useEffect(()=>{load().catch(e=>setError(e.message));},[load]);
+ const load=useCallback(async()=>{
+   const result=await request('giveaways');
+   setItems(result.items);
+   setLoaded(true);
+ },[]);
+ useEffect(()=>{
+   let active=true;
+   setLoading(true);
+   request('giveaways').then(result=>{
+     if(active){setItems(result.items);setLoaded(true);setError('');}
+   }).catch(e=>{if(active)setError(e instanceof Error?e.message:'Falha ao carregar desapegos.');})
+     .finally(()=>{if(active)setLoading(false);});
+   return ()=>{active=false;};
+ },[]);
  async function act(action:()=>Promise<unknown>){
   setBusy(true);setError('');
   try{await action();await load();}catch(e){setError(e instanceof Error?e.message:'Erro ao atualizar.');}finally{setBusy(false);}
@@ -80,7 +94,17 @@ export function Giveaways({viewerId}:{viewerId:string}){
       </div>
     </article>)}
   </div>
-  {!items.length&&<div className="white-panel" style={{textAlign:'center',padding:24}}>Nenhum desapego disponível. Seja o primeiro a anunciar!</div>}
+  {loading&&<div className="white-panel" role="status" aria-live="polite" style={{padding:24,display:'grid',gap:14}}>
+    <strong>Carregando desapegos...</strong>
+    <div aria-hidden="true" style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(150px,1fr))',gap:14}}>
+      {[0,1,2].map(i=><div key={i} style={{height:180,borderRadius:14,background:'#f2f2f2'}}/>)}
+    </div>
+  </div>}
+  {!loading&&loaded&&items.length===0&&<div className="white-panel" style={{textAlign:'center',padding:24}}>Nenhum desapego disponível. Seja o primeiro a anunciar!</div>}
+  {!loading&&!loaded&&error&&<button type="button" className="outline-button" onClick={()=>{
+    setError('');setLoading(true);
+    load().catch(e=>setError(e instanceof Error?e.message:'Falha ao carregar desapegos.')).finally(()=>setLoading(false));
+  }}>Tentar carregar novamente</button>}
   {current&&<div role="presentation" onClick={()=>setSelected(null)} style={{position:'fixed',inset:0,zIndex:150,background:'rgba(0,0,0,.65)',display:'flex',alignItems:'center',justifyContent:'center',padding:16}}>
     <section role="dialog" aria-modal="true" aria-label={'Detalhes do desapego: '+current.title} onClick={e=>e.stopPropagation()} style={{background:'#fff',color:'#111',borderRadius:20,width:'min(100%,540px)',maxHeight:'90vh',overflowY:'auto',position:'relative',padding:20}}>
       <button type="button" aria-label="Fechar detalhes" onClick={()=>setSelected(null)} style={{position:'absolute',right:15,top:15,zIndex:2,background:'#fff',border:'1px solid #ddd',borderRadius:20,padding:8}}><X size={20}/></button>
