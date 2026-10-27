@@ -11,7 +11,7 @@ export function Giveaways({viewerId}:{viewerId:string}){
  const [items,setItems]=useState<Item[]>([]);
  const [selected,setSelected]=useState<string|null>(null);
  const current=items.find(item=>item.id===selected);
- const [title,setTitle]=useState(''),[description,setDescription]=useState(''),[image,setImage]=useState('');
+ const [title,setTitle]=useState(''),[description,setDescription]=useState(''),[image,setImage]=useState(''),[whatsapp,setWhatsapp]=useState('');
  const [uploading,setUploading]=useState(false);
  const [busy,setBusy]=useState(false),[error,setError]=useState(''),[newItem,setNewItem]=useState(false);
  const load=useCallback(async()=>setItems((await request('giveaways')).items),[]);
@@ -19,6 +19,20 @@ export function Giveaways({viewerId}:{viewerId:string}){
  async function act(action:()=>Promise<unknown>){
   setBusy(true);setError('');
   try{await action();await load();}catch(e){setError(e instanceof Error?e.message:'Erro ao atualizar.');}finally{setBusy(false);}
+ }
+ async function updateStatus(item:Item,status:Item['status']){
+   if(status===item.status)return;
+   if(status==='donated'&&!window.confirm('Confirmar doação? O anúncio e a foto serão excluídos automaticamente após 48 horas.'))return;
+   await act(async()=>{
+     await request('giveaways/'+item.id,{method:'PATCH',body:JSON.stringify({status})});
+   });
+ }
+ async function deleteItem(item:Item){
+   if(!window.confirm('Excluir este anúncio definitivamente?'))return;
+   await act(async()=>{
+     await request('giveaways/'+item.id,{method:'DELETE'});
+     setSelected(null);
+   });
  }
  async function uploadImage(file:File|undefined){
   if(!file)return;
@@ -62,12 +76,7 @@ export function Giveaways({viewerId}:{viewerId:string}){
         <div style={{margin:'8px 0',fontWeight:700,color:item.status==='available'?'#047857':'#666'}}>{item.status==='available'?'GRÁTIS':item.status==='reserved'?'Reservado':'Doado'}</div>
         <p style={{fontSize:14,whiteSpace:'pre-wrap'}}>{item.description.length>110?item.description.slice(0,110)+'…':item.description}</p>
         <small>Por {item.owner_name}</small>
-        {item.user_id===viewerId?<div className="inline-actions" style={{marginTop:10}}>
-          <select onClick={e=>e.stopPropagation()} aria-label={'Estado de '+item.title} disabled={busy} value={item.status} onChange={e=>{if(e.target.value==='donated'&&!window.confirm('Marcar como doado? Este anúncio e sua foto serão excluídos automaticamente após 48 horas.'))return;act(()=>request('giveaways/'+item.id,{method:'PATCH',body:JSON.stringify({status:e.target.value})}));}}>
-            <option value="available">Disponível</option><option value="reserved">Reservado</option><option value="donated">Doado</option>
-          </select>
-          <button disabled={busy} type="button" className="danger-text" onClick={e=>{e.stopPropagation();if(window.confirm('Excluir desapego?'))act(()=>request('giveaways/'+item.id,{method:'DELETE'}));}}>Excluir</button>
-        </div>:<span style={{display:'block',fontSize:12,marginTop:10,color:'#555'}}>Toque para ver detalhes</span>}
+        <span style={{display:'block',fontSize:12,marginTop:10,color:'#555'}}>Ver detalhes do item</span>
       </div>
     </article>)}
   </div>
@@ -80,6 +89,19 @@ export function Giveaways({viewerId}:{viewerId:string}){
       <h2 style={{margin:'8px 0'}}>{current.title}</h2>
       <p style={{whiteSpace:'pre-wrap',lineHeight:1.65,color:'#444'}}>{current.description||'Sem descrição adicional.'}</p>
       <p style={{fontSize:14,color:'#666'}}>Publicado por {current.owner_name}</p>
+      {current.user_id===viewerId&&<div style={{borderTop:'1px solid #e9e9e9',paddingTop:18,marginTop:18,display:'grid',gap:12}}>
+        <strong style={{fontSize:15}}>Gerenciar meu anúncio</strong>
+        <div style={{display:'flex',flexWrap:'wrap',gap:8}}>
+          {(['available','reserved','donated'] as const).map(status=><button key={status} type="button" disabled={busy||current.status===status}
+            onClick={()=>updateStatus(current,status)}
+            aria-pressed={current.status===status}
+            style={{padding:'10px 13px',fontWeight:650,borderRadius:12,border:'1px solid '+(current.status===status?'#111':'#dedede'),color:current.status===status?'#fff':'#111',background:current.status===status?'#111':'#f7f7f7',cursor:busy?'wait':'pointer'}}>
+            {status==='available'?'Disponível':status==='reserved'?'Reservado':'Marcar como doado'}
+          </button>)}
+        </div>
+        <button type="button" disabled={busy} onClick={()=>deleteItem(current)}
+          style={{padding:'12px',borderRadius:12,border:'1px solid #fecaca',color:'#b91c1c',background:'#fff',fontWeight:700}}>Excluir anúncio</button>
+      </div>}
       {current.user_id!==viewerId&&current.status==='available'&&current.contact_whatsapp?
         <a target="_blank" rel="noopener noreferrer" href={'https://wa.me/'+current.contact_whatsapp.replace(/\D/g,'')+'?text='+encodeURIComponent('Olá! Vi seu desapego "'+current.title+'" no Condovery. Ainda está disponível?')}
           style={{display:'flex',gap:8,alignItems:'center',justifyContent:'center',padding:14,borderRadius:13,background:'#111',color:'#fff',textDecoration:'none',fontWeight:700}}><MessageCircle size={19}/>Tenho interesse</a>:
