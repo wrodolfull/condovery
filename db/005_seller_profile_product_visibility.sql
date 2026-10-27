@@ -22,13 +22,13 @@ ALTER TABLE public.users ADD COLUMN IF NOT EXISTS avatar_image text;
 ALTER TABLE public.shops ADD COLUMN IF NOT EXISTS logo_image text;
 ALTER TABLE public.media_assets ADD COLUMN IF NOT EXISTS user_id uuid REFERENCES public.users(id) ON DELETE CASCADE;
 ALTER TABLE public.media_assets ALTER COLUMN shop_id DROP NOT NULL;
-DO $$
-BEGIN
- IF NOT EXISTS(SELECT 1 FROM pg_constraint WHERE conname='media_assets_exactly_one_owner') THEN
-   ALTER TABLE public.media_assets ADD CONSTRAINT media_assets_exactly_one_owner
-     CHECK ((shop_id IS NULL) <> (user_id IS NULL));
- END IF;
-END $$;
+-- Imagens de anúncios publicitários não pertencem a loja nem a usuário.
+-- Imagens de Desapego também podem usar esse formato de mídia compartilhada.
+-- Proibir somente a combinação de dois proprietários ao mesmo tempo.
+-- A substituição é reexecutável e preserva arquivos e metadados existentes.
+ALTER TABLE public.media_assets DROP CONSTRAINT IF EXISTS media_assets_exactly_one_owner;
+ALTER TABLE public.media_assets ADD CONSTRAINT media_assets_exactly_one_owner
+  CHECK (shop_id IS NULL OR user_id IS NULL);
 CREATE INDEX IF NOT EXISTS media_assets_personal_idx ON public.media_assets(user_id)
   WHERE user_id IS NOT NULL;
 
