@@ -954,10 +954,12 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
     let mediaCondoId=u.condominium_id;
     if(adImage){
       const requested=form.get('condominium_id');
-      if(typeof requested!=='string'||!uuid(requested))bad('Selecione o condomínio antes de enviar a imagem.');
-      const selected=await query('SELECT id FROM condominiums WHERE id=$1 AND is_active=true',[requested]);
+      if(typeof requested!=='string')bad('Selecione o condomínio antes de enviar a imagem.');
+      const condominiumId=requested as string;
+      if(!uuid(condominiumId))bad('Selecione um condomínio válido.');
+      const selected=await query('SELECT id FROM condominiums WHERE id=$1 AND is_active=true',[condominiumId]);
       if(!selected.rowCount)bad('Condomínio inválido.');
-      mediaCondoId=requested;
+      mediaCondoId=condominiumId;
     }
     const input=form.get('file');
     if(!(input instanceof File))throw new ApiError(400,'Selecione uma imagem.');
