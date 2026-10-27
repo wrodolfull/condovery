@@ -1,7 +1,7 @@
 'use client';
 import {prepareMarketplaceImage} from '@/lib/prepare-marketplace-image';
 import {useCallback,useEffect,useState,type FormEvent} from 'react';
-import {Gift,Plus,X,MessageCircle} from 'lucide-react';
+import {Gift,Plus,ArrowLeft,MessageCircle} from 'lucide-react';
 type Item={id:string;user_id:string;title:string;description:string;image_url:string|null;status:'available'|'reserved'|'donated';owner_name:string;contact_whatsapp:string|null;created_at:string};
 async function request(path:string,init?:RequestInit){
  const response=await fetch('/api/'+path,{credentials:'same-origin',cache:'no-store',...init,headers:{'Content-Type':'application/json',...init?.headers}});
@@ -12,6 +12,7 @@ export function Giveaways({viewerId}:{viewerId:string}){
  const [loading,setLoading]=useState(true);
  const [loaded,setLoaded]=useState(false);
  const [selected,setSelected]=useState<string|null>(null);
+ const [editing,setEditing]=useState(false);
  const current=items.find(item=>item.id===selected);
  const [title,setTitle]=useState(''),[description,setDescription]=useState(''),[image,setImage]=useState(''),[whatsapp,setWhatsapp]=useState('');
  const [uploading,setUploading]=useState(false);
@@ -59,16 +60,26 @@ export function Giveaways({viewerId}:{viewerId:string}){
     setImage(result.url);
   }catch(e){setError(e instanceof Error?e.message:'Erro no upload.');}finally{setUploading(false);}
  }
+ function beginEdit(item:Item){
+   setTitle(item.title);setDescription(item.description);setImage(item.image_url||'');setWhatsapp(item.contact_whatsapp||'');
+   setEditing(true);setError('');
+ }
  async function submit(e:FormEvent){
   e.preventDefault();
-  await act(async()=>{await request('giveaways',{method:'POST',body:JSON.stringify({title,description,image_url:image,contact_whatsapp:whatsapp})});setTitle('');setDescription('');setImage('');setWhatsapp('');setNewItem(false);});
+  const update=editing&&current;
+  await act(async()=>{
+    await request(update?'giveaways/'+current.id:'giveaways',{method:update?'PUT':'POST',body:JSON.stringify({title,description,image_url:image,contact_whatsapp:whatsapp})});
+    setTitle('');setDescription('');setImage('');setWhatsapp('');setNewItem(false);setEditing(false);
+  });
  }
+
  return <section style={{paddingBottom:30}}>
-  <div className="section-heading"><h2>Desapego da vizinhança</h2><button className="mini-primary" onClick={()=>setNewItem(v=>!v)}><Plus size={16}/> Anunciar grátis</button></div>
+  {current&&<button type="button" className="back-link" onClick={()=>{setSelected(null);setEditing(false);setError('');}}><ArrowLeft size={18}/> Voltar aos desapegos</button>}
+  {!current&&<><div className="section-heading"><h2>Desapego da vizinhança</h2><button className="mini-primary" onClick={()=>setNewItem(v=>!v)}><Plus size={16}/> Anunciar grátis</button></div>
   <p className="muted">Itens gratuitos oferecidos por moradores. Combine a retirada diretamente com quem anunciou.</p>
   {error&&<p role="alert" style={{color:'#b91c1c'}}>{error}</p>}
-  {newItem&&<form className="white-panel form-stack" onSubmit={submit} style={{marginBottom:18}}>
-    <h3>Publicar desapego</h3>
+  {(newItem||editing)&&<form className="white-panel form-stack" onSubmit={submit} style={{marginBottom:18}}>
+    <h3>{editing?'Editar meu desapego':'Publicar desapego'}</h3>
     <label>Nome do item<input minLength={3} maxLength={120} required value={title} onChange={e=>setTitle(e.target.value)} placeholder="Ex.: Livros infantis"/></label>
     <label>Descrição<textarea maxLength={600} rows={3} value={description} onChange={e=>setDescription(e.target.value)} placeholder="Estado do item e detalhes para retirada"/></label>
     <label>WhatsApp para contato (opcional)<input type="tel" value={whatsapp} onChange={e=>setWhatsapp(e.target.value)} placeholder="Ex.: 5519999999999" maxLength={20}/><small>Use código do país 55 e DDD. O contato fica disponível apenas para moradores logados na página de detalhes. Se não informar, não aparecerá botão de contato.</small></label>
@@ -79,9 +90,9 @@ export function Giveaways({viewerId}:{viewerId:string}){
       {image&&<img src={image} alt="Prévia do desapego" style={{height:160,width:160,objectFit:'cover',borderRadius:12}}/>}
     </label>
     <p className="muted">Após marcar o item como <strong>Doado</strong>, o anúncio, seus dados e sua foto serão excluídos automaticamente após 48 horas.</p>
-    <button type="submit" disabled={busy||uploading} className="primary-button">Publicar gratuitamente</button>
+    <button type="submit" disabled={busy||uploading} className="primary-button">{editing?'Salvar alterações':'Publicar gratuitamente'}</button>
   </form>}
-  <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(min(100%,240px),1fr))',gap:15}}>
+  {!editing&&<div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(min(100%,240px),1fr))',gap:15}}>
     {items.map(item=><article className="white-panel" key={item.id} role="button" tabIndex={0} onClick={()=>setSelected(item.id)} onKeyDown={e=>{if(e.key==='Enter'||e.key===' ')setSelected(item.id);}} style={{overflow:'hidden',padding:0,cursor:'pointer'}}>
       {item.image_url?<img src={item.image_url} alt={item.title} style={{width:'100%',height:175,objectFit:'cover'}}/>:
         <div style={{height:150,display:'grid',placeItems:'center',background:'#f3f3f3'}}><Gift size={45} color="#777"/></div>}
@@ -93,7 +104,7 @@ export function Giveaways({viewerId}:{viewerId:string}){
         <span style={{display:'block',fontSize:12,marginTop:10,color:'#555'}}>Ver detalhes do item</span>
       </div>
     </article>)}
-  </div>
+  </div>}
   {loading&&<div className="white-panel" role="status" aria-live="polite" style={{padding:24,display:'grid',gap:14}}>
     <strong>Carregando desapegos...</strong>
     <div aria-hidden="true" style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(150px,1fr))',gap:14}}>
@@ -105,9 +116,9 @@ export function Giveaways({viewerId}:{viewerId:string}){
     setError('');setLoading(true);
     load().catch(e=>setError(e instanceof Error?e.message:'Falha ao carregar desapegos.')).finally(()=>setLoading(false));
   }}>Tentar carregar novamente</button>}
-  {current&&<div role="presentation" onClick={()=>setSelected(null)} style={{position:'fixed',inset:0,zIndex:150,background:'rgba(0,0,0,.65)',display:'flex',alignItems:'center',justifyContent:'center',padding:16}}>
-    <section role="dialog" aria-modal="true" aria-label={'Detalhes do desapego: '+current.title} onClick={e=>e.stopPropagation()} style={{background:'#fff',color:'#111',borderRadius:20,width:'min(100%,540px)',maxHeight:'90vh',overflowY:'auto',position:'relative',padding:20}}>
-      <button type="button" aria-label="Fechar detalhes" onClick={()=>setSelected(null)} style={{position:'absolute',right:15,top:15,zIndex:2,background:'#fff',border:'1px solid #ddd',borderRadius:20,padding:8}}><X size={20}/></button>
+  </>}
+  {current&&<div style={{maxWidth:1000,margin:'18px auto 40px'}}>
+    {!editing&&<article className="white-panel" style={{padding:'clamp(16px,3vw,32px)',borderRadius:20}}>
       {current.image_url?<img src={current.image_url} alt={current.title} style={{width:'100%',maxHeight:320,objectFit:'contain',background:'#f5f5f5',borderRadius:14}}/>:<div style={{height:180,background:'#f5f5f5',borderRadius:14,display:'grid',placeItems:'center'}}><Gift size={54}/></div>}
       <div style={{marginTop:18,color:'#047857',fontWeight:800}}>GRÁTIS · {current.status==='available'?'Disponível':current.status==='reserved'?'Reservado':'Doado'}</div>
       <h2 style={{margin:'8px 0'}}>{current.title}</h2>
@@ -115,6 +126,7 @@ export function Giveaways({viewerId}:{viewerId:string}){
       <p style={{fontSize:14,color:'#666'}}>Publicado por {current.owner_name}</p>
       {current.user_id===viewerId&&<div style={{borderTop:'1px solid #e9e9e9',paddingTop:18,marginTop:18,display:'grid',gap:12}}>
         <strong style={{fontSize:15}}>Gerenciar meu anúncio</strong>
+        {current.status!=='donated'&&<button type="button" className="outline-button" disabled={busy} onClick={()=>beginEdit(current)}>Editar informações e foto</button>}
         <div style={{display:'flex',flexWrap:'wrap',gap:8}}>
           {(['available','reserved','donated'] as const).map(status=><button key={status} type="button" disabled={busy||current.status===status}
             onClick={()=>updateStatus(current,status)}
@@ -130,7 +142,7 @@ export function Giveaways({viewerId}:{viewerId:string}){
         <a target="_blank" rel="noopener noreferrer" href={'https://wa.me/'+current.contact_whatsapp.replace(/\D/g,'')+'?text='+encodeURIComponent('Olá! Vi seu desapego "'+current.title+'" no Condovery. Ainda está disponível?')}
           style={{display:'flex',gap:8,alignItems:'center',justifyContent:'center',padding:14,borderRadius:13,background:'#111',color:'#fff',textDecoration:'none',fontWeight:700}}><MessageCircle size={19}/>Tenho interesse</a>:
         <p style={{fontSize:13,color:'#666'}}>{current.user_id===viewerId?'Este é seu anúncio.':current.status!=='available'?'Este item não está disponível.':'O morador não informou contato para este item.'}</p>}
-    </section>
+    </article>}
   </div>}
  </section>;
 }
