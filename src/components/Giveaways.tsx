@@ -1,14 +1,16 @@
 'use client';
 import {prepareMarketplaceImage} from '@/lib/prepare-marketplace-image';
 import {useCallback,useEffect,useState,type FormEvent} from 'react';
-import {Gift,MapPin,Plus} from 'lucide-react';
-type Item={id:string;user_id:string;title:string;description:string;image_url:string|null;status:'available'|'reserved'|'donated';owner_name:string;owner_phone:string;created_at:string};
+import {Gift,Plus,X,MessageCircle} from 'lucide-react';
+type Item={id:string;user_id:string;title:string;description:string;image_url:string|null;status:'available'|'reserved'|'donated';owner_name:string;contact_whatsapp:string|null;created_at:string};
 async function request(path:string,init?:RequestInit){
  const response=await fetch('/api/'+path,{credentials:'same-origin',cache:'no-store',...init,headers:{'Content-Type':'application/json',...init?.headers}});
  const data=await response.json();if(!response.ok)throw new Error(data.error||'Erro de comunicação.');return data;
 }
 export function Giveaways({viewerId}:{viewerId:string}){
  const [items,setItems]=useState<Item[]>([]);
+ const [selected,setSelected]=useState<string|null>(null);
+ const current=items.find(item=>item.id===selected);
  const [title,setTitle]=useState(''),[description,setDescription]=useState(''),[image,setImage]=useState('');
  const [uploading,setUploading]=useState(false);
  const [busy,setBusy]=useState(false),[error,setError]=useState(''),[newItem,setNewItem]=useState(false);
@@ -31,7 +33,7 @@ export function Giveaways({viewerId}:{viewerId:string}){
  }
  async function submit(e:FormEvent){
   e.preventDefault();
-  await act(async()=>{await request('giveaways',{method:'POST',body:JSON.stringify({title,description,image_url:image})});setTitle('');setDescription('');setImage('');setNewItem(false);});
+  await act(async()=>{await request('giveaways',{method:'POST',body:JSON.stringify({title,description,image_url:image,contact_whatsapp:whatsapp})});setTitle('');setDescription('');setImage('');setWhatsapp('');setNewItem(false);});
  }
  return <section style={{paddingBottom:30}}>
   <div className="section-heading"><h2>Desapego da vizinhança</h2><button className="mini-primary" onClick={()=>setNewItem(v=>!v)}><Plus size={16}/> Anunciar grátis</button></div>
@@ -41,6 +43,7 @@ export function Giveaways({viewerId}:{viewerId:string}){
     <h3>Publicar desapego</h3>
     <label>Nome do item<input minLength={3} maxLength={120} required value={title} onChange={e=>setTitle(e.target.value)} placeholder="Ex.: Livros infantis"/></label>
     <label>Descrição<textarea maxLength={600} rows={3} value={description} onChange={e=>setDescription(e.target.value)} placeholder="Estado do item e detalhes para retirada"/></label>
+    <label>WhatsApp para contato (opcional)<input type="tel" value={whatsapp} onChange={e=>setWhatsapp(e.target.value)} placeholder="Ex.: 5519999999999" maxLength={20}/><small>Use código do país 55 e DDD. O contato fica disponível apenas para moradores logados na página de detalhes. Se não informar, não aparecerá botão de contato.</small></label>
     <label>Foto do item (opcional; JPG, PNG ou WebP; máximo 5 MB)
       <input type="file" accept="image/jpeg,image/png,image/webp" disabled={busy||uploading} onChange={e=>uploadImage(e.target.files?.[0])}/>
       <small>Recomendação: imagem quadrada de 800 × 800 pixels; será otimizada automaticamente.</small>
@@ -51,23 +54,37 @@ export function Giveaways({viewerId}:{viewerId:string}){
     <button type="submit" disabled={busy||uploading} className="primary-button">Publicar gratuitamente</button>
   </form>}
   <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(min(100%,240px),1fr))',gap:15}}>
-    {items.map(item=><article className="white-panel" key={item.id} style={{overflow:'hidden',padding:0}}>
+    {items.map(item=><article className="white-panel" key={item.id} role="button" tabIndex={0} onClick={()=>setSelected(item.id)} onKeyDown={e=>{if(e.key==='Enter'||e.key===' ')setSelected(item.id);}} style={{overflow:'hidden',padding:0,cursor:'pointer'}}>
       {item.image_url?<img src={item.image_url} alt={item.title} style={{width:'100%',height:175,objectFit:'cover'}}/>:
         <div style={{height:150,display:'grid',placeItems:'center',background:'#f3f3f3'}}><Gift size={45} color="#777"/></div>}
       <div style={{padding:16}}>
         <strong style={{fontSize:17}}>{item.title}</strong>
         <div style={{margin:'8px 0',fontWeight:700,color:item.status==='available'?'#047857':'#666'}}>{item.status==='available'?'GRÁTIS':item.status==='reserved'?'Reservado':'Doado'}</div>
-        <p style={{fontSize:14,whiteSpace:'pre-wrap'}}>{item.description}</p>
+        <p style={{fontSize:14,whiteSpace:'pre-wrap'}}>{item.description.length>110?item.description.slice(0,110)+'…':item.description}</p>
         <small>Por {item.owner_name}</small>
         {item.user_id===viewerId?<div className="inline-actions" style={{marginTop:10}}>
-          <select aria-label={'Estado de '+item.title} disabled={busy} value={item.status} onChange={e=>{if(e.target.value==='donated'&&!window.confirm('Marcar como doado? Este anúncio e sua foto serão excluídos automaticamente após 48 horas.'))return;act(()=>request('giveaways/'+item.id,{method:'PATCH',body:JSON.stringify({status:e.target.value})}));}}>
+          <select onClick={e=>e.stopPropagation()} aria-label={'Estado de '+item.title} disabled={busy} value={item.status} onChange={e=>{if(e.target.value==='donated'&&!window.confirm('Marcar como doado? Este anúncio e sua foto serão excluídos automaticamente após 48 horas.'))return;act(()=>request('giveaways/'+item.id,{method:'PATCH',body:JSON.stringify({status:e.target.value})}));}}>
             <option value="available">Disponível</option><option value="reserved">Reservado</option><option value="donated">Doado</option>
           </select>
-          <button disabled={busy} type="button" className="danger-text" onClick={()=>{if(window.confirm('Excluir desapego?'))act(()=>request('giveaways/'+item.id,{method:'DELETE'}));}}>Excluir</button>
-        </div>:item.status==='available'&&item.owner_phone&&<a target="_blank" rel="noopener noreferrer" style={{display:'inline-flex',marginTop:12,padding:'10px 13px',background:'#111',color:'#fff',borderRadius:12,textDecoration:'none'}} href={'https://wa.me/'+item.owner_phone.replace(/\D/g,'')+'?text='+encodeURIComponent('Olá! Vi seu desapego "'+item.title+'" no Condovery. Ainda está disponível?')}>Tenho interesse</a>}
+          <button disabled={busy} type="button" className="danger-text" onClick={e=>{e.stopPropagation();if(window.confirm('Excluir desapego?'))act(()=>request('giveaways/'+item.id,{method:'DELETE'}));}}>Excluir</button>
+        </div>:<span style={{display:'block',fontSize:12,marginTop:10,color:'#555'}}>Toque para ver detalhes</span>}
       </div>
     </article>)}
   </div>
   {!items.length&&<div className="white-panel" style={{textAlign:'center',padding:24}}>Nenhum desapego disponível. Seja o primeiro a anunciar!</div>}
+  {current&&<div role="presentation" onClick={()=>setSelected(null)} style={{position:'fixed',inset:0,zIndex:150,background:'rgba(0,0,0,.65)',display:'flex',alignItems:'center',justifyContent:'center',padding:16}}>
+    <section role="dialog" aria-modal="true" aria-label={'Detalhes do desapego: '+current.title} onClick={e=>e.stopPropagation()} style={{background:'#fff',color:'#111',borderRadius:20,width:'min(100%,540px)',maxHeight:'90vh',overflowY:'auto',position:'relative',padding:20}}>
+      <button type="button" aria-label="Fechar detalhes" onClick={()=>setSelected(null)} style={{position:'absolute',right:15,top:15,zIndex:2,background:'#fff',border:'1px solid #ddd',borderRadius:20,padding:8}}><X size={20}/></button>
+      {current.image_url?<img src={current.image_url} alt={current.title} style={{width:'100%',maxHeight:320,objectFit:'contain',background:'#f5f5f5',borderRadius:14}}/>:<div style={{height:180,background:'#f5f5f5',borderRadius:14,display:'grid',placeItems:'center'}}><Gift size={54}/></div>}
+      <div style={{marginTop:18,color:'#047857',fontWeight:800}}>GRÁTIS · {current.status==='available'?'Disponível':current.status==='reserved'?'Reservado':'Doado'}</div>
+      <h2 style={{margin:'8px 0'}}>{current.title}</h2>
+      <p style={{whiteSpace:'pre-wrap',lineHeight:1.65,color:'#444'}}>{current.description||'Sem descrição adicional.'}</p>
+      <p style={{fontSize:14,color:'#666'}}>Publicado por {current.owner_name}</p>
+      {current.user_id!==viewerId&&current.status==='available'&&current.contact_whatsapp?
+        <a target="_blank" rel="noopener noreferrer" href={'https://wa.me/'+current.contact_whatsapp.replace(/\D/g,'')+'?text='+encodeURIComponent('Olá! Vi seu desapego "'+current.title+'" no Condovery. Ainda está disponível?')}
+          style={{display:'flex',gap:8,alignItems:'center',justifyContent:'center',padding:14,borderRadius:13,background:'#111',color:'#fff',textDecoration:'none',fontWeight:700}}><MessageCircle size={19}/>Tenho interesse</a>:
+        <p style={{fontSize:13,color:'#666'}}>{current.user_id===viewerId?'Este é seu anúncio.':current.status!=='available'?'Este item não está disponível.':'O morador não informou contato para este item.'}</p>}
+    </section>
+  </div>}
  </section>;
 }
