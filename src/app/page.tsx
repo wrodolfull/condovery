@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import {IllustrationSlot} from '@/components/IllustrationSlot';
 import {AdsCarousel,type AdCampaign} from '@/components/AdsCarousel';
 import {AdsAdmin} from '@/components/AdsAdmin';
+import {Giveaways} from '@/components/Giveaways';
 import {RoundedStars} from '@/components/RoundedStars';
 import {ImageCropper,type ImageKind} from '@/components/ImageCropper';
 import {clientUUID} from '@/lib/client-uuid';
@@ -24,7 +25,7 @@ import {
 } from 'lucide-react';
 
 type Viewer={id:string;condominium_id:string;name:string;email:string;phone:string;avatar_image:string|null;role:'admin'|'resident';status:'pending'|'approved'|'suspended';tower:string;apartment:string;condominium_name:string;towers:string[];is_superadmin?:boolean};
-type Category={id:string;name:string;icon:string};
+type Category={id:string;name:string;icon:string;is_active?:boolean};
 type Shop={id:string;slug:string;name:string;description:string;cover_image:string|null;logo_image:string|null;status?:string;is_open:boolean;delivery_enabled:boolean;delivery_fee_cents:number;pickup_enabled:boolean;lead_time:string;pickup_instructions?:string;whatsapp?:string;payment_methods:PaymentMethod[]};
 type Product={id:string;shop_id:string;shop_name?:string;visibility:'available'|'unavailable'|'hidden';category_id:string;name:string;description:string;price_cents:number;promo_price_cents:number|null;image_url:string|null;stock:number|null;is_available?:boolean;lead_time?:string;is_featured?:boolean;option_groups?:OptionGroup[]};
 type Order={id:string;code:number;status:string;review_status?:'pending'|'approved'|'rejected'|null;can_review?:boolean;is_own_shop?:boolean;total_cents:number;shop_name:string;buyer_name:string;buyer_phone:string;tower:string;apartment:string;fulfillment:string;delivery_day:string|null;delivery_window:string;delivery_instructions:string[];note:string;subtotal_cents:number;delivery_fee_cents:number;payment_method?:PaymentMethod|null;items:{name:string;quantity:number;unit_price_cents:number;note:string;options?:{group:string;name:string;price_cents:number}[]}[];created_at:string};
@@ -60,7 +61,7 @@ function MoneyInput({cents,onValue}:{cents:number;onValue:(value:number)=>void})
 }
 type HomeData={categories:Category[];shops:Shop[];products:Product[]};
 type AdminData={towers:string[];residents:{id:string;name:string;email:string;tower:string;apartment:string;status:string}[];shops:{id:string;name:string;owner_name:string;status:string}[];stats:{residents:number;shops:number;orders:number};categories:Category[]};
-type View='home'|'categories'|'favorites'|'orders'|'account'|'shop'|'product'|'cart'|'success'|'seller'|'admin'|'platform';
+type View='home'|'categories'|'favorites'|'orders'|'account'|'shop'|'product'|'cart'|'success'|'seller'|'admin'|'platform'|'giveaways';
 type Tenant={id:string;name:string;slug:string;subdomain:string;custom_domain:string|null;is_active:boolean;residents:number;shops:number};
 const money=(n:number)=>new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(n/100);
 const price=(p:Product)=>p.promo_price_cents??p.price_cents;
@@ -819,6 +820,14 @@ export default function Page(){
   async function adminAction(target:'users'|'shops',id:string,status:string){
     setBusy(true);try{await api('admin/'+target+'/'+id,{method:'PATCH',body:payload({status})});await loadAdmin();await loadHome();notify('Cadastro atualizado.');}catch(e){fail(e);}finally{setBusy(false);}
   }
+  async function toggleOptionalCategory(category:Category){
+    setBusy(true);setError('');
+    try{
+      await api('admin/categories/'+category.id,{method:'PATCH',body:payload({is_active:!category.is_active})});
+      await Promise.all([loadAdmin(),loadHome()]);
+      notify(category.name+(category.is_active?' desabilitada.':' habilitada.'));
+    }catch(e){fail(e);}finally{setBusy(false);}
+  }
   async function createCategory(e:React.FormEvent){
     e.preventDefault();setBusy(true);
     try{
@@ -969,7 +978,7 @@ export default function Page(){
               alt="Todas as categorias" fit="contain" fallback={<LayoutGrid size={25}/>}/>
             <span>Todos</span>
           </button>
-          {home.categories.map(c=><button key={c.id} className="category-card" onClick={()=>{setCategory(c.id);go('categories');}}>
+          {home.categories.map(c=><button key={c.id} className="category-card" onClick={()=>{if(c.name==='Desapego')go('giveaways');else {setCategory(c.id);go('categories');}}}>
             <CategoryArtwork category={c}/><span>{c.name}</span></button>)}
         </div>
         {!query&&<>
@@ -1010,11 +1019,11 @@ export default function Page(){
               fallback={<LayoutGrid size={25}/>}/><span>Todos</span>
           </button>
           {home.categories.map(c=><button key={c.id} className={'category-card'+(category===c.id?' selected':'')}
-            onClick={()=>setCategory(c.id)} aria-pressed={category===c.id}>
+            onClick={()=>{if(c.name==='Desapego')go('giveaways');else setCategory(c.id);}} aria-pressed={category===c.id}>
               <CategoryArtwork category={c}/><span>{c.name}</span>
             </button>)}
         </div>
-        <div className="filter-chips"><button className={!category?'chosen':''} onClick={()=>setCategory('')}>Todos</button>{home.categories.map(c=><button key={c.id} className={category===c.id?'chosen':''} onClick={()=>setCategory(c.id)}>{c.name}</button>)}</div>
+        <div className="filter-chips"><button className={!category?'chosen':''} onClick={()=>setCategory('')}>Todos</button>{home.categories.map(c=><button key={c.id} className={category===c.id?'chosen':''} onClick={()=>{if(c.name==='Desapego')go('giveaways');else setCategory(c.id);}}>{c.name}</button>)}</div>
         <SectionHeader title={categoryName??'Produtos dos vizinhos'}/>
         {filtered.length?<div className="product-grid">{filtered.map(p=><ProductCard key={p.id} p={p} onClick={()=>openProduct(p)} favorite={favoriteIds.includes(p.id)} onFavorite={toggleFavorite}/>)}</div>:
           catalogLoading?<div className="loading-inline"><div className="spinner"/> Buscando produtos...</div>:
@@ -1525,6 +1534,7 @@ export default function Page(){
         </>}
       </>}
 
+      {view==='giveaways'&&<><button className="back-link" onClick={()=>go('home')}><ArrowLeft size={18}/> Início</button><Giveaways viewerId={viewer.id}/></>}
       {view==='platform'&&viewer.is_superadmin&&<>
         <button className="back-link" onClick={()=>go('account')}><ArrowLeft size={18}/> Minha conta</button>
         <div className="page-title"><h1>Superadmin Condovery</h1><p>Gerencie os condomínios e alterne o ambiente administrado.</p></div>
@@ -1597,7 +1607,21 @@ export default function Page(){
               Salvar configuração das torres</button>
           </form>
         </section>
-        <section className="admin-section white-panel"><h2><LayoutGrid size={20}/> Categorias</h2><div className="filter-chips">{adminData.categories.map(c=><span className="category-tag" key={c.id}>{c.name}</span>)}</div><form className="admin-category-form" onSubmit={createCategory}><input required minLength={2} maxLength={60} value={newCategory} onChange={e=>setNewCategory(e.target.value)} placeholder="Nova categoria de alimentação"/><select value={categoryIcon} onChange={e=>setCategoryIcon(e.target.value)} aria-label="Ícone"><option value="cake-slice">Bolos</option><option value="sandwich">Alimentos</option><option value="coffee">Bebidas</option><option value="pizza">Lanches</option><option value="ice-cream-cone">Sobremesas</option><option value="shopping-basket">Mercadinho</option></select><button className="outline-button" disabled={busy} type="submit"><Plus size={16}/>Adicionar</button></form></section>
+        <section className="admin-section white-panel"><h2><LayoutGrid size={20}/> Categorias</h2><div className="filter-chips">{adminData.categories.filter(c=>c.name!=='Serviços'&&c.name!=='Moda'&&c.name!=='Desapego').map(c=><span className="category-tag" key={c.id}>{c.name}</span>)}</div>
+          <div style={{display:'grid',gap:10,margin:'16px 0'}}>
+            {adminData.categories.filter(c=>c.name==='Serviços'||c.name==='Moda'||c.name==='Desapego').map(c=>
+              <div key={c.id} className="admin-row">
+                <div style={{display:'flex',alignItems:'center',gap:12}}>
+                  {c.name==='Serviços'?<Wrench size={23}/>:c.name==='Moda'?<Shirt size={23}/>:<Gift size={23}/>}
+                  <div><strong>{c.name}</strong><p>{c.is_active?'Visível na Home e no catálogo':'Desabilitada — oculta para moradores'}</p></div>
+                </div>
+                <label style={{display:'flex',alignItems:'center',gap:8,cursor:'pointer'}}>
+                  <input aria-label={'Habilitar '+c.name} type="checkbox" disabled={busy} checked={!!c.is_active} onChange={()=>toggleOptionalCategory(c)}/>
+                  <span>{c.is_active?'Ativa':'Inativa'}</span>
+                </label>
+              </div>)}
+          </div>
+          <form className="admin-category-form" onSubmit={createCategory}><input required minLength={2} maxLength={60} value={newCategory} onChange={e=>setNewCategory(e.target.value)} placeholder="Nova categoria de alimentação"/><select value={categoryIcon} onChange={e=>setCategoryIcon(e.target.value)} aria-label="Ícone"><option value="cake-slice">Bolos</option><option value="sandwich">Alimentos</option><option value="coffee">Bebidas</option><option value="pizza">Lanches</option><option value="ice-cream-cone">Sobremesas</option><option value="shopping-basket">Mercadinho</option></select><button className="outline-button" disabled={busy} type="submit"><Plus size={16}/>Adicionar</button></form></section>
                 <section className="admin-section white-panel">
           <h2><ShieldCheck size={20}/> Denúncias de conteúdo
             {reports.filter(r=>r.status==='open').length>0&&<span className="review-pending-counter">
