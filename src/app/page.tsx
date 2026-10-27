@@ -353,8 +353,8 @@ export default function Page(){
   // Orders are fetched by the orders-view effect when that screen opens.
   // Avoid fetching them at login (and again when entering the orders screen).
   const refresh=useCallback(async(u:Viewer)=>{
-    await Promise.all([loadHome(),loadMine(),loadFavorites(),...(u.role==='admin'?[loadAdmin()]:[])]);
-  },[loadHome,loadMine,loadFavorites,loadAdmin]);
+    await Promise.all([loadHome(),loadMine(),loadFavorites()]);
+  },[loadHome,loadMine,loadFavorites]);
 
   useEffect(()=>{
     const link=window.location.pathname.startsWith('/loja/')?decodeURIComponent(window.location.pathname.slice(6).split('/')[0]):new URLSearchParams(window.location.search).get('loja');
@@ -405,6 +405,12 @@ export default function Page(){
     setCheckoutKey(null);setRevisedQuote(null);
   },[cart,fulfillment,deliveryDay,deliveryWindow,instructions,checkoutNote,paymentMethod]);
   useEffect(()=>{if(!toast)return;const timer=setTimeout(()=>setToast(''),4000);return()=>clearTimeout(timer);},[toast]);
+  // Admin data is private and tenant-scoped: fetch when the panel is opened,
+  // not on every login or page reload.
+  useEffect(()=>{
+    if(view!=='admin'||viewer?.role!=='admin'||viewer.status!=='approved')return;
+    loadAdmin().catch(fail);
+  },[view,viewer?.role,viewer?.status,viewer?.condominium_id,loadAdmin]);
   useEffect(()=>{if(view==='seller'&&myShop?.status==='approved'){
     loadSellerOrders().catch(fail);
     loadSellerReviews().catch(fail);
