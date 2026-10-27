@@ -1757,7 +1757,7 @@ export default function Page(){
 
     {cropRequest&&<ImageCropper file={cropRequest.file} kind={cropRequest.kind}
       onCancel={()=>setCropRequest(null)}
-      onApply={cropped=>{const kind=cropRequest.kind;setCropRequest(null);void upload(cropped,kind);}}/>}
+      onApply={cropped=>{const kind=cropRequest.kind;setCropRequest(null);void upload(cropped,kind as 'product'|'cover'|'logo'|'avatar');}}/>}
 
     {cartCount>0&&view!=='cart'&&view!=='success'&&<button className="floating-cart" onClick={()=>go('cart')}><ShoppingBag size={19}/><span>{cartCount} {cartCount===1?'item':'itens'}</span><strong>{money(cartTotal)}</strong><ArrowRight size={18}/></button>}
     <nav className="bottom-nav" aria-label="Navegação principal">{bottomNav.map(([target,Icon,label])=><button key={target} className={view===target?'active':''} onClick={()=>go(target)}><Icon size={22} strokeWidth={view===target?2.4:1.8}/><span>{label}</span></button>)}</nav>
