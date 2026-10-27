@@ -239,6 +239,8 @@ export default function Page(){
   const [myProducts,setMyProducts]=useState<Product[]>([]);
   const [adminData,setAdminData]=useState<AdminData|null>(null);
   const [tenants,setTenants]=useState<Tenant[]>([]);
+  const [tenantMenuOpen,setTenantMenuOpen]=useState(false);
+  const [tenantMenuLoading,setTenantMenuLoading]=useState(false);
   const [tenantForm,setTenantForm]=useState({name:'',slug:'',invite_code:'',tower_scheme:'letters',tower_count:30,custom_domain:''});
   const [tenantAdmin,setTenantAdmin]=useState({condominium_id:'',name:'',email:'',password:''});
   const [sellerTab,setSellerTab]=useState<'orders'|'products'|'reviews'|'settings'>('orders');
@@ -332,8 +334,13 @@ export default function Page(){
       setTenantAdmin({condominium_id:'',name:'',email:'',password:''});
     }catch(e){fail(e);}finally{setBusy(false);}
   }
+  async function showTenantMenu(){
+    if(tenantMenuOpen){setTenantMenuOpen(false);return;}
+    setTenantMenuOpen(true);setTenantMenuLoading(true);setError('');
+    try{await loadTenants();}catch(e){fail(e);}finally{setTenantMenuLoading(false);}
+  }
   async function switchTenant(id:string){
-    setBusy(true);setError('');
+    setBusy(true);setError('');setTenantMenuOpen(false);
     try{
       await api('platform/condominiums/switch',{method:'POST',body:payload({condominium_id:id})});
       setCart([]);setSelectedShop(null);setFavoriteIds([]);setFavoriteProducts([]);setOrders([]);setMyShop(null);
@@ -947,7 +954,31 @@ export default function Page(){
   return <div className="app-shell">
     <header className="app-header"><div className="header-inner">
       <button className="brand" onClick={()=>go('home')} aria-label="Início Condovery">condovery<span>.</span></button>
-      <button className="location" onClick={()=>go('account')} title="Seu endereço"><MapPin size={16}/><span><small>Você está em</small><strong>{viewer.condominium_name}</strong></span><ChevronDown size={14}/></button>
+      <div style={{position:'relative',minWidth:0}}>
+        <button className="location" onClick={()=>viewer.is_superadmin?showTenantMenu():go('account')}
+          title={viewer.is_superadmin?'Selecionar condomínio':'Seu endereço'}
+          aria-haspopup={viewer.is_superadmin?'listbox':undefined}
+          aria-expanded={viewer.is_superadmin?tenantMenuOpen:undefined}>
+          <MapPin size={16}/><span><small>Você está em</small><strong>{viewer.condominium_name}</strong></span><ChevronDown size={14}/>
+        </button>
+        {viewer.is_superadmin&&tenantMenuOpen&&<>
+          <button type="button" aria-label="Fechar seleção de condomínios" onClick={()=>setTenantMenuOpen(false)}
+            style={{position:'fixed',inset:0,zIndex:80,background:'transparent',border:0,cursor:'default'}}/>
+          <div role="listbox" aria-label="Selecionar condomínio para administrar"
+            style={{position:'absolute',top:'calc(100% + 8px)',left:0,zIndex:81,width:'min(340px,calc(100vw - 28px))',maxHeight:360,overflowY:'auto',background:'var(--card,#fff)',color:'var(--text,#111)',border:'1px solid #dedede',boxShadow:'0 12px 32px rgba(0,0,0,.14)',borderRadius:14,padding:8}}>
+            <div style={{fontWeight:700,fontSize:13,padding:'9px 12px'}}>Administrar condomínio</div>
+            {tenantMenuLoading?<p style={{padding:12}}>Carregando condomínios...</p>:tenants.length===0?
+              <p style={{padding:12}}>Nenhum condomínio disponível.</p>:
+              tenants.map(tenant=><button key={tenant.id} role="option" aria-selected={tenant.id===viewer.condominium_id}
+                type="button" disabled={busy||tenant.id===viewer.condominium_id}
+                onClick={()=>switchTenant(tenant.id)}
+                style={{display:'flex',gap:12,alignItems:'center',width:'100%',padding:'12px',textAlign:'left',border:0,borderRadius:9,background:tenant.id===viewer.condominium_id?'#eee':'transparent',color:'#111',cursor:tenant.id===viewer.condominium_id?'default':'pointer'}}>
+                <Building2 size={17}/><span style={{flex:1,minWidth:0}}><strong style={{display:'block'}}>{tenant.name}</strong><small>{tenant.residents} moradores · {tenant.shops} lojas</small></span>
+                {tenant.id===viewer.condominium_id&&<Check size={17}/>}
+              </button>)}
+          </div>
+        </>}
+      </div>
       <div className="header-actions"><button aria-label="Meus pedidos" onClick={()=>go('orders')}><Receipt size={20}/></button><button className="cart-toggle" aria-label="Abrir carrinho" onClick={()=>go('cart')}><ShoppingBag size={22}/>{cartCount>0&&<span>{cartCount}</span>}</button><button aria-label="Minha conta" onClick={()=>go('account')}><UserRound size={21}/></button></div>
     </div></header>
     <div className="desktop-nav"><div className="desktop-nav-inner">
@@ -1539,14 +1570,6 @@ export default function Page(){
         <button className="back-link" onClick={()=>go('account')}><ArrowLeft size={18}/> Minha conta</button>
         <div className="page-title"><h1>Superadmin Condovery</h1><p>Gerencie os condomínios e alterne o ambiente administrado.</p></div>
         <AdsAdmin tenants={tenants}/>
-        <section className="admin-section white-panel"><h2>Condomínios cadastrados</h2>
-          <div className="platform-tenants">{tenants.map(tenant=><div className="admin-row" key={tenant.id}>
-            <div><strong>{tenant.name}</strong><p>{tenant.subdomain?tenant.subdomain+'.'+(process.env.NEXT_PUBLIC_TENANT_BASE_DOMAIN||'condovery.com'):'/'+tenant.slug} · {tenant.residents} moradores · {tenant.shops} lojas</p>
-              {tenant.custom_domain&&<small>{tenant.custom_domain}</small>}</div>
-            <button className="outline-button" type="button" disabled={busy||tenant.id===viewer.condominium_id}
-              onClick={()=>switchTenant(tenant.id)}>{tenant.id===viewer.condominium_id?'Condomínio ativo':'Administrar'}</button>
-          </div>)}</div>
-        </section>
         <section className="admin-section white-panel"><h2>Criar condomínio</h2>
           <form className="form-stack" onSubmit={createTenant}>
             <label>Nome<input required minLength={3} maxLength={100} value={tenantForm.name}
