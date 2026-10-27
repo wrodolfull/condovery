@@ -1,4 +1,5 @@
 'use client';
+import {prepareMarketplaceImage} from '@/lib/prepare-marketplace-image';
 import {useCallback,useEffect,useState,type FormEvent} from 'react';
 type Campaign={id:string;condominium_id:string;merchant_name:string;headline:string;starts_at:string;expires_at:string;enabled:boolean};
 type Tenant={id:string;name:string};
@@ -15,6 +16,7 @@ export function AdsAdmin({tenants}:{tenants:Tenant[]}){
   const [campaigns,setCampaigns]=useState<Campaign[]>([]);
   const [form,setForm]=useState(initial);
   const [busy,setBusy]=useState(false);
+  const [uploading,setUploading]=useState(false);
   const [error,setError]=useState('');
   const [message,setMessage]=useState('');
   const reload=useCallback(async()=>{
@@ -27,6 +29,19 @@ export function AdsAdmin({tenants}:{tenants:Tenant[]}){
     try{await action();await reload();setMessage('Alterações salvas.');}
     catch(e){setError(e instanceof Error?e.message:'Erro ao salvar.');}
     finally{setBusy(false);}
+  }
+  async function uploadImage(file:File|undefined){
+    if(!file)return;
+    if(!form.condominium_id){setError('Selecione o condomínio antes de enviar a imagem.');return;}
+    if(!['image/jpeg','image/png','image/webp'].includes(file.type)||file.size>10*1024*1024){setError('Selecione JPG, PNG ou WebP de até 10 MB.');return;}
+    setUploading(true);setError('');
+    try{
+      const optimized=await prepareMarketplaceImage(file,10);const data=new FormData();data.append('file',optimized);data.append('condominium_id',form.condominium_id);
+      const res=await fetch('/api/media/ad',{method:'POST',body:data});
+      const result=await res.json();
+      if(!res.ok)throw new Error(result.error||'Erro no upload.');
+      setForm(v=>({...v,image_url:result.url}));
+    }catch(e){setError(e instanceof Error?e.message:'Erro no upload.');}finally{setUploading(false);}
   }
   async function submit(e:FormEvent){
     e.preventDefault();
@@ -54,14 +69,19 @@ export function AdsAdmin({tenants}:{tenants:Tenant[]}){
       <label>Título da oferta<input required maxLength={140} placeholder="Pizza grande com 20% OFF" value={form.headline} onChange={e=>setForm(v=>({...v,headline:e.target.value}))}/></label>
       <label>Descrição curta<textarea required rows={2} maxLength={400} value={form.description} onChange={e=>setForm(v=>({...v,description:e.target.value}))}/></label>
       <label>Localização<input required maxLength={120} value={form.location} onChange={e=>setForm(v=>({...v,location:e.target.value}))}/></label>
-      <label>Imagem (URL HTTPS)<input required type="url" placeholder="https://..." value={form.image_url} onChange={e=>setForm(v=>({...v,image_url:e.target.value}))}/></label>
+      <label>Imagem da publicidade (upload JPG, PNG ou WebP; até 10 MB)
+        <input type="file" accept="image/jpeg,image/png,image/webp" disabled={uploading||busy} onChange={e=>uploadImage(e.target.files?.[0])}/>
+        <small>Recomendado: 1200 × 675 pixels (16:9), ideal para o card horizontal. A imagem será otimizada para WebP, com tamanho máximo de 960 px.</small>
+        {uploading&&<small>Enviando imagem...</small>}
+        {form.image_url&&<img src={form.image_url} alt="Prévia do anúncio" style={{width:'100%',maxWidth:440,aspectRatio:'16/9',objectFit:'cover',borderRadius:12,marginTop:10}}/>}
+      </label>
       <label>Link da oferta / WhatsApp (URL HTTPS)<input required type="url" placeholder="https://wa.me/5519..." value={form.destination_url} onChange={e=>setForm(v=>({...v,destination_url:e.target.value}))}/></label>
       <div className="field-grid">
         <label>Início da publicação<input required type="datetime-local" value={form.starts_at} onChange={e=>setForm(v=>({...v,starts_at:e.target.value}))}/></label>
         <label>Expiração<input required type="datetime-local" value={form.expires_at} onChange={e=>setForm(v=>({...v,expires_at:e.target.value}))}/></label>
       </div>
       <label style={{display:'flex',alignItems:'center',gap:8}}><input type="checkbox" checked={form.enabled} onChange={e=>setForm(v=>({...v,enabled:e.target.checked}))}/> Anúncio habilitado</label>
-      <button className="primary-button" type="submit" disabled={busy}>Cadastrar anúncio</button>
+      <button className="primary-button" type="submit" disabled={busy||uploading||!form.image_url}>Cadastrar anúncio</button>
     </form>
     <h3 style={{marginTop:24}}>Campanhas cadastradas</h3>
     {campaigns.length===0?<p className="muted">Nenhum anúncio cadastrado.</p>:campaigns.map(c=><div key={c.id} className="admin-row">
