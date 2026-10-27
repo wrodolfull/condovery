@@ -2,9 +2,11 @@
 import {prepareMarketplaceImage} from '@/lib/prepare-marketplace-image';
 import {ImageCropper} from '@/components/ImageCropper';
 import {useCallback,useEffect,useState,type FormEvent} from 'react';
-type Campaign={id:string;condominium_id:string;merchant_name:string;headline:string;description:string;location:string;image_url:string;destination_url:string;starts_at:string;expires_at:string;enabled:boolean};
+type Campaign={id:string;condominium_id:string;merchant_name:string;headline:string;description:string;location:string;image_url:string;destination_url:string;starts_at:string;expires_at:string;enabled:boolean;contract_amount_cents:number;billing_status:'pending'|'invoiced'|'paid';commercial_partner:string;impressions:number;clicks:number};
+type AdsReport={condominiums:{condominium_id:string;condominium_name:string;campaigns:number;contracted_cents:string;received_cents:string;impressions:string;clicks:string}[];partners:{commercial_partner:string;campaigns:number;contracted_cents:string;received_cents:string}[];totals:{campaigns:number;contracted_cents:string;received_cents:string}};
+const brl=(n:number|string)=>new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(Number(n||0)/100);
 type Tenant={id:string;name:string};
-const initial={condominium_id:'',merchant_name:'',headline:'',description:'',location:'Valinhos, SP',image_url:'',destination_url:'',starts_at:'',expires_at:'',enabled:true};
+const initial={condominium_id:'',merchant_name:'',headline:'',description:'',location:'Valinhos, SP',image_url:'',destination_url:'',starts_at:'',expires_at:'',enabled:true,contract_amount_cents:0,billing_status:'pending' as 'pending'|'invoiced'|'paid',commercial_partner:''};
 async function request(path:string,init?:RequestInit){
   const response=await fetch('/api/'+path,{credentials:'same-origin',cache:'no-store',...init,headers:{'Content-Type':'application/json',...init?.headers}});
   const data=await response.json();
@@ -16,6 +18,9 @@ const dateLabel=(value:string)=>new Date(value).toLocaleString('pt-BR',{dateStyl
 export function AdsAdmin({tenants}:{tenants:Tenant[]}){
   const [enabled,setEnabled]=useState(false);
   const [campaigns,setCampaigns]=useState<Campaign[]>([]);
+  const [report,setReport]=useState<AdsReport|null>(null);
+  const [tenantFilter,setTenantFilter]=useState('all');
+  const [billingFilter,setBillingFilter]=useState('all');
   const [form,setForm]=useState(initial);
   const [editingId,setEditingId]=useState<string|null>(null);
   const [cropFile,setCropFile]=useState<File|null>(null);
@@ -24,8 +29,8 @@ export function AdsAdmin({tenants}:{tenants:Tenant[]}){
   const [error,setError]=useState('');
   const [message,setMessage]=useState('');
   const reload=useCallback(async()=>{
-    const data=await request('platform/ads');
-    setEnabled(data.enabled);setCampaigns(data.campaigns);
+    const [data,summary]=await Promise.all([request('platform/ads'),request('platform/ads/reports')]);
+    setEnabled(data.enabled);setCampaigns(data.campaigns);setReport(summary);
   },[]);
   useEffect(()=>{reload().catch(e=>setError(e.message));},[reload]);
   async function perform(action:()=>Promise<unknown>){
@@ -36,7 +41,7 @@ export function AdsAdmin({tenants}:{tenants:Tenant[]}){
   }
   function editCampaign(c:Campaign){
     setEditingId(c.id);setError('');setMessage('');
-    setForm({condominium_id:c.condominium_id,merchant_name:c.merchant_name,headline:c.headline,description:c.description,location:c.location,image_url:c.image_url,destination_url:c.destination_url,starts_at:localDateTime(c.starts_at),expires_at:localDateTime(c.expires_at),enabled:c.enabled});
+    setForm({condominium_id:c.condominium_id,merchant_name:c.merchant_name,headline:c.headline,description:c.description,location:c.location,image_url:c.image_url,destination_url:c.destination_url,starts_at:localDateTime(c.starts_at),expires_at:localDateTime(c.expires_at),enabled:c.enabled,contract_amount_cents:c.contract_amount_cents,billing_status:c.billing_status,commercial_partner:c.commercial_partner});
     window.scrollTo({top:0,behavior:'smooth'});
   }
   function cancelEditing(){setEditingId(null);setCropFile(null);setForm(initial);setError('');}
@@ -57,10 +62,15 @@ export function AdsAdmin({tenants}:{tenants:Tenant[]}){
     e.preventDefault();
     if(new Date(form.expires_at)<=new Date(form.starts_at)){setError('A expiração deve ser posterior ao início.');return;}
     await perform(async()=>{
-      await request(editingId?'platform/ads/'+editingId:'platform/ads',{method:editingId?'PATCH':'POST',body:JSON.stringify({...form,starts_at:new Date(form.starts_at).toISOString(),expires_at:new Date(form.expires_at).toISOString()})});
+      const data={...form,starts_at:new Date(form.starts_at).toISOString(),expires_at:new Date(form.expires_at).toISOString()};
+      const payload:Record<string,unknown>={...data};
+      // Existing legacy HTTPS image URLs may remain unchanged, but new uploads must be private media.
+      if(editingId&&form.image_url.startsWith('https://'))delete payload.image_url;
+      await request(editingId?'platform/ads/'+editingId:'platform/ads',{method:editingId?'PATCH':'POST',body:JSON.stringify(payload)});
       setEditingId(null);setForm({...initial,condominium_id:form.condominium_id});
     });
   }
+  const filtered=campaigns.filter(c=>(tenantFilter==='all'||c.condominium_id===tenantFilter)&&(billingFilter==='all'||c.billing_status===billingFilter));
   return <section className="admin-section white-panel" style={{marginTop:24}}>
     <h2>Condovery Ads</h2>
     <p className="muted">Ative a publicidade para substituir “Achadinhos da vizinhança” somente quando existirem anúncios habilitados e dentro do período de publicação.</p>
@@ -70,6 +80,15 @@ export function AdsAdmin({tenants}:{tenants:Tenant[]}){
     </label>
     {error&&<p role="alert" style={{color:'#b91c1c'}}>{error}</p>}
     {message&&<p role="status">{message}</p>}
+    {report&&<div style={{margin:'18px 0',padding:16,border:'1px solid #e4e4e4',borderRadius:14}}>
+      <h3>Resumo comercial</h3>
+      <p>{report.totals.campaigns} campanhas · Contratado: <strong>{brl(report.totals.contracted_cents)}</strong> · Marcado como recebido: <strong>{brl(report.totals.received_cents)}</strong></p>
+      <h4 style={{marginTop:16}}>Por condomínio</h4>
+      {report.condominiums.map(row=><p key={row.condominium_id} style={{margin:'7px 0'}}><strong>{row.condominium_name}</strong> · {row.campaigns} anúncios · {Number(row.impressions)} impressões únicas/dia somadas · {Number(row.clicks)} cliques únicos/dia somados · {brl(row.contracted_cents)} contratado · {brl(row.received_cents)} recebido</p>)}
+      {report.partners.length>0&&<><h4 style={{marginTop:16}}>Por parceiro comercial (informativo)</h4>
+        {report.partners.map(row=><p key={row.commercial_partner} style={{margin:'7px 0'}}><strong>{row.commercial_partner}</strong> · {row.campaigns} anúncios · {brl(row.contracted_cents)} contratado · {brl(row.received_cents)} recebido</p>)}</>}
+      <small className="muted">Valores e pagamentos são preenchidos manualmente; não há cobrança integrada. Métricas deduplicadas por sessão e dia UTC.</small>
+    </div>}
     <h3 style={{marginTop:22}}>{editingId?'Editar anúncio':'Novo anúncio'}</h3>
     <form className="form-stack" onSubmit={submit}>
       <label>Condomínio<select required value={form.condominium_id} onChange={e=>setForm(v=>({...v,condominium_id:e.target.value}))}>
@@ -90,14 +109,36 @@ export function AdsAdmin({tenants}:{tenants:Tenant[]}){
         <label>Início da publicação<input required type="datetime-local" value={form.starts_at} onChange={e=>setForm(v=>({...v,starts_at:e.target.value}))}/></label>
         <label>Expiração<input required type="datetime-local" value={form.expires_at} onChange={e=>setForm(v=>({...v,expires_at:e.target.value}))}/></label>
       </div>
+      <div className="field-grid">
+        <label>Valor contratado (R$)
+          <input type="number" min={0} step="0.01" value={form.contract_amount_cents/100}
+            onChange={e=>setForm(v=>({...v,contract_amount_cents:Math.max(0,Math.round(Number(e.target.value)*100))}))}/>
+        </label>
+        <label>Situação do faturamento<select value={form.billing_status} onChange={e=>setForm(v=>({...v,billing_status:e.target.value as typeof v.billing_status}))}>
+          <option value="pending">Pendente</option><option value="invoiced">Faturado</option><option value="paid">Pago</option>
+        </select></label>
+      </div>
+      <label>Parceiro comercial (opcional)<input maxLength={120} value={form.commercial_partner} placeholder="Revendedor / parceiro de indicação"
+        onChange={e=>setForm(v=>({...v,commercial_partner:e.target.value}))}/></label>
+      <small className="muted">O campo de parceiro é somente referência comercial. Não libera acesso de revendedor.</small>
       <label style={{display:'flex',alignItems:'center',gap:8}}><input type="checkbox" checked={form.enabled} onChange={e=>setForm(v=>({...v,enabled:e.target.checked}))}/> Anúncio habilitado</label>
       <div className="inline-actions"><button className="primary-button" type="submit" disabled={busy||uploading||!form.image_url}>{editingId?'Salvar alterações':'Cadastrar anúncio'}</button>{editingId&&<button type="button" className="outline-button" disabled={busy||uploading} onClick={cancelEditing}>Cancelar edição</button>}</div>
     </form>
     <h3 style={{marginTop:24}}>Campanhas cadastradas</h3>
-    {campaigns.length===0?<p className="muted">Nenhum anúncio cadastrado.</p>:campaigns.map(c=><div key={c.id} className="admin-row">
+    <div className="field-grid" style={{margin:'14px 0'}}>
+      <label>Filtrar condomínio<select value={tenantFilter} onChange={e=>setTenantFilter(e.target.value)}>
+        <option value="all">Todos</option>{tenants.map(t=><option key={t.id} value={t.id}>{t.name}</option>)}
+      </select></label>
+      <label>Filtrar faturamento<select value={billingFilter} onChange={e=>setBillingFilter(e.target.value)}>
+        <option value="all">Todos</option><option value="pending">Pendente</option>
+        <option value="invoiced">Faturado</option><option value="paid">Pago</option>
+      </select></label>
+    </div>
+    {filtered.length===0?<p className="muted">Nenhum anúncio encontrado.</p>:filtered.map(c=><div key={c.id} className="admin-row">
       <div><strong>{c.merchant_name} — {c.headline}</strong>
         <p>{tenants.find(t=>t.id===c.condominium_id)?.name||'Condomínio'} · {dateLabel(c.starts_at)} até {dateLabel(c.expires_at)}</p>
-        <small>{c.enabled?'Habilitado':'Pausado'} · {new Date(c.expires_at)<=new Date()?'Expirado':new Date(c.starts_at)>new Date()?'Agendado':'Período vigente'}</small>
+        <small>{c.enabled?'Habilitado':'Pausado'} · {new Date(c.expires_at)<=new Date()?'Expirado':new Date(c.starts_at)>new Date()?'Agendado':'Período vigente'} · {c.billing_status==='paid'?'Pago':c.billing_status==='invoiced'?'Faturado':'Pagamento pendente'}</small>
+        <p>Contrato: {brl(c.contract_amount_cents)} · Impressões únicas/dia somadas: {c.impressions} · Cliques únicos/dia somados: {c.clicks} · CTR aproximado: {c.impressions?(100*c.clicks/c.impressions).toFixed(1):'0,0'}%</p>
       </div>
       <div className="inline-actions">
         <button disabled={busy} type="button" onClick={()=>editCampaign(c)}>Editar</button>
