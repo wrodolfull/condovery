@@ -71,7 +71,7 @@ export async function handleCommunityFairs(req:NextRequest,method:string,path:st
     const existing=await query('SELECT * FROM community_fairs WHERE id=$1 AND condominium_id=$2',[parts[2],u.condominium_id]);
     if(!existing.rowCount)bad('Feira não encontrada.',404);
     const next={...existing.rows[0],...payload};
-    const start=new Date(next.starts_at).toISOString(),end=new Date(next.ends_at).toISOString();
+    const start=new Date(String(next.starts_at)).toISOString(),end=new Date(String(next.ends_at)).toISOString();
     validatePeriod(start,end);
     await verifyCover(next.cover_image_url??'',u.condominium_id);
     const update=await query(
@@ -146,5 +146,5 @@ export async function handleCommunityFairs(req:NextRequest,method:string,path:st
       [parts[1],u.condominium_id]);
     return respond({fair:fair.rows[0],products:products.rows});
   }
-  bad('Rota não encontrada.',404);
+  return bad('Rota não encontrada.',404);
 }
