@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import {IllustrationSlot} from '@/components/IllustrationSlot';
 import {AdsCarousel,type AdCampaign} from '@/components/AdsCarousel';
 import {AdsAdmin} from '@/components/AdsAdmin';
+import {AdminDirectory} from '@/components/AdminDirectory';
 import {Giveaways} from '@/components/Giveaways';
 import {RoundedStars} from '@/components/RoundedStars';
 import {ImageCropper,type ImageKind} from '@/components/ImageCropper';
@@ -60,7 +61,7 @@ function MoneyInput({cents,onValue}:{cents:number;onValue:(value:number)=>void})
     }} onBlur={()=>setFocused(false)}/>;
 }
 type HomeData={categories:Category[];shops:Shop[];products:Product[]};
-type AdminData={towers:string[];residents:{id:string;name:string;email:string;tower:string;apartment:string;status:string}[];shops:{id:string;name:string;owner_name:string;status:string}[];stats:{residents:number;shops:number;orders:number};categories:Category[]};
+type AdminData={towers:string[];stats:{residents:number;shops:number;orders:number};categories:Category[]};
 type View='ads-admin'|'home'|'categories'|'favorites'|'orders'|'account'|'shop'|'product'|'cart'|'success'|'seller'|'admin'|'platform'|'giveaways';
 type Tenant={id:string;name:string;slug:string;subdomain:string;custom_domain:string|null;is_active:boolean;residents:number;shops:number};
 const money=(n:number)=>new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(n/100);
@@ -832,9 +833,6 @@ export default function Page(){
       await loadAdmin();
       notify(r.message);
     }catch(e){fail(e);}finally{setBusy(false);}
-  }
-  async function adminAction(target:'users'|'shops',id:string,status:string){
-    setBusy(true);try{await api('admin/'+target+'/'+id,{method:'PATCH',body:payload({status})});await loadAdmin();await loadHome();notify('Cadastro atualizado.');}catch(e){fail(e);}finally{setBusy(false);}
   }
   async function toggleOptionalCategory(category:Category){
     setBusy(true);setError('');
@@ -1621,9 +1619,10 @@ export default function Page(){
       </>}
       {view==='admin'&&viewer.role==='admin'&&<><button className="back-link" onClick={()=>go('account')}><ArrowLeft size={18}/> Minha conta</button><div className="page-title"><h1>Administração do condomínio</h1><p>Gerencie moradores, lojas e categorias da sua comunidade.</p></div>
         {adminData?<><div className="admin-stats"><div><strong>{adminData.stats.residents}</strong><span>Moradores ativos</span></div><div><strong>{adminData.stats.shops}</strong><span>Lojas ativas</span></div><div><strong>{adminData.stats.orders}</strong><span>Pedidos criados</span></div></div>
-        <section className="admin-section"><SectionHeader title="Moradores cadastrados"/>
-          {adminData.residents.length?adminData.residents.map(r=><div className="admin-row" key={r.id}><div><strong>{r.name}</strong><p>{r.email} · {r.tower} / {r.apartment}</p><Pill tone={r.status==='approved'?'green':'orange'}>{statusLabel[r.status]}</Pill></div><div className="inline-actions">{r.status==='suspended'&&<button disabled={busy} onClick={()=>adminAction('users',r.id,'approved')}>Reativar</button>}{r.status!=='suspended'&&<button disabled={busy} className="danger-text" onClick={()=>adminAction('users',r.id,'suspended')}>Suspender</button>}</div></div>):<p className="muted">Nenhum morador cadastrado ainda.</p>}</section>
-        <section className="admin-section"><SectionHeader title="Lojas"/>{adminData.shops.length?adminData.shops.map(s=><div className="admin-row" key={s.id}><div><strong>{s.name}</strong><p>Responsável: {s.owner_name}</p><Pill tone={s.status==='approved'?'green':'orange'}>{statusLabel[s.status]}</Pill></div><div className="inline-actions">{s.status==='suspended'&&<button disabled={busy} onClick={()=>adminAction('shops',s.id,'approved')}>Reativar</button>}{s.status!=='suspended'&&<button disabled={busy} className="danger-text" onClick={()=>adminAction('shops',s.id,'suspended')}>Suspender</button>}</div></div>):<p className="muted">Nenhuma loja cadastrada.</p>}</section>
+        <AdminDirectory kind="users" condominiumId={viewer.condominium_id} towers={adminData.towers}
+          onChanged={()=>{void loadAdmin().catch(fail);void loadHome().catch(fail);}}/>
+        <AdminDirectory kind="shops" condominiumId={viewer.condominium_id} towers={adminData.towers}
+          onChanged={()=>{void loadAdmin().catch(fail);void loadHome().catch(fail);}}/>
         <section className="admin-section white-panel">
           <h2><LayoutGrid size={20}/> Torres do condomínio</h2>
           <p className="muted">Defina como os moradores identificam as torres. Letras: A até AD. Números: 1 até 30. A alteração por posição mantém os moradores em sua torre correspondente.</p>
