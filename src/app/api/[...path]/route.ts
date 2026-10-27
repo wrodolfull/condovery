@@ -442,7 +442,7 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
     if(!existing.rowCount)bad('Anúncio não encontrado.',404);
     const current=existing.rows[0];
     const next={...current,...b};
-    if(new Date(next.expires_at)<=new Date(next.starts_at))bad('A expiração deve ser posterior ao início.');
+    if(!next.starts_at||!next.expires_at||new Date(next.expires_at)<=new Date(next.starts_at))bad('A expiração deve ser posterior ao início.');
     const target=await query('SELECT 1 FROM condominiums WHERE id=$1 AND is_active=true',[next.condominium_id]);
     if(!target.rowCount)bad('Condomínio inválido.');
     const result=await query(
