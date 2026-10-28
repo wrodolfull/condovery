@@ -1746,6 +1746,10 @@ export default function Page(){
               <option value="cake-slice">Bolos</option><option value="sandwich">Alimentos</option>
               <option value="coffee">Bebidas</option><option value="pizza">Lanches</option>
               <option value="ice-cream-cone">Sobremesas</option><option value="shopping-basket">Mercadinho</option>
+              <option value="sparkles">Beleza</option><option value="heart-pulse">Saúde</option>
+              <option value="house">Casa</option><option value="smartphone">Eletrônicos</option>
+              <option value="gift">Presentes</option><option value="shopping-bag">Outros</option>
+              <option value="wrench">Serviços</option><option value="shirt">Moda</option>
             </select>
             <button className="outline-button" disabled={busy} type="submit"><Plus size={16}/>Adicionar</button>
           </form>
