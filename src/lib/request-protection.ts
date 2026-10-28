@@ -26,7 +26,9 @@ export function protectMutation(req:NextRequest,method:string){
   const result=requestOriginPolicy({
     method,origin:req.headers.get('origin'),
     fetchSite:req.headers.get('sec-fetch-site'),
-    requestHost:req.nextUrl.host,
+    // Next.js may normalize req.nextUrl.host to an internal proxy hostname.
+    // The HTTP Host header preserves the public host that the browser used.
+    requestHost:req.headers.get('host')?.trim()||req.nextUrl.host,
     production:process.env.NODE_ENV==='production'
   });
   if(result==='reject')bad('Origem da solicitação não permitida.',403);
