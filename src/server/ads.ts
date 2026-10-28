@@ -1,4 +1,6 @@
-import {createHash} from 'node:crypto';
+import {createHash,randomBytes} from 'node:crypto';
+import {advertiserReport,reportRange} from '@/server/advertiser-report';
+import {buildAdvertiserPdf} from '@/server/advertiser-report-pdf';
 import {NextRequest,NextResponse} from 'next/server';
 import {z} from 'zod';
 import {query,transaction} from '@/lib/db';
@@ -75,6 +77,53 @@ export async function handleAdsApi({req,method,path,parts,u}:Args):Promise<NextR
   }
   if(!path.startsWith('platform/ads'))return null;
   superadmin(u);
+  if(parts[0]==='platform'&&parts[1]==='ads'&&idPattern.test(parts[2]||'')&&parts[3]==='report'){
+    const campaignId=parts[2];
+    if(parts.length===4&&method==='GET'){
+      return respond(await advertiserReport(campaignId,reportRange(req.nextUrl.searchParams.get('range'))));
+    }
+    if(parts.length===5&&parts[4]==='pdf'&&method==='GET'){
+      const report=await advertiserReport(campaignId,reportRange(req.nextUrl.searchParams.get('range')));
+      const bytes=new Uint8Array(buildAdvertiserPdf(report));
+      return new NextResponse(bytes,{headers:{
+        'Content-Type':'application/pdf',
+        'Content-Disposition':'attachment; filename="condovery-ads-'+campaignId.slice(0,8)+'.pdf"',
+        'Cache-Control':'private, no-store',
+        'X-Content-Type-Options':'nosniff'
+      }});
+    }
+    if(parts.length===5&&parts[4]==='shares'&&method==='GET'){
+      const found=await query('SELECT id FROM advertising_campaigns WHERE id=$1',[campaignId]);
+      if(!found.rowCount)bad('Campanha não encontrada.',404);
+      const links=await query(
+        'SELECT id,created_at,expires_at,revoked_at FROM ad_report_shares WHERE campaign_id=$1 ORDER BY created_at DESC LIMIT 30',
+        [campaignId]);
+      return respond({shares:links.rows});
+    }
+    if(parts.length===5&&parts[4]==='shares'&&method==='POST'){
+      const input=z.object({days:z.union([z.literal(7),z.literal(30),z.literal(90)])}).strict().parse(await read(req));
+      const found=await query('SELECT id FROM advertising_campaigns WHERE id=$1',[campaignId]);
+      if(!found.rowCount)bad('Campanha não encontrada.',404);
+      const active=await query<{count:number}>(
+        'SELECT count(*)::int AS count FROM ad_report_shares WHERE campaign_id=$1 AND expires_at>now() AND revoked_at IS NULL',
+        [campaignId]);
+      if(active.rows[0]?.count>=5)bad('Revogue um link ativo antes de criar outro.',409);
+      const token=randomBytes(32).toString('hex');
+      const digest=createHash('sha256').update(token).digest('hex');
+      const share=await query(
+        "INSERT INTO ad_report_shares(campaign_id,token_hash,expires_at) VALUES($1,$2,now()+($3::int*interval '1 day')) RETURNING id,expires_at",
+        [campaignId,digest,input.days]);
+      return respond({id:share.rows[0].id,token,expires_at:share.rows[0].expires_at},201);
+    }
+    if(parts.length===6&&parts[4]==='shares'&&idPattern.test(parts[5])&&method==='DELETE'){
+      const share=await query(
+        'UPDATE ad_report_shares SET revoked_at=now() WHERE id=$1 AND campaign_id=$2 AND revoked_at IS NULL RETURNING id',
+        [parts[5],campaignId]);
+      if(!share.rowCount)bad('Link não encontrado ou já revogado.',404);
+      return respond({ok:true});
+    }
+    bad('Rota não encontrada.',404);
+  }
   if(path==='platform/ads'&&method==='GET'){
     const page=Math.min(10000,Math.max(0,Number(req.nextUrl.searchParams.get('page')||0)));
     if(!Number.isInteger(page))bad('Página inválida.');
