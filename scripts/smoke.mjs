@@ -194,6 +194,11 @@ const fairPayload={
 await request('fairs/manage',{method:'POST',cookie:sellerCookie,body:fairPayload,expected:403});
 const createdFair=(await request('fairs/manage',{method:'POST',cookie:adminCookie,body:fairPayload,expected:201})).data;
 const fairId=createdFair.id;
+// Superadmin must not see or mutate fairs outside the selected condominium.
+await request('platform/condominiums/switch',{method:'POST',cookie:adminCookie,body:{condominium_id:newTenant.id}});
+assert.ok(!(await request('fairs/manage',{cookie:adminCookie})).data.fairs.some(f=>f.id===fairId));
+await request('fairs/manage/'+fairId,{method:'PATCH',cookie:adminCookie,body:{published:false},expected:404});
+await request('platform/condominiums/switch',{method:'POST',cookie:adminCookie,body:{condominium_id:originalTenant}});
 assert.ok((await request('fairs',{cookie:buyerCookie})).data.fairs.some(f=>f.id===fairId));
 const sellerFairs=(await request('fairs/seller',{cookie:sellerCookie})).data;
 assert.ok(sellerFairs.fairs.some(f=>f.id===fairId));
