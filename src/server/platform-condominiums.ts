@@ -67,7 +67,7 @@ export async function handlePlatformCondominiums(req:NextRequest,method:string,p
         await tx.query("INSERT INTO categories(condominium_id,name,icon,sort_order) VALUES($1,$2,$3,$4)",
           [result.rows[0].id,defaultCategories[i][0],defaultCategories[i][1],i]);
       }
-      for(const [name,icon,order] of [['Serviços','wrench',70],['Moda','shirt',71],['Desapego','gift',72]] as const){
+      for(const [name,icon,order] of [['Beleza','sparkles',60],['Saúde e bem-estar','heart-pulse',61],['Casa e decoração','house',62],['Eletrônicos','smartphone',63],['Presentes','gift',64],['Outros','shopping-bag',65],['Serviços','wrench',70],['Moda','shirt',71],['Desapego','gift',72]] as const){
         await tx.query('INSERT INTO categories(condominium_id,name,icon,sort_order,is_active) VALUES($1,$2,$3,$4,false) ON CONFLICT(condominium_id,name) DO NOTHING',
           [result.rows[0].id,name,icon,order]);
       }
