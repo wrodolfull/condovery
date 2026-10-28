@@ -23,6 +23,6 @@ test('indicates progress without revealing password text',()=>{
   const valid=passwordStatus('A1!aaaaa');
   assert.equal(valid.valid,true);
   assert.deepEqual(valid.requirements.map(x=>x.met),[true,true,true,true]);
-  const strong=passwordStatus('Abcdefghi123!@#');
+  const strong=passwordStatus('Abcdefghij1234!@#');
   assert.equal(strong.strength,4);
 });
