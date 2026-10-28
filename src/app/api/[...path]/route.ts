@@ -198,7 +198,7 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
     const pending=req.cookies.get('condovery_google_signup')?.value;
     if(!pending)bad('Inicie o cadastro pelo Google.',401);
     const b=googleRegister.parse(await body(req));
-    await limitAuthentication(req,'registration',pending);
+    await limitAuthentication(req,'registration',pending!);
     const result=await transaction(async tx=>{
       const waiting=await tx.query(
         'DELETE FROM google_signup_pending WHERE token_hash=$1 AND expires_at>now() RETURNING *',
