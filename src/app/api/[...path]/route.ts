@@ -1148,15 +1148,23 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
   }
   if(path==='admin/reports'&&method==='GET'){
     admin(u);
-    const items=await query(
-      "SELECT r.id,r.target_type,r.target_id,r.reason,r.details,r.status,r.created_at, "+
-      "COALESCE(s.name,p.name) AS target_name,COALESCE(p.moderation_blocked,false) AS product_blocked FROM content_reports r "+
-      "LEFT JOIN shops s ON r.target_type='shop' AND s.id=r.target_id AND s.condominium_id=r.condominium_id "+
-      "LEFT JOIN products p ON r.target_type='product' AND p.id=r.target_id AND p.condominium_id=r.condominium_id "+
-      "WHERE r.condominium_id=$1 ORDER BY CASE WHEN r.status='open' THEN 0 ELSE 1 END,r.created_at DESC LIMIT 150",
-      [u.condominium_id]
-    );
-    return out({reports:items.rows});
+    const page=Number(req.nextUrl.searchParams.get('page')||0);
+    if(!Number.isInteger(page)||page<0||page>10000)bad('Página inválida.');
+    const status=req.nextUrl.searchParams.get('status')||'all';
+    if(!['all','open','resolved'].includes(status))bad('Situação inválida.');
+    const where=" WHERE r.condominium_id=$1 AND ($2='all' OR r.status=$2)";
+    const [count,items]=await Promise.all([
+      query<{total:number}>('SELECT count(*)::int AS total FROM content_reports r'+where,[u.condominium_id,status]),
+      query(
+        "SELECT r.id,r.target_type,r.target_id,r.reason,r.details,r.status,r.created_at, "+
+        "COALESCE(s.name,p.name) AS target_name,COALESCE(p.moderation_blocked,false) AS product_blocked FROM content_reports r "+
+        "LEFT JOIN shops s ON r.target_type='shop' AND s.id=r.target_id AND s.condominium_id=r.condominium_id "+
+        "LEFT JOIN products p ON r.target_type='product' AND p.id=r.target_id AND p.condominium_id=r.condominium_id "+
+        where+" ORDER BY CASE WHEN r.status='open' THEN 0 ELSE 1 END,r.created_at DESC,r.id DESC LIMIT 20 OFFSET $3",
+        [u.condominium_id,status,page*20])
+    ]);
+    const total=count.rows[0]?.total??0;
+    return out({reports:items.rows,page,total,totalPages:Math.max(1,Math.ceil(total/20))});
   }
   if(parts[0]==='admin'&&parts[1]==='products'&&parts[2]&&parts[3]==='unblock'&&method==='PATCH'){
     admin(u);
