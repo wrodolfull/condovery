@@ -31,8 +31,12 @@ function address(req:NextRequest){
 }
 export async function limitAuthentication(req:NextRequest,action:Action,identifier:string){
   const key=secret(),config=configs[action];
-  const accountHash=rateFingerprint(key,action,'id',identifier.trim().toLowerCase());
-  const ipHash=rateFingerprint(key,action,'ip',address(req));
+  const ip=address(req);
+  // Invitation codes and OAuth entry are shared resources, not user accounts.
+  // Never lock out an entire condominium because many neighbors sign up.
+  const subject=action==='invitation'||action==='oauth'?identifier+':'+ip:identifier.trim().toLowerCase();
+  const accountHash=rateFingerprint(key,action,'id',subject);
+  const ipHash=rateFingerprint(key,action,'ip',ip);
   const targets=[accountHash,ipHash].sort();
   // Serialize requests for both fingerprints so parallel guesses cannot
   // bypass count-then-insert, even on multiple Next.js instances.
