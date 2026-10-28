@@ -44,6 +44,18 @@ try{
   for(const width of widths) {
     const context=await browser.newContext({viewport:{width,height:820},deviceScaleFactor:1});
     const page=await context.newPage();
+    // Privacy and terms are public, accessible before login and on narrow screens.
+    await page.goto(origin+'/conheca',{waitUntil:'domcontentloaded'});
+    await page.locator('.lp-footer-links a[href="/politica-de-privacidade"]').waitFor({state:'visible'});
+    await page.locator('.lp-footer-links a[href="/termos-de-uso"]').waitFor({state:'visible'});
+    await verify(page,'landing-legal-links',width);
+    for(const [slug,title] of [['politica-de-privacidade','Política de Privacidade'],['termos-de-uso','Termos de Uso']]){
+      const response=await page.goto(origin+'/'+slug,{waitUntil:'domcontentloaded'});
+      if(response?.status()!==200)throw new Error('Legal page '+slug+' HTTP '+response?.status());
+      await page.getByRole('heading',{name:title,exact:true,level:1}).waitFor({state:'visible'});
+      if(await page.locator('article section').count()<8)throw new Error('Incomplete legal content: '+slug);
+      await verify(page,'legal-'+slug,width);
+    }
     await page.goto(origin,{waitUntil:'domcontentloaded'});
     await page.locator('.auth-card').waitFor({state:'visible'});
     await verify(page,'login',width);
@@ -91,6 +103,8 @@ try{
     await verify(page,'orders-filtered',width);
     await nav('Conta').click();
     await page.locator('.account-grid').waitFor({state:'visible'});
+    await page.locator('.account-legal-links a[href="/politica-de-privacidade"]').waitFor({state:'visible'});
+    await page.locator('.account-legal-links a[href="/termos-de-uso"]').waitFor({state:'visible'});
     await verify(page,'account',width);
     await nav('Início').click();
     await page.locator('.hero-banner').waitFor({state:'visible'});
