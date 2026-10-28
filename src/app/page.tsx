@@ -1645,7 +1645,7 @@ export default function Page(){
         </>}
       </>}
 
-      {view==='fairs'&&<><button className="back-link" onClick={()=>go('home')}><ArrowLeft size={18}/> Início</button><FairMarketplace condominiumId={viewer.condominium_id} onOpenProduct={p=>openProduct(p)}/></>}
+      {view==='fairs'&&<><button className="back-link" onClick={()=>go('home')}><ArrowLeft size={18}/> Início</button><FairMarketplace condominiumId={viewer.condominium_id} renderProduct={p=><ProductCard p={p} onClick={()=>openProduct(p)} favorite={favoriteIds.includes(p.id)} onFavorite={toggleFavorite}/>}/></>}
       {view==='giveaways'&&<><button className="back-link" onClick={()=>go('home')}><ArrowLeft size={18}/> Início</button><Giveaways viewerId={viewer.id}/></>}
       {view==='ads-admin'&&viewer.is_superadmin&&<>
         <button className="back-link" onClick={()=>go('account')}><ArrowLeft size={18}/> Minha conta</button>
