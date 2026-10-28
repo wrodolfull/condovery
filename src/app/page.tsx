@@ -245,6 +245,11 @@ export default function Page(){
   const [myProducts,setMyProducts]=useState<Product[]>([]);
   const [adminTab,setAdminTab]=useState<'overview'|'residents'|'shops'|'fairs'|'categories'|'settings'|'reports'>('overview');
   const [platformTab,setPlatformTab]=useState<'condominiums'|'administrators'>('condominiums');
+  const [tenantPage,setTenantPage]=useState(0);
+  const [tenantSearch,setTenantSearch]=useState('');
+  const [tenantList,setTenantList]=useState<Tenant[]>([]);
+  const [tenantTotalPages,setTenantTotalPages]=useState(1);
+  const [tenantTotal,setTenantTotal]=useState(0);
   const [adminData,setAdminData]=useState<AdminData|null>(null);
   const [tenants,setTenants]=useState<Tenant[]>([]);
   const [tenantMenuOpen,setTenantMenuOpen]=useState(false);
@@ -261,6 +266,11 @@ export default function Page(){
   const [customCode,setCustomCode]=useState('');
   const [acceptedGuidelines,setAcceptedGuidelines]=useState(false);
   const [reports,setReports]=useState<ContentReport[]>([]);
+  const [reportPage,setReportPage]=useState(0);
+  const [reportStatus,setReportStatus]=useState('open');
+  const [reportPages,setReportPages]=useState(1);
+  const [reportTotal,setReportTotal]=useState(0);
+  const [reportRevision,setReportRevision]=useState(0);
   const [reportTarget,setReportTarget]=useState<{type:'shop'|'product';id:string;name:string}|null>(null);
   const [reportReason,setReportReason]=useState<'language'|'image'|'inappropriate'|'other'>('image');
   const [reportDetails,setReportDetails]=useState('');
@@ -312,18 +322,34 @@ export default function Page(){
     setSellerReviews(result.reviews);
   },[]);
   const loadAdmin=useCallback(async()=>{
-    const [summary,queue]=await Promise.all([
-      api<AdminData>('admin/summary'),api<{reports:ContentReport[]}>('admin/reports')
-    ]);
-    setAdminData(summary);setReports(queue.reports);
+    const summary=await api<AdminData>('admin/summary');
+    setAdminData(summary);
     const scheme=currentTowerScheme(summary.towers??[]);
     if(scheme)setTowerScheme(scheme);
     setTowerCount(summary.towers?.length||30);
   },[]);
+  useEffect(()=>{
+    if(view!=='admin'||adminTab!=='reports'||viewer?.role!=='admin')return;
+    let active=true;
+    api<{reports:ContentReport[];total:number;totalPages:number}>('admin/reports?page='+reportPage+'&status='+reportStatus)
+      .then(data=>{if(active){setReports(data.reports);setReportTotal(data.total);setReportPages(data.totalPages);}})
+      .catch(fail);
+    return()=>{active=false;};
+  },[view,adminTab,viewer?.role,viewer?.condominium_id,reportPage,reportStatus,reportRevision]);
   const loadTenants=useCallback(async()=>{
-    const result=await api<{condominiums:Tenant[]}>('platform/condominiums');
+    const result=await api<{condominiums:Tenant[]}>('platform/condominiums?mode=options');
     setTenants(result.condominiums);
   },[]);
+  useEffect(()=>{
+    if(view!=='platform'||platformTab!=='condominiums'||!viewer?.is_superadmin)return;
+    let active=true;
+    const timer=setTimeout(()=>{
+      api<{condominiums:Tenant[];totalPages:number;total:number}>('platform/condominiums?page='+tenantPage+'&search='+encodeURIComponent(tenantSearch))
+        .then(data=>{if(active){setTenantList(data.condominiums);setTenantTotalPages(data.totalPages);setTenantTotal(data.total);}})
+        .catch(fail);
+    },250);
+    return()=>{active=false;clearTimeout(timer);};
+  },[view,platformTab,viewer?.is_superadmin,tenantPage,tenantSearch]);
   async function createTenant(e:React.FormEvent){
     e.preventDefault();setBusy(true);setError('');
     try{
@@ -884,7 +910,7 @@ export default function Page(){
     setBusy(true);
     try{
       await api('admin/reports/'+id,{method:'PATCH',body:payload({action})});
-      await Promise.all([loadAdmin(),loadHome()]);notify('Denúncia analisada.');
+      await Promise.all([loadAdmin(),loadHome()]);setReportRevision(v=>v+1);notify('Denúncia analisada.');
     }catch(e){fail(e);}finally{setBusy(false);}
   }
   async function saveProfile(e:React.FormEvent){
@@ -1626,6 +1652,12 @@ export default function Page(){
             <button className="primary-button" disabled={busy} type="submit">Criar condomínio</button>
           </form>
         </section>}
+        {platformTab==='condominiums'&&<section className="admin-section white-panel"><h2>Condomínios cadastrados</h2>
+          <label>Buscar condomínio<input value={tenantSearch} onChange={e=>{setTenantSearch(e.target.value);setTenantPage(0);}} placeholder="Nome ou identificador" maxLength={100}/></label>
+          <p className="muted">{tenantTotal} condomínios · página {tenantPage+1} de {tenantTotalPages}</p>
+          {tenantList.map(t=><div key={t.id} className="admin-row"><strong>{t.name}</strong></div>)}
+          {tenantTotalPages>1&&<div className="inline-actions"><button type="button" className="outline-button" disabled={tenantPage===0} onClick={()=>setTenantPage(v=>v-1)}>Anterior</button><span>{tenantPage+1} / {tenantTotalPages}</span><button type="button" className="outline-button" disabled={tenantPage>=tenantTotalPages-1} onClick={()=>setTenantPage(v=>v+1)}>Próxima</button></div>}
+        </section>}
         {platformTab==='administrators'&&<section className="admin-section white-panel"><h2>Criar administrador local</h2>
           <form className="form-stack" onSubmit={provisionTenantAdmin}>
             <label>Condomínio<select required value={tenantAdmin.condominium_id}
@@ -1687,11 +1719,12 @@ export default function Page(){
           <form className="admin-category-form" onSubmit={createCategory}><input required minLength={2} maxLength={60} value={newCategory} onChange={e=>setNewCategory(e.target.value)} placeholder="Nova categoria de alimentação"/><select value={categoryIcon} onChange={e=>setCategoryIcon(e.target.value)} aria-label="Ícone"><option value="cake-slice">Bolos</option><option value="sandwich">Alimentos</option><option value="coffee">Bebidas</option><option value="pizza">Lanches</option><option value="ice-cream-cone">Sobremesas</option><option value="shopping-basket">Mercadinho</option></select><button className="outline-button" disabled={busy} type="submit"><Plus size={16}/>Adicionar</button></form></section>}
                 {adminTab==='reports'&&<section className="admin-section white-panel">
           <h2><ShieldCheck size={20}/> Denúncias de conteúdo
-            {reports.filter(r=>r.status==='open').length>0&&<span className="review-pending-counter">
-              {reports.filter(r=>r.status==='open').length}</span>}</h2>
-          {reports.filter(r=>r.status==='open').length===0?<p className="muted">Nenhuma denúncia pendente.</p>:
+            {reportStatus==='open'&&reportTotal>0&&<span className="review-pending-counter">{reportTotal}</span>}</h2>
+          <label>Situação<select value={reportStatus} onChange={e=>{setReportStatus(e.target.value);setReportPage(0);}}><option value="open">Pendentes</option><option value="resolved">Resolvidas</option><option value="all">Todas</option></select></label>
+          <p className="muted">{reportTotal} denúncias · página {reportPage+1} de {reportPages}</p>
+          {reports.length===0?<p className="muted">Nenhuma denúncia encontrada.</p>:
             <div className="content-report-list">
-              {reports.filter(r=>r.status==='open').map(r=><article className="content-report" key={r.id}>
+              {reports.map(r=><article className="content-report" key={r.id}>
                 <strong>{r.target_type==='shop'?'Loja':'Produto'}: {r.target_name??'Indisponível'}</strong>
                 <small>{r.reason==='image'?'Imagem imprópria':r.reason==='language'?'Linguagem ofensiva':r.reason==='inappropriate'?'Conteúdo inadequado':'Outro motivo'}</small>
                 {r.details&&<p>{r.details}</p>}
@@ -1702,6 +1735,7 @@ export default function Page(){
                 </div>
               </article>)}
             </div>}
+          {reportPages>1&&<div className="inline-actions"><button type="button" className="outline-button" disabled={reportPage===0} onClick={()=>setReportPage(p=>p-1)}>Anterior</button><span>{reportPage+1} / {reportPages}</span><button type="button" className="outline-button" disabled={reportPage>=reportPages-1} onClick={()=>setReportPage(p=>p+1)}>Próxima</button></div>}
           {reports.some(r=>r.status==='resolved'&&r.target_type==='product'&&r.product_blocked)&&
             <div className="blocked-products">
               <h3>Produtos bloqueados</h3>

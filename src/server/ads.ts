@@ -76,11 +76,30 @@ export async function handleAdsApi({req,method,path,parts,u}:Args):Promise<NextR
   if(!path.startsWith('platform/ads'))return null;
   superadmin(u);
   if(path==='platform/ads'&&method==='GET'){
-    const [settings,campaigns]=await Promise.all([
+    const page=Math.min(10000,Math.max(0,Number(req.nextUrl.searchParams.get('page')||0)));
+    if(!Number.isInteger(page))bad('Página inválida.');
+    const condominium=req.nextUrl.searchParams.get('condominium')||'all';
+    if(condominium!=='all'&&!idPattern.test(condominium))bad('Condomínio inválido.');
+    const billing=req.nextUrl.searchParams.get('billing')||'all';
+    if(!['all','pending','invoiced','paid'].includes(billing))bad('Filtro inválido.');
+    const status=req.nextUrl.searchParams.get('status')||'all';
+    if(!['all','active','paused','scheduled','expired'].includes(status))bad('Filtro inválido.');
+    const where=" WHERE ($1='all' OR a.condominium_id=$1::uuid) AND ($2='all' OR a.billing_status=$2) "+
+      "AND ($3='all' OR ($3='active' AND a.enabled AND a.starts_at<=now() AND a.expires_at>now()) "+
+      "OR ($3='paused' AND NOT a.enabled) OR ($3='scheduled' AND a.enabled AND a.starts_at>now()) "+
+      "OR ($3='expired' AND a.expires_at<=now()))";
+    const args=[condominium,billing,status];
+    // Avoid casting the sentinel 'all' to uuid, which fails in PostgreSQL.
+    const safeWhere=where.replace("a.condominium_id=$1::uuid","a.condominium_id=NULLIF($1,'all')::uuid");
+    const [settings,count,campaigns]=await Promise.all([
       query('SELECT enabled FROM ads_settings WHERE id=true'),
-      query("SELECT a.*, COALESCE((SELECT sum(m.impressions) FROM ad_metric_daily m WHERE m.campaign_id=a.id),0)::int AS impressions, COALESCE((SELECT sum(m.clicks) FROM ad_metric_daily m WHERE m.campaign_id=a.id),0)::int AS clicks FROM advertising_campaigns a ORDER BY a.created_at DESC LIMIT 300")
+      query<{total:number}>('SELECT count(*)::int AS total FROM advertising_campaigns a'+safeWhere,args),
+      query("SELECT a.*,COALESCE(m.impressions,0)::int AS impressions,COALESCE(m.clicks,0)::int AS clicks "+
+        "FROM advertising_campaigns a LEFT JOIN LATERAL (SELECT sum(impressions) AS impressions,sum(clicks) AS clicks FROM ad_metric_daily WHERE campaign_id=a.id) m ON true"+
+        safeWhere+" ORDER BY a.created_at DESC,a.id DESC LIMIT 20 OFFSET $4",[...args,page*20])
     ]);
-    return respond({enabled:settings.rows[0]?.enabled??false,campaigns:campaigns.rows});
+    const total=count.rows[0]?.total??0;
+    return respond({enabled:settings.rows[0]?.enabled??false,campaigns:campaigns.rows,page,total,totalPages:Math.max(1,Math.ceil(total/20))});
   }
   if(path==='platform/ads/reports'&&method==='GET'){
     const [condominiums,partners,totals]=await Promise.all([
