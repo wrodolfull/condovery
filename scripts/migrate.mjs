@@ -67,6 +67,8 @@ try {
   await client.query(authHardening);
   const adminPagination=await readFile(new URL('../db/035_admin_pagination_indexes.sql',import.meta.url),'utf8');
   await client.query(adminPagination);
+  const advertiserReports=await readFile(new URL('../db/036_advertiser_report_shares.sql',import.meta.url),'utf8');
+  await client.query(advertiserReports);
   console.log('Condovery database schema applied successfully.');
 } finally {
   await client.end();
