@@ -16,6 +16,7 @@ async function request(path:string,init?:RequestInit){
 const localDateTime=(value:string)=>{const d=new Date(value);const n=new Date(d.getTime()-d.getTimezoneOffset()*60000);return n.toISOString().slice(0,16);};
 const dateLabel=(value:string)=>new Date(value).toLocaleString('pt-BR',{dateStyle:'short',timeStyle:'short'});
 export function AdsAdmin({tenants}:{tenants:Tenant[]}){
+  const [tab,setTab]=useState<'campaigns'|'new'|'reports'>('campaigns');
   const [enabled,setEnabled]=useState(false);
   const [campaigns,setCampaigns]=useState<Campaign[]>([]);
   const [report,setReport]=useState<AdsReport|null>(null);
@@ -42,6 +43,7 @@ export function AdsAdmin({tenants}:{tenants:Tenant[]}){
   function editCampaign(c:Campaign){
     setEditingId(c.id);setError('');setMessage('');
     setForm({condominium_id:c.condominium_id,merchant_name:c.merchant_name,headline:c.headline,description:c.description,location:c.location,image_url:c.image_url,destination_url:c.destination_url,starts_at:localDateTime(c.starts_at),expires_at:localDateTime(c.expires_at),enabled:c.enabled,contract_amount_cents:c.contract_amount_cents,billing_status:c.billing_status,commercial_partner:c.commercial_partner});
+    setTab('new');
     window.scrollTo({top:0,behavior:'smooth'});
   }
   function cancelEditing(){setEditingId(null);setCropFile(null);setForm(initial);setError('');}
@@ -67,11 +69,11 @@ export function AdsAdmin({tenants}:{tenants:Tenant[]}){
       // Existing legacy HTTPS image URLs may remain unchanged, but new uploads must be private media.
       if(editingId&&form.image_url.startsWith('https://'))delete payload.image_url;
       await request(editingId?'platform/ads/'+editingId:'platform/ads',{method:editingId?'PATCH':'POST',body:JSON.stringify(payload)});
-      setEditingId(null);setForm({...initial,condominium_id:form.condominium_id});
+      setEditingId(null);setForm({...initial,condominium_id:form.condominium_id});setTab('campaigns');
     });
   }
   const filtered=campaigns.filter(c=>(tenantFilter==='all'||c.condominium_id===tenantFilter)&&(billingFilter==='all'||c.billing_status===billingFilter));
-  return <section className="admin-section white-panel" style={{marginTop:24}}>
+  return <section className="admin-section white-panel management-ads">
     <h2>Condovery Ads</h2>
     <p className="muted">Ative a publicidade para substituir “Achadinhos da vizinhança” somente quando existirem anúncios habilitados e dentro do período de publicação.</p>
     <label style={{display:'flex',gap:9,alignItems:'center',margin:'15px 0'}}>
@@ -80,7 +82,8 @@ export function AdsAdmin({tenants}:{tenants:Tenant[]}){
     </label>
     {error&&<p role="alert" style={{color:'#b91c1c'}}>{error}</p>}
     {message&&<p role="status">{message}</p>}
-    {report&&<div style={{margin:'18px 0',padding:16,border:'1px solid #e4e4e4',borderRadius:14}}>
+    <nav className="management-tabs" aria-label="Seções ADS">{([['campaigns','Campanhas'],['new',editingId?'Editar campanha':'Nova campanha'],['reports','Relatórios']] as const).map(([key,label])=><button type="button" key={key} className={tab===key?'selected':''} onClick={()=>setTab(key)}>{label}</button>)}</nav>
+    {tab==='reports'&&report&&<div style={{margin:'12px 0',padding:12,border:'1px solid #e4e4e4',borderRadius:12}}>
       <h3>Resumo comercial</h3>
       <p>{report.totals.campaigns} campanhas · Contratado: <strong>{brl(report.totals.contracted_cents)}</strong> · Marcado como recebido: <strong>{brl(report.totals.received_cents)}</strong></p>
       <h4 style={{marginTop:16}}>Por condomínio</h4>
@@ -89,7 +92,7 @@ export function AdsAdmin({tenants}:{tenants:Tenant[]}){
         {report.partners.map(row=><p key={row.commercial_partner} style={{margin:'7px 0'}}><strong>{row.commercial_partner}</strong> · {row.campaigns} anúncios · {brl(row.contracted_cents)} contratado · {brl(row.received_cents)} recebido</p>)}</>}
       <small className="muted">Valores e pagamentos são preenchidos manualmente; não há cobrança integrada. Métricas deduplicadas por sessão e dia UTC.</small>
     </div>}
-    <h3 style={{marginTop:22}}>{editingId?'Editar anúncio':'Novo anúncio'}</h3>
+    {tab==='new'&&<><h3 style={{marginTop:14}}>{editingId?'Editar anúncio':'Novo anúncio'}</h3>
     <form className="form-stack" onSubmit={submit}>
       <label>Condomínio<select required value={form.condominium_id} onChange={e=>setForm(v=>({...v,condominium_id:e.target.value}))}>
         <option value="">Selecione</option>{tenants.map(t=><option key={t.id} value={t.id}>{t.name}</option>)}
@@ -124,7 +127,8 @@ export function AdsAdmin({tenants}:{tenants:Tenant[]}){
       <label style={{display:'flex',alignItems:'center',gap:8}}><input type="checkbox" checked={form.enabled} onChange={e=>setForm(v=>({...v,enabled:e.target.checked}))}/> Anúncio habilitado</label>
       <div className="inline-actions"><button className="primary-button" type="submit" disabled={busy||uploading||!form.image_url}>{editingId?'Salvar alterações':'Cadastrar anúncio'}</button>{editingId&&<button type="button" className="outline-button" disabled={busy||uploading} onClick={cancelEditing}>Cancelar edição</button>}</div>
     </form>
-    <h3 style={{marginTop:24}}>Campanhas cadastradas</h3>
+    </>}
+    {tab==='campaigns'&&<><h3 style={{marginTop:14}}>Campanhas cadastradas</h3>
     <div className="field-grid" style={{margin:'14px 0'}}>
       <label>Filtrar condomínio<select value={tenantFilter} onChange={e=>setTenantFilter(e.target.value)}>
         <option value="all">Todos</option>{tenants.map(t=><option key={t.id} value={t.id}>{t.name}</option>)}
@@ -146,6 +150,7 @@ export function AdsAdmin({tenants}:{tenants:Tenant[]}){
         <button className="danger-text" disabled={busy} type="button" onClick={()=>{if(window.confirm('Excluir este anúncio?'))perform(()=>request('platform/ads/'+c.id,{method:'DELETE'}));}}>Excluir</button>
       </div>
     </div>)}
+    </>}
     {cropFile&&<ImageCropper file={cropFile} kind="ad" onCancel={()=>setCropFile(null)} onApply={file=>{setCropFile(null);void uploadImage(file);}}/>}
   </section>;
 }
