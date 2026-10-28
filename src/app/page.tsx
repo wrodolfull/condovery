@@ -905,7 +905,7 @@ export default function Page(){
       {toast&&<div className="success-banner" role="status">{toast}</div>}
       <form className="form-stack" onSubmit={submitReset}>
         {authMode==='recover'?<label>E-mail<input type="email" required autoComplete="email" value={resetEmail} onChange={e=>setResetEmail(e.target.value)} placeholder="seuemail@exemplo.com"/></label>:
-          <label>Nova senha<input type="password" required minLength={10} maxLength={100} autoComplete="new-password" value={newPassword} onChange={e=>setNewPassword(e.target.value)} placeholder="No mínimo 10 caracteres"/></label>}
+          <label>Nova senha<input type="password" required minLength={15} maxLength={100} autoComplete="new-password" value={newPassword} onChange={e=>setNewPassword(e.target.value)} placeholder="No mínimo 15 caracteres"/></label>}
         <button className="primary-button" disabled={busy} type="submit">{busy?'Enviando...':authMode==='recover'?'Solicitar link':'Salvar nova senha'} <ArrowRight size={18}/></button>
       </form>
       <button className="text-button" onClick={()=>{setAuthMode('login');setError('');}}>Voltar ao login</button>
@@ -936,7 +936,7 @@ export default function Page(){
           <p className="form-hint">Com o código do condomínio, você entra sem aguardar aprovação.</p>
         </>}
         <label>E-mail<input required readOnly={Boolean(googleSignup)} type="email" autoComplete="email" value={authForm.email} onChange={e=>setAuthForm(s=>({...s,email:e.target.value}))} placeholder="seuemail@exemplo.com"/></label>
-        {!googleSignup&&<label>Senha<input required type="password" minLength={authMode==='register'?10:1} autoComplete={authMode==='register'?'new-password':'current-password'} value={authForm.password} onChange={e=>setAuthForm(s=>({...s,password:e.target.value}))} placeholder={authMode==='register'?'Mínimo de 10 caracteres':'Sua senha'}/></label>}
+        {!googleSignup&&<label>Senha<input required type="password" minLength={authMode==='register'?15:1} autoComplete={authMode==='register'?'new-password':'current-password'} value={authForm.password} onChange={e=>setAuthForm(s=>({...s,password:e.target.value}))} placeholder={authMode==='register'?'Mínimo de 15 caracteres':'Sua senha'}/></label>}
         <button className="primary-button" type="submit" disabled={busy}>{busy?'Processando...':authMode==='login'?'Entrar com e-mail':'Criar minha conta'}<ArrowRight size={19}/></button>
       </form>
       {!googleSignup&&googleEnabled&&<>
