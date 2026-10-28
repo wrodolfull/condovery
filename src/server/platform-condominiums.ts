@@ -14,13 +14,19 @@ const out=(value:unknown,status=200)=>NextResponse.json(value,{status,headers:{'
 export async function handlePlatformCondominiums(req:NextRequest,method:string,path:string,u:Viewer):Promise<NextResponse|null>{
   if(path==='platform/condominiums'&&method==='GET'){
     if(!u.is_superadmin)bad('Acesso exclusivo do superadmin.',403);
-    const list=await query(
-      "SELECT c.id,c.name,c.slug,c.subdomain,c.custom_domain,c.is_active,c.created_at,"+
-      " (SELECT count(*)::int FROM users m WHERE m.condominium_id=c.id AND m.role='resident' AND m.status='approved') AS residents,"+
-      " (SELECT count(*)::int FROM shops s WHERE s.condominium_id=c.id AND s.status='approved') AS shops"+
-      " FROM condominiums c ORDER BY c.created_at DESC LIMIT 250"
-    );
-    return out({condominiums:list.rows,active_condominium_id:u.condominium_id});
+    const page=Number(req.nextUrl.searchParams.get('page')||0);
+    if(!Number.isInteger(page)||page<0||page>10000)bad('Página inválida.');
+    const search=(req.nextUrl.searchParams.get('search')||'').trim().slice(0,100);
+    const where=" FROM condominiums c WHERE ($1='' OR strpos(lower(c.name),lower($1))>0 OR strpos(lower(c.slug),lower($1))>0)";
+    const [count,list]=await Promise.all([
+      query<{total:number}>('SELECT count(*)::int AS total'+where,[search]),
+      query("SELECT c.id,c.name,c.slug,c.subdomain,c.custom_domain,c.is_active,c.created_at,"+
+        " (SELECT count(*)::int FROM users m WHERE m.condominium_id=c.id AND m.role='resident' AND m.status='approved') AS residents,"+
+        " (SELECT count(*)::int FROM shops s WHERE s.condominium_id=c.id AND s.status='approved') AS shops"+
+        where+" ORDER BY c.created_at DESC,c.id DESC LIMIT 20 OFFSET $2",[search,page*20])
+    ]);
+    const total=count.rows[0]?.total??0;
+    return out({condominiums:list.rows,page,total,totalPages:Math.max(1,Math.ceil(total/20)),active_condominium_id:u.condominium_id});
   }
   if(path==='platform/condominiums'&&method==='POST'){
     if(!u.is_superadmin)bad('Acesso exclusivo do superadmin.',403);
