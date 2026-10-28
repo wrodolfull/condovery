@@ -5,7 +5,7 @@ export const metadata:Metadata={
   title:'Relatório de publicidade | Condovery ADS',
   description:'Resultados de campanha publicitária no Condovery.',
   robots:{index:false,follow:false,noarchive:true,nosnippet:true},
-  referrer:'no-referrer'
+  other:{referrer:'no-referrer'}
 };
 export default async function PublicAdReport({params}:{params:Promise<{token:string}>}){
   const {token}=await params;
