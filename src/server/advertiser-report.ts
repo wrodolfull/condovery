@@ -9,6 +9,7 @@ export type AdvertiserReport={
   period:{from:string;to:string;range:ReportRange};
   totals:{impressions:number;clicks:number;ctr:number};
   daily:DailyAdMetrics[];
+  daily_truncated:boolean;
   disclaimer:string;
 };
 const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -42,10 +43,12 @@ export async function advertiserReport(campaignId:string,range:ReportRange):Prom
   const data=new Map(rows.rows.map(r=>[r.day,{impressions:Number(r.impressions),clicks:Number(r.clicks)}]));
   const daily:DailyAdMetrics[]=[];
   if(dates){
-    const cursor=new Date(start+'T00:00:00Z');
+    // Cap chart/table payload to the 400 most recent days without truncating totals.
     const last=new Date(end+'T00:00:00Z');
-    // Campaigns may run for years: bound render memory but preserve totals over the full range.
-    while(cursor<=last && daily.length<400){
+    const first=new Date(last);
+    first.setUTCDate(first.getUTCDate()-399);
+    const cursor=new Date(Math.max(new Date(start+'T00:00:00Z').getTime(),first.getTime()));
+    while(cursor<=last){
       const date=day(cursor),metric=data.get(date);
       daily.push({day:date,impressions:metric?.impressions??0,clicks:metric?.clicks??0});
       cursor.setUTCDate(cursor.getUTCDate()+1);
@@ -61,6 +64,7 @@ export async function advertiserReport(campaignId:string,range:ReportRange):Prom
     period:{from:start,to:end,range},
     totals:{...totals,ctr:totals.impressions?Math.round(totals.clicks/totals.impressions*10000)/100:0},
     daily,
+    daily_truncated:dates && (new Date(end+'T00:00:00Z').getTime()-new Date(start+'T00:00:00Z').getTime())/86400000>=400,
     disclaimer:'Impressões e cliques deduplicados por sessão e por dia (UTC). Não equivalem a pessoas únicas ou vendas confirmadas.'
   };
 }
