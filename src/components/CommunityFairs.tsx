@@ -1,5 +1,5 @@
 'use client';
-import {useCallback,useEffect,useState,type FormEvent} from 'react';
+import {useCallback,useEffect,useState,type FormEvent,type ReactNode} from 'react';
 import {ArrowRight,CalendarDays,Check,Gift,ImagePlus,Plus,Store,X} from 'lucide-react';
 import {prepareMarketplaceImage} from '@/lib/prepare-marketplace-image';
 import {ImageCropper} from '@/components/ImageCropper';
@@ -36,7 +36,7 @@ export function FairHomeTeaser({condominiumId,onOpen}:{condominiumId:string;onOp
    </div>
  </section>;
 }
-export function FairMarketplace({condominiumId,onOpenProduct}:{condominiumId:string;onOpenProduct:(p:FairProduct)=>void}){
+export function FairMarketplace({condominiumId,renderProduct}:{condominiumId:string;renderProduct:(p:FairProduct)=>ReactNode}){
  const [fairs,setFairs]=useState<Fair[]>([]),[selected,setSelected]=useState<string|null>(null);
  const [detail,setDetail]=useState<{fair:Fair;products:FairProduct[]}|null>(null);
  const [loading,setLoading]=useState(true),[error,setError]=useState('');
@@ -59,12 +59,7 @@ export function FairMarketplace({condominiumId,onOpenProduct}:{condominiumId:str
      <h2 style={{marginTop:16}}>{detail.fair.title}</h2><p>{detail.fair.description}</p>
      <p className="muted"><CalendarDays size={15}/> {dateLabel(detail.fair.starts_at)} até {dateLabel(detail.fair.ends_at)}</p>
      {detail.products.length?<div className="product-grid" style={{marginTop:18}}>
-       {detail.products.map(p=><article key={p.id} className="white-panel" style={{padding:12,borderRadius:14}}>
-         {p.image_url&&<img src={p.image_url} alt={p.name} style={{width:'100%',aspectRatio:'5/4',objectFit:'cover',borderRadius:10}}/>}
-         <small>{p.shop_name}</small><strong style={{display:'block'}}>{p.name}</strong>
-         <p>{money(p.promo_price_cents??p.price_cents)}</p>
-         <button type="button" className="primary-button" onClick={()=>onOpenProduct(p)}>Ver produto <ArrowRight size={15}/></button>
-       </article>)}
+       {detail.products.map(p=><div key={p.id}>{renderProduct(p)}</div>)}
      </div>:<p className="muted">Ainda não há produtos disponíveis nesta feira.</p>}
    </div>:!loading&&(fairs.length?<div style={{display:'grid',gap:15,marginTop:18}}>
      {fairs.map(f=><article className="white-panel" key={f.id} style={{padding:16,borderRadius:16}}>
