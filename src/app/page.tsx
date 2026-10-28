@@ -1,6 +1,6 @@
 'use client';
 
-import { HelpCircle, useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {IllustrationSlot} from '@/components/IllustrationSlot';
 import {AdsCarousel,type AdCampaign} from '@/components/AdsCarousel';
 import {AdsAdmin} from '@/components/AdsAdmin';
@@ -1048,7 +1048,7 @@ export default function Page(){
     <div className="desktop-nav"><div className="desktop-nav-inner">
       {bottomNav.map(([target,Icon,label])=><button key={target} className={view===target?'active':''} onClick={()=>go(target)}><Icon size={18}/>{label}</button>)}
       <button onClick={()=>go('fairs')}><Gift size={18}/>Feiras</button>
-      <button onClick={()=>window.location.assign('/ajuda')}><HelpCircle size={18}/>Ajuda</button>
+      <button onClick={()=>window.location.assign('/ajuda')}><CircleHelp size={18}/>Ajuda</button>
       <button onClick={()=>{loadMine();go('seller');}}><Store size={18}/>Minha loja</button>
       {viewer.role==='admin'&&<button onClick={()=>{loadAdmin();go('admin');}}><ShieldCheck size={18}/>Administração</button>}
       {viewer.is_superadmin&&<><button onClick={()=>{loadTenants();go('ads-admin');}}><Megaphone size={18}/>ADS</button><button onClick={()=>{loadTenants();go('platform');}}><Building2 size={18}/>Superadmin</button></>}
@@ -1343,7 +1343,7 @@ export default function Page(){
         <button onClick={()=>{loadOrders();go('orders');}}><Receipt size={23}/><span><strong>Meus pedidos</strong><small>Acompanhe suas compras</small></span><ChevronRight/></button>
         {viewer.role==='admin'&&<button onClick={()=>{loadAdmin();go('admin');}}><ShieldCheck size={23}/><span><strong>Administração</strong><small>Segurança e configurações</small></span><ChevronRight/></button>}
         {viewer.is_superadmin&&<><button onClick={()=>{loadTenants();go('ads-admin');}}><Megaphone size={23}/><span><strong>Condovery ADS</strong><small>Campanhas e publicidade</small></span><ChevronRight/></button><button onClick={()=>{loadTenants();go('platform');}}><Building2 size={23}/><span><strong>Painel Superadmin</strong><small>Todos os condomínios</small></span><ChevronRight/></button></>}
-        <button onClick={()=>window.location.assign('/ajuda')}><HelpCircle size={23}/><span><strong>Central de Ajuda</strong><small>Tire dúvidas sobre compras, lojas e feiras</small></span><ChevronRight/></button>
+        <button onClick={()=>window.location.assign('/ajuda')}><CircleHelp size={23}/><span><strong>Central de Ajuda</strong><small>Tire dúvidas sobre compras, lojas e feiras</small></span><ChevronRight/></button>
         <button onClick={logout}><LogOut size={23}/><span><strong>Sair</strong><small>Encerrar sessão neste dispositivo</small></span><ChevronRight/></button>
         {viewer.role==='resident'&&<button className="delete-account-entry"
           onClick={()=>{setShowDeleteAccount(true);setDeleteConfirmation('');setDeletePassword('');setError('');}}>
