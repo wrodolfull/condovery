@@ -49,7 +49,13 @@ try{
     await verify(page,'login',width);
     await page.locator('.auth-card input[type="email"]').fill('buyer-smoke@example.com');
     await page.locator('.auth-card input[type="password"]').fill('NewPassword123!');
+    const loginReply=page.waitForResponse(response=>response.url().includes('/api/auth/login')&&response.request().method()==='POST');
     await page.getByRole('button',{name:'Entrar com e-mail'}).click();
+    const loginResult=await loginReply;
+    if(loginResult.status()!==200){
+      const data=await loginResult.json().catch(()=>({}));
+      throw new Error('Visual buyer login returned HTTP '+loginResult.status()+': '+String(data.error||'unknown').slice(0,120));
+    }
     await page.locator('.hero-banner').waitFor({state:'visible',timeout:15000});
     await verify(page,'home',width);
     await verifyRoundCategories(page,'.category-track:not(.explore-category-track)',width);
