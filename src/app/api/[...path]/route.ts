@@ -54,7 +54,7 @@ function imagePath(input:unknown) {
 const credentials=z.object({email:z.string().email().max(250).transform(v=>v.trim().toLowerCase()),password:z.string().min(1).max(100)});
 const signup=credentials.extend({
   name:z.string().trim().min(2).max(90),phone:z.string().trim().min(10).max(20),
-  password:z.string().min(10).max(100),invite:z.string().trim().min(10).max(150),
+  password:z.string().min(15).max(100),invite:z.string().trim().min(10).max(150),
   tower:z.string().trim().min(1).max(60),apartment:z.string().trim().min(1).max(24)
 });
 // The allowed arrival values and conflicts are checked against a shared rule.
@@ -269,7 +269,7 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
     if(!recoveryConfigured())bad('Recuperação não configurada.',503);
     const cookie=req.cookies.get('condovery_recovery')?.value;
     if(!cookie||!/^[0-9a-f]{64}$/.test(cookie))bad('Abra primeiro o link enviado por e-mail.',401);
-    const b=z.object({password:z.string().min(10).max(100)}).parse(await body(req));
+    const b=z.object({password:z.string().min(15).max(100)}).parse(await body(req));
     const result=await query(
       'DELETE FROM password_reset_tokens WHERE token_hash=$1 AND expires_at>now() RETURNING user_id',
       [tokenHash(cookie!)]
