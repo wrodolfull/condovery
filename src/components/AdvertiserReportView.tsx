@@ -63,6 +63,7 @@ export function AdvertiserReportView({campaignId,token}:Props){
         </div><div className="adreport-chart-labels"><span>{date(chart[0].day)}</span><span>{date(chart[chart.length-1].day)}</span></div></div>:
         <p className="muted">Nenhuma visualização registrada neste período.</p>}
         <small className="muted">O gráfico mostra até os 30 dias mais recentes. Os indicadores acima consideram todo o período selecionado.</small>
+        {report.daily_truncated&&<p className="muted">O detalhamento diário exibe somente os 400 dias mais recentes. Os totais continuam considerando todo o período.</p>}
       </div>
       <div className="adreport-section">
         <h3>Detalhamento diário</h3>
