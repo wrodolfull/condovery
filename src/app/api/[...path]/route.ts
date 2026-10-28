@@ -380,6 +380,7 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
     return out({viewer:u,googleSignup});
   }
   const u=await viewer(req);
+  if(u.status!=='approved')bad('Conta indisponível.',403);
   if(path.startsWith('platform/')&&requestedTenant)bad('A gestão global deve ser acessada pelo domínio principal.',403);
   // Only the server-owned platform_admins table can authorize these routes.
   // Sessions of ordinary condo administrators can never choose another tenant.
