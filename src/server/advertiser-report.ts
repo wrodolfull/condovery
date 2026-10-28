@@ -18,7 +18,7 @@ const day=(date:Date)=>date.toISOString().slice(0,10);
 export function reportRange(input:string|null):ReportRange{
   if(input===null)return '30';
   if(input==='7'||input==='30'||input==='90'||input==='all')return input;
-  bad('Período inválido.');
+  return bad('Período inválido.');
 }
 export async function advertiserReport(campaignId:string,range:ReportRange):Promise<AdvertiserReport>{
   if(!uuid.test(campaignId))bad('Campanha inválida.');
