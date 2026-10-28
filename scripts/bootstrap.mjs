@@ -76,6 +76,16 @@ try{
     'INSERT INTO categories(condominium_id,name,icon,sort_order) VALUES($1,$2,$3,$4) ON CONFLICT(condominium_id,name) DO NOTHING',
     [condoId,categories[i][0],categories[i][1],i]
   );
+  const optionalCategories=[
+    ['Beleza','sparkles',60],['Saúde e bem-estar','heart-pulse',61],
+    ['Casa e decoração','house',62],['Eletrônicos','smartphone',63],
+    ['Presentes','gift',64],['Outros','shopping-bag',65],
+    ['Serviços','wrench',70],['Moda','shirt',71],['Desapego','gift',72]
+  ];
+  for(const [name,icon,sort] of optionalCategories){
+    await db.query('INSERT INTO categories(condominium_id,name,icon,sort_order,is_active) VALUES($1,$2,$3,$4,false) ON CONFLICT(condominium_id,name) DO NOTHING',
+      [condoId,name,icon,sort]);
+  }
   await db.query('COMMIT');
   console.log('Condovery bootstrap finished for '+slug+' (administrator managed by Supabase Auth).');
 }catch(e){await db.query('ROLLBACK').catch(()=>{});throw e;}
