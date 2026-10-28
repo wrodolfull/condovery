@@ -178,8 +178,17 @@ const standardNames=[
 ];
 assert.deepEqual(sellerHome.categories.map(c=>c.name),standardNames);
 assert.equal(new Set(sellerHome.categories.map(c=>c.id)).size,7);
-await request('admin/categories',{method:'POST',cookie:adminCookie,expected:400,body:{name:'Moda',icon:'sandwich'}});
-await request('admin/categories',{method:'POST',cookie:adminCookie,expected:400,body:{name:'Produtos de teste',icon:'shirt'}});
+// Optional categories already exist in the database; duplicate creation returns 409.
+await request('admin/categories',{method:'POST',cookie:adminCookie,expected:409,body:{name:'Moda',icon:'sandwich'}});
+// Custom non-food categories are now supported and available to toggle.
+const customCategory=await request('admin/categories',{method:'POST',cookie:adminCookie,expected:201,body:{name:'Produtos de teste',icon:'shirt'}});
+assert.equal(customCategory.data.category.is_active,true);
+await request('admin/categories/'+customCategory.data.category.id,{method:'PATCH',cookie:adminCookie,body:{is_active:false}});
+const afterDisable=(await request('home',{cookie:sellerCookie})).data;
+assert.ok(!afterDisable.categories.some(c=>c.id===customCategory.data.category.id));
+await request('admin/categories/'+customCategory.data.category.id,{method:'PATCH',cookie:adminCookie,body:{is_active:true}});
+const afterEnable=(await request('home',{cookie:sellerCookie})).data;
+assert.ok(afterEnable.categories.some(c=>c.id===customCategory.data.category.id));
 await request('products',{method:'POST',cookie:sellerCookie,expected:400,body:{
   name:'Porra',description:'Teste de ofensa',price_cents:2500,stock:4,
   category_id:sellerHome.categories[0].id,lead_time:'Disponível hoje',is_available:true
