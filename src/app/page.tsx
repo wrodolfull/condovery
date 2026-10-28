@@ -245,6 +245,11 @@ export default function Page(){
   const [myProducts,setMyProducts]=useState<Product[]>([]);
   const [adminTab,setAdminTab]=useState<'overview'|'residents'|'shops'|'fairs'|'categories'|'settings'|'reports'>('overview');
   const [platformTab,setPlatformTab]=useState<'condominiums'|'administrators'>('condominiums');
+  const [tenantPage,setTenantPage]=useState(0);
+  const [tenantSearch,setTenantSearch]=useState('');
+  const [tenantList,setTenantList]=useState<Tenant[]>([]);
+  const [tenantTotalPages,setTenantTotalPages]=useState(1);
+  const [tenantTotal,setTenantTotal]=useState(0);
   const [adminData,setAdminData]=useState<AdminData|null>(null);
   const [tenants,setTenants]=useState<Tenant[]>([]);
   const [tenantMenuOpen,setTenantMenuOpen]=useState(false);
@@ -321,9 +326,19 @@ export default function Page(){
     setTowerCount(summary.towers?.length||30);
   },[]);
   const loadTenants=useCallback(async()=>{
-    const result=await api<{condominiums:Tenant[]}>('platform/condominiums');
+    const result=await api<{condominiums:Tenant[]}>('platform/condominiums?mode=options');
     setTenants(result.condominiums);
   },[]);
+  useEffect(()=>{
+    if(view!=='platform'||platformTab!=='condominiums'||!viewer?.is_superadmin)return;
+    let active=true;
+    const timer=setTimeout(()=>{
+      api<{condominiums:Tenant[];totalPages:number;total:number}>('platform/condominiums?page='+tenantPage+'&search='+encodeURIComponent(tenantSearch))
+        .then(data=>{if(active){setTenantList(data.condominiums);setTenantTotalPages(data.totalPages);setTenantTotal(data.total);}})
+        .catch(fail);
+    },250);
+    return()=>{active=false;clearTimeout(timer);};
+  },[view,platformTab,viewer?.is_superadmin,tenantPage,tenantSearch]);
   async function createTenant(e:React.FormEvent){
     e.preventDefault();setBusy(true);setError('');
     try{
@@ -1625,6 +1640,12 @@ export default function Page(){
               placeholder="morada.exemplo.com.br" onChange={e=>setTenantForm(v=>({...v,custom_domain:e.target.value}))}/></label>
             <button className="primary-button" disabled={busy} type="submit">Criar condomínio</button>
           </form>
+        </section>}
+        {platformTab==='condominiums'&&<section className="admin-section white-panel"><h2>Condomínios cadastrados</h2>
+          <label>Buscar condomínio<input value={tenantSearch} onChange={e=>{setTenantSearch(e.target.value);setTenantPage(0);}} placeholder="Nome ou identificador" maxLength={100}/></label>
+          <p className="muted">{tenantTotal} condomínios · página {tenantPage+1} de {tenantTotalPages}</p>
+          {tenantList.map(t=><div key={t.id} className="admin-row"><strong>{t.name}</strong></div>)}
+          {tenantTotalPages>1&&<div className="inline-actions"><button type="button" className="outline-button" disabled={tenantPage===0} onClick={()=>setTenantPage(v=>v-1)}>Anterior</button><span>{tenantPage+1} / {tenantTotalPages}</span><button type="button" className="outline-button" disabled={tenantPage>=tenantTotalPages-1} onClick={()=>setTenantPage(v=>v+1)}>Próxima</button></div>}
         </section>}
         {platformTab==='administrators'&&<section className="admin-section white-panel"><h2>Criar administrador local</h2>
           <form className="form-stack" onSubmit={provisionTenantAdmin}>
