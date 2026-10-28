@@ -24,7 +24,7 @@ import {selectedOptions, extrasTotal, arrivalInstructionOptions, toggleArrivalIn
 import {
   ArrowLeft, ArrowRight, Bell, Building2, CakeSlice, Check, CheckCircle2, ChevronDown, ChevronRight,
   CircleHelp, Clock3, Coffee, Gift, Heart, Home, ImagePlus, LayoutGrid, LogOut, MapPin,
-  Menu, Megaphone, MessageCircle, Minus, Package, Plus, Receipt, Search, Settings, Share2, ShieldCheck, ShoppingBag, ShoppingBasket,
+  Menu, Megaphone, MessageCircle, FileText, Minus, Package, Plus, Receipt, Search, Settings, Share2, ShieldCheck, ShoppingBag, ShoppingBasket,
   SlidersHorizontal, Sparkles, Store, Tag, Trash2, Truck, UserRound, Utensils, X, Shirt, Sandwich,
   Pizza, IceCreamCone, Wrench, HeartPulse, House, Smartphone, PauseCircle, PlayCircle
 } from 'lucide-react';
@@ -946,6 +946,7 @@ export default function Page(){
           {authMode==='register'&&<PasswordFeedback password={authForm.password}/>}
         </>}
         <button className="primary-button" type="submit" disabled={busy||(authMode==='register'&&!googleSignup&&!isValidPassword(authForm.password))}>{busy?'Processando...':authMode==='login'?'Entrar com e-mail':'Criar minha conta'}<ArrowRight size={19}/></button>
+        {authMode==='register'&&<p className="auth-legal-notice">Antes de criar sua conta, consulte os <a href="/termos-de-uso">Termos de Uso</a> e a <a href="/politica-de-privacidade">Política de Privacidade</a>.</p>}
       </form>
       {!googleSignup&&googleEnabled&&<>
         <div className="auth-divider"><span>ou continue com</span></div>
@@ -1298,6 +1299,14 @@ export default function Page(){
           <Trash2 size={23}/><span><strong>Excluir minha conta</strong>
           <small>Encerrar definitivamente seu acesso e sua loja</small></span><ChevronRight/>
         </button>}</div></div>
+        <section className="account-legal-links" aria-labelledby="account-legal-title">
+          <h2 id="account-legal-title">Privacidade e termos</h2>
+          <p>Consulte como seus dados são tratados e as regras de uso do Condovery.</p>
+          <div>
+            <a href="/politica-de-privacidade"><ShieldCheck size={19}/><span>Política de Privacidade</span><ChevronRight size={18}/></a>
+            <a href="/termos-de-uso"><FileText size={19}/><span>Termos de Uso</span><ChevronRight size={18}/></a>
+          </div>
+        </section>
       </>}
 
       {deleteProductTarget&&view==='seller'&&<div className="account-delete-overlay" role="presentation"
