@@ -20,7 +20,8 @@ export async function sessionViewer(req: NextRequest): Promise<Viewer|null> {
     " (pa.user_id IS NOT NULL) AS is_superadmin,c.name AS condominium_name,c.towers"+
     " FROM sessions s JOIN users u ON u.id=s.user_id LEFT JOIN platform_admins pa ON pa.user_id=u.id"+
     " JOIN condominiums c ON c.id=CASE WHEN pa.user_id IS NOT NULL THEN COALESCE(s.active_condominium_id,u.condominium_id) ELSE u.condominium_id END"+
-    " WHERE s.token_hash=$1 AND s.expires_at>now() AND c.is_active=true",
+    " WHERE s.token_hash=$1 AND s.expires_at>now() AND c.is_active=true"+
+    " AND (pa.user_id IS NULL AND u.role<>'admin' OR s.created_at>now()-interval '24 hours')",
     [tokenHash(token)]
   );
   const current=rows[0]??null;
