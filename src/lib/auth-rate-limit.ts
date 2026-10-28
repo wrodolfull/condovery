@@ -6,11 +6,11 @@ import {bad} from '@/lib/api-error';
 type Action='login'|'registration'|'recovery'|'invitation'|'oauth';
 type Config={windowMinutes:number;maxIdentifier:number;maxAddress:number};
 const configs:Record<Action,Config>={
-  login:{windowMinutes:15,maxIdentifier:8,maxAddress:30},
-  registration:{windowMinutes:60,maxIdentifier:4,maxAddress:20},
-  recovery:{windowMinutes:60,maxIdentifier:3,maxAddress:15},
-  invitation:{windowMinutes:15,maxIdentifier:12,maxAddress:40},
-  oauth:{windowMinutes:15,maxIdentifier:20,maxAddress:20}
+  login:{windowMinutes:15,maxIdentifier:8,maxAddress:100},
+  registration:{windowMinutes:60,maxIdentifier:4,maxAddress:60},
+  recovery:{windowMinutes:60,maxIdentifier:3,maxAddress:60},
+  invitation:{windowMinutes:15,maxIdentifier:12,maxAddress:100},
+  oauth:{windowMinutes:15,maxIdentifier:20,maxAddress:100}
 };
 
 /** An HMAC digest cannot be searched with a dictionary without the server secret. */
