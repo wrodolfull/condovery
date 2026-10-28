@@ -1145,3 +1145,13 @@ font-weight:750;padding:12px 20px;cursor:pointer}
 .management-ads{margin-top:12px!important}
 .management-ads .admin-row{padding-block:10px}
 @media(max-width:600px){.management-tabs{margin-inline:-4px;padding-inline:4px}.management-tabs button{padding:9px 11px;font-size:12px}.management-ads{padding:14px!important}.management-ads .admin-row{gap:8px}}
+
+
+/* Shared store invitation — compact on phones */
+.shared-shop-welcome{display:flex;gap:12px;padding:15px;margin:0 0 18px;border:1px solid #ece9e4;background:#fff9f4;border-radius:14px;align-items:flex-start}
+.shared-shop-welcome>svg{flex:0 0 auto;color:#fc6741;margin-top:2px}
+.shared-shop-welcome strong{font-size:16px}
+.shared-shop-welcome p{font-size:14px;line-height:1.5;margin:5px 0 12px}
+.shared-shop-actions{display:flex;flex-wrap:wrap;gap:8px}
+.shared-shop-actions button{font-size:13px;padding:9px 12px;min-height:40px}
+@media(max-width:600px){.shared-shop-welcome{padding:12px;gap:9px}.shared-shop-actions button{flex:1 1 135px}}
