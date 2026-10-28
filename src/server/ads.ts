@@ -102,18 +102,22 @@ export async function handleAdsApi({req,method,path,parts,u}:Args):Promise<NextR
     }
     if(parts.length===5&&parts[4]==='shares'&&method==='POST'){
       const input=z.object({days:z.union([z.literal(7),z.literal(30),z.literal(90)])}).strict().parse(await read(req));
-      const found=await query('SELECT id FROM advertising_campaigns WHERE id=$1',[campaignId]);
-      if(!found.rowCount)bad('Campanha não encontrada.',404);
-      const active=await query<{count:number}>(
-        'SELECT count(*)::int AS count FROM ad_report_shares WHERE campaign_id=$1 AND expires_at>now() AND revoked_at IS NULL',
-        [campaignId]);
-      if(active.rows[0]?.count>=5)bad('Revogue um link ativo antes de criar outro.',409);
       const token=randomBytes(32).toString('hex');
       const digest=createHash('sha256').update(token).digest('hex');
-      const share=await query(
-        "INSERT INTO ad_report_shares(campaign_id,token_hash,expires_at) VALUES($1,$2,now()+($3::int*interval '1 day')) RETURNING id,expires_at",
-        [campaignId,digest,input.days]);
-      return respond({id:share.rows[0].id,token,expires_at:share.rows[0].expires_at},201);
+      const share=await transaction(async tx=>{
+        // Serialize link creation per campaign to enforce the active-link limit.
+        const found=await tx.query('SELECT id FROM advertising_campaigns WHERE id=$1 FOR UPDATE',[campaignId]);
+        if(!found.rowCount)bad('Campanha não encontrada.',404);
+        const active=await tx.query<{count:number}>(
+          'SELECT count(*)::int AS count FROM ad_report_shares WHERE campaign_id=$1 AND expires_at>now() AND revoked_at IS NULL',
+          [campaignId]);
+        if(active.rows[0]?.count>=5)bad('Revogue um link ativo antes de criar outro.',409);
+        const created=await tx.query(
+          "INSERT INTO ad_report_shares(campaign_id,token_hash,expires_at) VALUES($1,$2,now()+($3::int*interval '1 day')) RETURNING id,expires_at",
+          [campaignId,digest,input.days]);
+        return created.rows[0];
+      });
+      return respond({id:share.id,token,expires_at:share.expires_at},201);
     }
     if(parts.length===6&&parts[4]==='shares'&&idPattern.test(parts[5])&&method==='DELETE'){
       const share=await query(
