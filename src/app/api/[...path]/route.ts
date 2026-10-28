@@ -1235,10 +1235,10 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
     if(!uuid(id))bad('Categoria inválida.');
     const b=z.object({is_active:z.boolean()}).parse(await body(req));
     const changed=await query(
-      "UPDATE categories SET is_active=$1 WHERE id=$2 AND condominium_id=$3 AND name IN ('Serviços','Moda','Desapego') RETURNING id,name,is_active",
+      "UPDATE categories SET is_active=$1 WHERE id=$2 AND condominium_id=$3 RETURNING id,name,is_active",
       [b.is_active,id,u.condominium_id]
     );
-    if(!changed.rowCount)bad('Somente Serviços e Moda podem ser alternadas neste painel.',404);
+    if(!changed.rowCount)bad('Categoria não encontrada.',404);
     return out({category:changed.rows[0]});
   }
   if(path==='admin/categories'&&method==='POST'){
