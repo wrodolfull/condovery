@@ -22,6 +22,10 @@ export function AdsAdmin({tenants}:{tenants:Tenant[]}){
   const [report,setReport]=useState<AdsReport|null>(null);
   const [tenantFilter,setTenantFilter]=useState('all');
   const [billingFilter,setBillingFilter]=useState('all');
+  const [statusFilter,setStatusFilter]=useState('all');
+  const [page,setPage]=useState(0);
+  const [totalPages,setTotalPages]=useState(1);
+  const [total,setTotal]=useState(0);
   const [form,setForm]=useState(initial);
   const [editingId,setEditingId]=useState<string|null>(null);
   const [cropFile,setCropFile]=useState<File|null>(null);
@@ -30,13 +34,15 @@ export function AdsAdmin({tenants}:{tenants:Tenant[]}){
   const [error,setError]=useState('');
   const [message,setMessage]=useState('');
   const reload=useCallback(async()=>{
-    const [data,summary]=await Promise.all([request('platform/ads'),request('platform/ads/reports')]);
-    setEnabled(data.enabled);setCampaigns(data.campaigns);setReport(summary);
-  },[]);
-  useEffect(()=>{reload().catch(e=>setError(e.message));},[reload]);
+    const params=new URLSearchParams({page:String(page),condominium:tenantFilter,billing:billingFilter,status:statusFilter});
+    const data=await request('platform/ads?'+params);
+    setEnabled(data.enabled);setCampaigns(data.campaigns);setTotalPages(data.totalPages);setTotal(data.total);
+  },[page,tenantFilter,billingFilter,statusFilter]);
+  useEffect(()=>{if(tab==='campaigns')reload().catch(e=>setError(e.message));},[reload,tab]);
+  useEffect(()=>{if(tab==='reports'&&!report)request('platform/ads/reports').then(setReport).catch(e=>setError(e.message));},[tab,report]);
   async function perform(action:()=>Promise<unknown>){
     setBusy(true);setError('');setMessage('');
-    try{await action();await reload();setMessage('Alterações salvas.');}
+    try{await action();await reload();setReport(null);setMessage('Alterações salvas.');}
     catch(e){setError(e instanceof Error?e.message:'Erro ao salvar.');}
     finally{setBusy(false);}
   }
@@ -72,7 +78,7 @@ export function AdsAdmin({tenants}:{tenants:Tenant[]}){
       setEditingId(null);setForm({...initial,condominium_id:form.condominium_id});setTab('campaigns');
     });
   }
-  const filtered=campaigns.filter(c=>(tenantFilter==='all'||c.condominium_id===tenantFilter)&&(billingFilter==='all'||c.billing_status===billingFilter));
+  const filtered=campaigns;
   return <section className="admin-section white-panel management-ads">
     <h2>Condovery Ads</h2>
     <p className="muted">Ative a publicidade para substituir “Achadinhos da vizinhança” somente quando existirem anúncios habilitados e dentro do período de publicação.</p>
@@ -130,14 +136,16 @@ export function AdsAdmin({tenants}:{tenants:Tenant[]}){
     </>}
     {tab==='campaigns'&&<><h3 style={{marginTop:14}}>Campanhas cadastradas</h3>
     <div className="field-grid" style={{margin:'14px 0'}}>
-      <label>Filtrar condomínio<select value={tenantFilter} onChange={e=>setTenantFilter(e.target.value)}>
+      <label>Filtrar condomínio<select value={tenantFilter} onChange={e=>{setTenantFilter(e.target.value);setPage(0);}}>
         <option value="all">Todos</option>{tenants.map(t=><option key={t.id} value={t.id}>{t.name}</option>)}
       </select></label>
-      <label>Filtrar faturamento<select value={billingFilter} onChange={e=>setBillingFilter(e.target.value)}>
+      <label>Filtrar faturamento<select value={billingFilter} onChange={e=>{setBillingFilter(e.target.value);setPage(0);}}>
         <option value="all">Todos</option><option value="pending">Pendente</option>
         <option value="invoiced">Faturado</option><option value="paid">Pago</option>
       </select></label>
     </div>
+    <label>Situação<select value={statusFilter} onChange={e=>{setStatusFilter(e.target.value);setPage(0);}}><option value="all">Todas</option><option value="active">Em andamento</option><option value="scheduled">Programadas</option><option value="paused">Pausadas</option><option value="expired">Expiradas</option></select></label>
+    <p className="muted">{total} campanhas encontradas · página {page+1} de {totalPages}</p>
     {filtered.length===0?<p className="muted">Nenhum anúncio encontrado.</p>:filtered.map(c=><div key={c.id} className="admin-row">
       <div><strong>{c.merchant_name} — {c.headline}</strong>
         <p>{tenants.find(t=>t.id===c.condominium_id)?.name||'Condomínio'} · {dateLabel(c.starts_at)} até {dateLabel(c.expires_at)}</p>
@@ -150,6 +158,7 @@ export function AdsAdmin({tenants}:{tenants:Tenant[]}){
         <button className="danger-text" disabled={busy} type="button" onClick={()=>{if(window.confirm('Excluir este anúncio?'))perform(()=>request('platform/ads/'+c.id,{method:'DELETE'}));}}>Excluir</button>
       </div>
     </div>)}
+    {totalPages>1&&<div className="inline-actions"><button type="button" className="outline-button" disabled={busy||page===0} onClick={()=>setPage(v=>v-1)}>Anterior</button><span>Página {page+1} / {totalPages}</span><button type="button" className="outline-button" disabled={busy||page>=totalPages-1} onClick={()=>setPage(v=>v+1)}>Próxima</button></div>}
     </>}
     {cropFile&&<ImageCropper file={cropFile} kind="ad" onCancel={()=>setCropFile(null)} onApply={file=>{setCropFile(null);void uploadImage(file);}}/>}
   </section>;
