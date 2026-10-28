@@ -45,6 +45,20 @@
 8. Configure HTTPS + TLS do PostgreSQL, secrets fora de Git, logs sem PII,
    backups cifrados e restauração testada.
 
+## Política atual de novas senhas
+- Senhas novas e redefinidas precisam de no mínimo 8 caracteres (até 100),
+  incluindo letra maiúscula, número e caractere especial.
+- O mesmo validador é usado na API, no cadastro e na recuperação. O frontend
+  mostra caracteres digitados, requisitos atendidos e força **estimada**.
+- A barra visual não é uma análise de senhas comprometidas nem garantia de
+  resistência a ataques; recomenda-se senha longa, única e gerenciador de senhas.
+- As senhas existentes continuam válidas para login; não se bloqueia o usuário
+  até que ele decida redefinir sua senha.
+- **Configuração externa:** o Supabase Auth também possui política própria.
+  Ajuste o mínimo do Supabase para 8 ou outro valor compatível e verifique
+  que o provedor aceita a regra. O backend do Condovery impede novas senhas
+  que não cumpram as quatro condições, independentemente do frontend.
+
 ## Criptografia de dados pessoais: NÃO ativa nesta PR
 Nome, e-mail, telefone, torre/apartamento e dados de pedidos ainda aparecem
 em colunas comuns de negócio. RLS, TLS e criptografia de disco gerenciada
