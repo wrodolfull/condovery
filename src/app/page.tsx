@@ -10,6 +10,8 @@ import {AdminDirectory} from '@/components/AdminDirectory';
 import {Giveaways} from '@/components/Giveaways';
 import {RoundedStars} from '@/components/RoundedStars';
 import {ImageCropper,type ImageKind} from '@/components/ImageCropper';
+import {PasswordFeedback} from '@/components/PasswordFeedback';
+import {isValidPassword} from '@/lib/password-policy';
 import {clientUUID} from '@/lib/client-uuid';
 import {parseMoneyInput} from '@/lib/money-input';
 import {shopSharePath} from '@/lib/shop-slug';
@@ -905,8 +907,11 @@ export default function Page(){
       {toast&&<div className="success-banner" role="status">{toast}</div>}
       <form className="form-stack" onSubmit={submitReset}>
         {authMode==='recover'?<label>E-mail<input type="email" required autoComplete="email" value={resetEmail} onChange={e=>setResetEmail(e.target.value)} placeholder="seuemail@exemplo.com"/></label>:
-          <label>Nova senha<input type="password" required minLength={10} maxLength={100} autoComplete="new-password" value={newPassword} onChange={e=>setNewPassword(e.target.value)} placeholder="No mínimo 10 caracteres"/></label>}
-        <button className="primary-button" disabled={busy} type="submit">{busy?'Enviando...':authMode==='recover'?'Solicitar link':'Salvar nova senha'} <ArrowRight size={18}/></button>
+          <>
+            <label>Nova senha<input type="password" required minLength={8} maxLength={100} autoComplete="new-password" value={newPassword} onChange={e=>setNewPassword(e.target.value)} placeholder="Mínimo de 8 caracteres"/></label>
+            <PasswordFeedback password={newPassword}/>
+          </>}
+        <button className="primary-button" disabled={busy||(authMode==='reset'&&!isValidPassword(newPassword))} type="submit">{busy?'Enviando...':authMode==='recover'?'Solicitar link':'Salvar nova senha'} <ArrowRight size={18}/></button>
       </form>
       <button className="text-button" onClick={()=>{setAuthMode('login');setError('');}}>Voltar ao login</button>
     </section>
@@ -936,8 +941,11 @@ export default function Page(){
           <p className="form-hint">Com o código do condomínio, você entra sem aguardar aprovação.</p>
         </>}
         <label>E-mail<input required readOnly={Boolean(googleSignup)} type="email" autoComplete="email" value={authForm.email} onChange={e=>setAuthForm(s=>({...s,email:e.target.value}))} placeholder="seuemail@exemplo.com"/></label>
-        {!googleSignup&&<label>Senha<input required type="password" minLength={authMode==='register'?10:1} autoComplete={authMode==='register'?'new-password':'current-password'} value={authForm.password} onChange={e=>setAuthForm(s=>({...s,password:e.target.value}))} placeholder={authMode==='register'?'Mínimo de 10 caracteres':'Sua senha'}/></label>}
-        <button className="primary-button" type="submit" disabled={busy}>{busy?'Processando...':authMode==='login'?'Entrar com e-mail':'Criar minha conta'}<ArrowRight size={19}/></button>
+        {!googleSignup&&<>
+          <label>Senha<input required type="password" minLength={authMode==='register'?8:1} maxLength={100} autoComplete={authMode==='register'?'new-password':'current-password'} value={authForm.password} onChange={e=>setAuthForm(s=>({...s,password:e.target.value}))} placeholder={authMode==='register'?'Mínimo de 8 caracteres':'Sua senha'}/></label>
+          {authMode==='register'&&<PasswordFeedback password={authForm.password}/>}
+        </>}
+        <button className="primary-button" type="submit" disabled={busy||(authMode==='register'&&!googleSignup&&!isValidPassword(authForm.password))}>{busy?'Processando...':authMode==='login'?'Entrar com e-mail':'Criar minha conta'}<ArrowRight size={19}/></button>
       </form>
       {!googleSignup&&googleEnabled&&<>
         <div className="auth-divider"><span>ou continue com</span></div>

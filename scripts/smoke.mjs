@@ -23,7 +23,7 @@ async function request(path, {method='GET', body, cookie, expected=200}={}) {
   assert.equal(response.status,expected,method+' /api/'+path+': '+JSON.stringify(data));
   return {data,cookie:response.headers.get('set-cookie')?.split(';')[0]};
 }
-const pass='TestPassword789!';const invite=process.env.BOOTSTRAP_INVITE_CODE;
+const pass='A1!aaaaa';const invite=process.env.BOOTSTRAP_INVITE_CODE;
 assert.ok(invite);
 await request('home',{expected:401});
 const condo=(await request('public/condominium',{method:'POST',body:{invite}})).data;
@@ -32,6 +32,13 @@ assert.equal(condo.towers.length,30);
 const firstTower=condo.towers[0],secondTower=condo.towers[1];
 assert.equal(firstTower,'Torre A');
 assert.equal(condo.towers[29],'Torre AD');
+// Shared password policy must be enforced on the server before creating an Auth account.
+for(const [index,weakPassword] of ['A1!aaaa','a1!aaaaa','Aa!aaaaa','Aa1aaaaa'].entries()){
+  await request('auth/register',{method:'POST',expected:400,body:{
+    name:'Password Policy Test',email:'invalid-password-'+index+'@example.com',phone:'11999991234',
+    password:weakPassword,invite,tower:firstTower,apartment:'201'
+  }});
+}
 const buyerEmail='buyer-smoke@example.com';
 const sellerEmail='seller-smoke@example.com';
 for(const [name,email,apt] of [['Buyer Test',buyerEmail,'101'],['Seller Test',sellerEmail,'102']]){
@@ -595,6 +602,10 @@ const verify=await fetch(origin+'/api/auth/recovery/verify?type=recovery&token_h
 assert.equal(verify.status,307);
 const recoveryCookie=verify.headers.get('set-cookie')?.split(';')[0];
 assert.ok(recoveryCookie?.startsWith('condovery_recovery='));
+await request('auth/password/confirm',{method:'POST',cookie:recoveryCookie,
+  body:{password:'a1!aaaaa'},expected:400});
+// Invalid password must not consume the valid one-time recovery ticket.
+
 await request('auth/password/confirm',{
   method:'POST',cookie:recoveryCookie,body:{password:'NewPassword123!'}
 });
@@ -784,3 +795,34 @@ assert.equal((await request('me',{cookie:newLogin.cookie})).data.viewer.tower,'T
 assert.equal((await request('orders',{cookie:lifecycleSeller})).data.orders.some(order=>order.id===selfOrder.id),true);
 console.log('Tower management PASS: 30 alphabetic/numeric labels, safe resident remapping and permissions.');
 
+
+
+
+// Security: central anti-CSRF protection and atomic authentication throttling.
+const crossSite=await fetch(origin+'/api/auth/logout',{
+  method:'POST',headers:{Origin:'https://attacker.invalid','Sec-Fetch-Site':'cross-site','Cookie':adminCookie}
+});
+assert.equal(crossSite.status,403);
+assert.equal((await request('me',{cookie:adminCookie})).data.viewer.role,'admin');
+const crossSubdomain=await fetch(origin+'/api/auth/logout',{
+  method:'POST',headers:{Origin:'https://other.example','Sec-Fetch-Site':'same-site','Cookie':adminCookie}
+});
+assert.equal(crossSubdomain.status,403);
+const abuseEmail='unregistered-rate-smoke@example.com';
+for(let n=0;n<8;n++){
+  await request('auth/login',{method:'POST',body:{email:abuseEmail,password:'incorrect-password'},expected:401});
+}
+await request('auth/login',{method:'POST',body:{email:abuseEmail,password:'incorrect-password'},expected:429});
+const protectionDB=new pg.Client({connectionString:process.env.DATABASE_URL});
+await protectionDB.connect();
+try{
+  const meta=await protectionDB.query("SELECT count(*)::int AS count FROM auth_rate_events WHERE action='login'");
+  assert.ok(meta.rows[0].count>=8);
+  const secretTest=await protectionDB.query("SELECT count(*)::int AS total FROM users WHERE password_hash IS NOT NULL");
+  assert.equal(secretTest.rows[0].total,0);
+  const priv=await protectionDB.query("SELECT relrowsecurity FROM pg_class WHERE oid='public.auth_rate_events'::regclass");
+  assert.equal(priv.rows[0].relrowsecurity,true);
+  const raw=await protectionDB.query('SELECT subject_hash FROM auth_rate_events LIMIT 1');
+  assert.match(raw.rows[0].subject_hash,/^[0-9a-f]{64}$/);
+}finally{await protectionDB.end();}
+console.log('Anti-CSRF checks, login throttling, legacy password purge and event RLS PASS.');

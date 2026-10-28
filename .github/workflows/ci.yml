@@ -18,6 +18,7 @@ jobs:
       SUPABASE_ANON_KEY: ci-publishable-test-only
       SUPABASE_SERVICE_ROLE_KEY: ci-service-test-only
       APP_URL: http://127.0.0.1:3000
+      AUTH_RATE_LIMIT_SECRET: ci-only-long-random-auth-throttle-secret-2026-not-production
     services:
       postgres:
         image: postgres:16

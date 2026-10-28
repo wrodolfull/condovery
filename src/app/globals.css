@@ -1102,3 +1102,22 @@ font-weight:750;padding:12px 20px;cursor:pointer}
 .offline-payment-settings .check-label{padding:8px 0;min-height:36px;display:flex;align-items:center;gap:10px}
 .offline-payment-options .choice-row{flex-wrap:wrap;gap:8px}
 .offline-payment-options .choice-row button{flex:1 1 130px}
+
+/* Live password guidance is shown only when a password is being created. */
+.password-feedback{padding:13px 14px;border:1px solid #e4e5df;border-radius:13px;background:#fafaf7;color:#383b35}
+.password-feedback-heading{display:flex;align-items:center;justify-content:space-between;gap:9px;flex-wrap:wrap;font-size:12px}
+.password-feedback-heading strong{font-weight:800}
+.password-feedback-heading span{color:#62665d;font-variant-numeric:tabular-nums}
+.password-strength-meter{width:100%;height:7px;background:#e8eae5;border-radius:999px;overflow:hidden;margin:11px 0 12px}
+.password-strength-meter>span{display:block;height:100%;width:0;transition:width .18s ease,background-color .18s ease;border-radius:inherit}
+.password-strength-meter.strength-1>span{background:#c34944}
+.password-strength-meter.strength-2>span{background:#cd822c}
+.password-strength-meter.strength-3>span{background:#69863b}
+.password-strength-meter.strength-4>span{background:#22694a}
+.password-requirements{list-style:none;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px 10px;margin:0;padding:0}
+.password-requirements li{display:flex;align-items:flex-start;gap:6px;font-size:11px;line-height:1.4;color:#777b74}
+.password-requirements li svg{flex:0 0 auto;margin-top:1px}
+.password-requirements li.password-rule-met{color:#206b49;font-weight:700}
+.password-valid-message{margin:11px 0 0;color:#206b49;font-size:11px;font-weight:700}
+@media(max-width:420px){.password-requirements{grid-template-columns:1fr}}
+@media(prefers-reduced-motion:reduce){.password-strength-meter>span{transition:none}}

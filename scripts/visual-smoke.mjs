@@ -47,9 +47,23 @@ try{
     await page.goto(origin,{waitUntil:'domcontentloaded'});
     await page.locator('.auth-card').waitFor({state:'visible'});
     await verify(page,'login',width);
+    await page.getByRole('button',{name:'Cadastre-se',exact:true}).click();
+    const registerPassword=page.locator('.auth-card input[autocomplete="new-password"]');
+    await registerPassword.fill('A1!aaaaa');
+    const feedback=await page.locator('.password-feedback').innerText();
+    if(!feedback.includes('8 caracteres')||!feedback.includes('Todos os requisitos obrigatórios'))
+      throw new Error('Password strength and requirement indicators did not update live: '+feedback);
+    await verify(page,'password-feedback',width);
+    await page.locator('.auth-switch button').click();
     await page.locator('.auth-card input[type="email"]').fill('buyer-smoke@example.com');
     await page.locator('.auth-card input[type="password"]').fill('NewPassword123!');
+    const loginReply=page.waitForResponse(response=>response.url().includes('/api/auth/login')&&response.request().method()==='POST');
     await page.getByRole('button',{name:'Entrar com e-mail'}).click();
+    const loginResult=await loginReply;
+    if(loginResult.status()!==200){
+      const data=await loginResult.json().catch(()=>({}));
+      throw new Error('Visual buyer login returned HTTP '+loginResult.status()+': '+String(data.error||'unknown').slice(0,120));
+    }
     await page.locator('.hero-banner').waitFor({state:'visible',timeout:15000});
     await verify(page,'home',width);
     await verifyRoundCategories(page,'.category-track:not(.explore-category-track)',width);
@@ -100,7 +114,7 @@ try{
       await sellerPage.goto(origin,{waitUntil:'domcontentloaded'});
       await sellerPage.locator('.auth-card').waitFor({state:'visible'});
       await sellerPage.locator('.auth-card input[type="email"]').fill('seller-smoke@example.com');
-      await sellerPage.locator('.auth-card input[type="password"]').fill('TestPassword789!');
+      await sellerPage.locator('.auth-card input[type="password"]').fill('A1!aaaaa');
       await sellerPage.getByRole('button',{name:'Entrar com e-mail'}).click();
       await sellerPage.locator('.hero-banner').waitFor({state:'visible',timeout:15000});
       await sellerPage.locator('.bottom-nav').getByRole('button',{name:'Conta'}).click();
