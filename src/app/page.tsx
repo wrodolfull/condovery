@@ -1625,7 +1625,7 @@ export default function Page(){
               placeholder="morada.exemplo.com.br" onChange={e=>setTenantForm(v=>({...v,custom_domain:e.target.value}))}/></label>
             <button className="primary-button" disabled={busy} type="submit">Criar condomínio</button>
           </form>
-        </section>
+        </section>}
         {platformTab==='administrators'&&<section className="admin-section white-panel"><h2>Criar administrador local</h2>
           <form className="form-stack" onSubmit={provisionTenantAdmin}>
             <label>Condomínio<select required value={tenantAdmin.condominium_id}
@@ -1641,7 +1641,7 @@ export default function Page(){
               onChange={e=>setTenantAdmin(v=>({...v,password:e.target.value}))}/></label>
             <button className="primary-button" type="submit" disabled={busy}>Criar administrador</button>
           </form>
-        </section>
+        </section>}
       </>}
       {view==='admin'&&viewer.role==='admin'&&<><button className="back-link" onClick={()=>go('account')}><ArrowLeft size={18}/> Minha conta</button><div className="page-title"><h1>Administração do condomínio</h1><p>Gerencie moradores, lojas e categorias da sua comunidade.</p></div>
         {adminData?<><nav className="management-tabs" aria-label="Seções da administração">{([['overview','Resumo'],['residents','Moradores'],['shops','Lojas'],['fairs','Feiras'],['categories','Categorias'],['settings','Configurações'],['reports','Denúncias']] as const).map(([key,label])=><button type="button" key={key} className={adminTab===key?'selected':''} onClick={()=>setAdminTab(key)}>{label}{key==='reports'&&reports.filter(r=>r.status==='open').length>0?' ('+reports.filter(r=>r.status==='open').length+')':''}</button>)}</nav>
