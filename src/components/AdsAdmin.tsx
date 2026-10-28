@@ -1,6 +1,7 @@
 'use client';
 import {prepareMarketplaceImage} from '@/lib/prepare-marketplace-image';
 import {ImageCropper} from '@/components/ImageCropper';
+import {AdvertiserReportAdmin} from '@/components/AdvertiserReportAdmin';
 import {useCallback,useEffect,useState,type FormEvent} from 'react';
 type Campaign={id:string;condominium_id:string;merchant_name:string;headline:string;description:string;location:string;image_url:string;destination_url:string;starts_at:string;expires_at:string;enabled:boolean;contract_amount_cents:number;billing_status:'pending'|'invoiced'|'paid';commercial_partner:string;impressions:number;clicks:number};
 type AdsReport={condominiums:{condominium_id:string;condominium_name:string;campaigns:number;contracted_cents:string;received_cents:string;impressions:string;clicks:string}[];partners:{commercial_partner:string;campaigns:number;contracted_cents:string;received_cents:string}[];totals:{campaigns:number;contracted_cents:string;received_cents:string}};
@@ -16,7 +17,7 @@ async function request(path:string,init?:RequestInit){
 const localDateTime=(value:string)=>{const d=new Date(value);const n=new Date(d.getTime()-d.getTimezoneOffset()*60000);return n.toISOString().slice(0,16);};
 const dateLabel=(value:string)=>new Date(value).toLocaleString('pt-BR',{dateStyle:'short',timeStyle:'short'});
 export function AdsAdmin({tenants}:{tenants:Tenant[]}){
-  const [tab,setTab]=useState<'campaigns'|'new'|'reports'>('campaigns');
+  const [tab,setTab]=useState<'campaigns'|'new'|'reports'|'metrics'>('campaigns');
   const [enabled,setEnabled]=useState(false);
   const [campaigns,setCampaigns]=useState<Campaign[]>([]);
   const [report,setReport]=useState<AdsReport|null>(null);
@@ -28,6 +29,7 @@ export function AdsAdmin({tenants}:{tenants:Tenant[]}){
   const [total,setTotal]=useState(0);
   const [form,setForm]=useState(initial);
   const [editingId,setEditingId]=useState<string|null>(null);
+  const [reportCampaignId,setReportCampaignId]=useState<string|null>(null);
   const [cropFile,setCropFile]=useState<File|null>(null);
   const [busy,setBusy]=useState(false);
   const [uploading,setUploading]=useState(false);
@@ -88,7 +90,8 @@ export function AdsAdmin({tenants}:{tenants:Tenant[]}){
     </label>
     {error&&<p role="alert" style={{color:'#b91c1c'}}>{error}</p>}
     {message&&<p role="status">{message}</p>}
-    <nav className="management-tabs" aria-label="Seções ADS">{([['campaigns','Campanhas'],['new',editingId?'Editar campanha':'Nova campanha'],['reports','Relatórios']] as const).map(([key,label])=><button type="button" key={key} className={tab===key?'selected':''} onClick={()=>setTab(key)}>{label}</button>)}</nav>
+    <nav className="management-tabs" aria-label="Seções ADS">{([['campaigns','Campanhas'],['new',editingId?'Editar campanha':'Nova campanha'],['reports','Relatórios']] as const).map(([key,label])=><button type="button" key={key} className={tab===key?'selected':''} onClick={()=>setTab(key)}>{label}</button>)}{reportCampaignId&&<button type="button" className={tab==='metrics'?'selected':''} onClick={()=>setTab('metrics')}>Relatório da campanha</button>}</nav>
+    {tab==='metrics'&&reportCampaignId&&<AdvertiserReportAdmin campaignId={reportCampaignId} onBack={()=>setTab('campaigns')}/>}
     {tab==='reports'&&report&&<div style={{margin:'12px 0',padding:12,border:'1px solid #e4e4e4',borderRadius:12}}>
       <h3>Resumo comercial</h3>
       <p>{report.totals.campaigns} campanhas · Contratado: <strong>{brl(report.totals.contracted_cents)}</strong> · Marcado como recebido: <strong>{brl(report.totals.received_cents)}</strong></p>
@@ -153,6 +156,7 @@ export function AdsAdmin({tenants}:{tenants:Tenant[]}){
         <p>Contrato: {brl(c.contract_amount_cents)} · Impressões únicas/dia somadas: {c.impressions} · Cliques únicos/dia somados: {c.clicks} · CTR aproximado: {c.impressions?(100*c.clicks/c.impressions).toFixed(1):'0,0'}%</p>
       </div>
       <div className="inline-actions">
+        <button disabled={busy} type="button" onClick={()=>{setReportCampaignId(c.id);setTab('metrics');}}>Ver relatório</button>
         <button disabled={busy} type="button" onClick={()=>editCampaign(c)}>Editar</button>
         <button disabled={busy} type="button" onClick={()=>perform(()=>request('platform/ads/'+c.id,{method:'PATCH',body:JSON.stringify({enabled:!c.enabled})}))}>{c.enabled?'Pausar':'Ativar'}</button>
         <button className="danger-text" disabled={busy} type="button" onClick={()=>{if(window.confirm('Excluir este anúncio?'))perform(()=>request('platform/ads/'+c.id,{method:'DELETE'}));}}>Excluir</button>
