@@ -114,7 +114,7 @@ try{
       await sellerPage.goto(origin,{waitUntil:'domcontentloaded'});
       await sellerPage.locator('.auth-card').waitFor({state:'visible'});
       await sellerPage.locator('.auth-card input[type="email"]').fill('seller-smoke@example.com');
-      await sellerPage.locator('.auth-card input[type="password"]').fill('TestPassword789!');
+      await sellerPage.locator('.auth-card input[type="password"]').fill('A1!aaaaa');
       await sellerPage.getByRole('button',{name:'Entrar com e-mail'}).click();
       await sellerPage.locator('.hero-banner').waitFor({state:'visible',timeout:15000});
       await sellerPage.locator('.bottom-nav').getByRole('button',{name:'Conta'}).click();
