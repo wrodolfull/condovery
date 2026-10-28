@@ -21,11 +21,10 @@ export function passwordStatus(password:string) {
   // UX-only heuristic: not an entropy estimate or proof against leaked passwords.
   let strength=0;
   if(password){
-    strength=1;
-    if(password.length>=8)strength++;
-    if(categories>=3)strength++;
-    if(password.length>=12&&categories>=4)strength++;
-    if(!valid)strength=Math.min(strength,2);
+    if(!valid||password.length<8||categories<3)strength=1;
+    else if(password.length<12)strength=2;
+    else if(password.length<16||categories<4)strength=3;
+    else strength=4;
   }
   const strengthLabel=['Aguardando senha','Fraca','Regular','Boa','Forte'][strength];
   return {requirements,valid,strength,strengthLabel,length:password.length};
