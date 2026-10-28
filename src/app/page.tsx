@@ -1725,22 +1725,32 @@ export default function Page(){
               Salvar configuração das torres</button>
           </form>
         </section>}
-        {adminTab==='categories'&&<section className="admin-section white-panel"><h2><LayoutGrid size={20}/> Categorias</h2><div className="filter-chips">{adminData.categories.filter(c=>c.name!=='Serviços'&&c.name!=='Moda'&&c.name!=='Desapego').map(c=><span className="category-tag" key={c.id}>{c.name}</span>)}</div>
-          <div style={{display:'grid',gap:10,margin:'16px 0'}}>
-            {adminData.categories.filter(c=>c.name==='Serviços'||c.name==='Moda'||c.name==='Desapego').map(c=>
-              <div key={c.id} className="admin-row">
-                <div style={{display:'flex',alignItems:'center',gap:12}}>
-                  {c.name==='Serviços'?<Wrench size={23}/>:c.name==='Moda'?<Shirt size={23}/>:<Gift size={23}/>}
-                  <div><strong>{c.name}</strong><p>{c.is_active?'Visível na Home e no catálogo':'Desabilitada — oculta para moradores'}</p></div>
-                </div>
-                <label style={{display:'flex',alignItems:'center',gap:8,cursor:'pointer'}}>
-                  <input aria-label={'Habilitar '+c.name} type="checkbox" disabled={busy} checked={!!c.is_active} onChange={()=>toggleOptionalCategory(c)}/>
-                  <span>{c.is_active?'Ativa':'Inativa'}</span>
-                </label>
-              </div>)}
+        {adminTab==='categories'&&<section className="admin-section white-panel">
+          <h2><LayoutGrid size={20}/> Categorias do condomínio</h2>
+          <p className="muted">Toque em qualquer categoria para mostrar ou ocultar na Home, na busca e na seleção de produtos. As alterações são aplicadas a todo o condomínio.</p>
+          <div className="admin-category-toggle-grid" role="group" aria-label="Ativar ou desativar categorias">
+            {adminData.categories.map(c=><button type="button" key={c.id}
+              className={'admin-category-toggle'+(c.is_active?' is-active':'')}
+              aria-pressed={!!c.is_active}
+              aria-label={(c.is_active?'Desativar ':'Ativar ')+c.name}
+              disabled={busy} onClick={()=>toggleOptionalCategory(c)}>
+              <span className="admin-category-symbol"><CategorySymbol name={c.name} icon={c.icon}/></span>
+              <span className="admin-category-details"><strong>{c.name}</strong><small>{c.is_active?'Visível no condomínio':'Oculta para moradores'}</small></span>
+              <span className="admin-category-indicator" aria-hidden="true"><span/></span>
+            </button>)}
           </div>
-          <form className="admin-category-form" onSubmit={createCategory}><input required minLength={2} maxLength={60} value={newCategory} onChange={e=>setNewCategory(e.target.value)} placeholder="Nova categoria de alimentação"/><select value={categoryIcon} onChange={e=>setCategoryIcon(e.target.value)} aria-label="Ícone"><option value="cake-slice">Bolos</option><option value="sandwich">Alimentos</option><option value="coffee">Bebidas</option><option value="pizza">Lanches</option><option value="ice-cream-cone">Sobremesas</option><option value="shopping-basket">Mercadinho</option></select><button className="outline-button" disabled={busy} type="submit"><Plus size={16}/>Adicionar</button></form></section>}
-                {adminTab==='reports'&&<section className="admin-section white-panel">
+          <h3 style={{margin:'20px 0 10px'}}>Adicionar categoria personalizada</h3>
+          <form className="admin-category-form" onSubmit={createCategory}>
+            <input required minLength={2} maxLength={60} value={newCategory} onChange={e=>setNewCategory(e.target.value)} placeholder="Nome da nova categoria"/>
+            <select value={categoryIcon} onChange={e=>setCategoryIcon(e.target.value)} aria-label="Ícone">
+              <option value="cake-slice">Bolos</option><option value="sandwich">Alimentos</option>
+              <option value="coffee">Bebidas</option><option value="pizza">Lanches</option>
+              <option value="ice-cream-cone">Sobremesas</option><option value="shopping-basket">Mercadinho</option>
+            </select>
+            <button className="outline-button" disabled={busy} type="submit"><Plus size={16}/>Adicionar</button>
+          </form>
+        </section>}
+                        {adminTab==='reports'&&<section className="admin-section white-panel">
           <h2><ShieldCheck size={20}/> Denúncias de conteúdo
             {reportStatus==='open'&&reportTotal>0&&<span className="review-pending-counter">{reportTotal}</span>}</h2>
           <label>Situação<select value={reportStatus} onChange={e=>{setReportStatus(e.target.value);setReportPage(0);}}><option value="open">Pendentes</option><option value="resolved">Resolvidas</option><option value="all">Todas</option></select></label>
