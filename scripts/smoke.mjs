@@ -199,7 +199,7 @@ const sellerFairs=(await request('fairs/seller',{cookie:sellerCookie})).data;
 assert.ok(sellerFairs.fairs.some(f=>f.id===fairId));
 assert.ok(sellerFairs.products.some(p=>p.id===productId));
 await request('fairs/'+fairId+'/applications',{method:'POST',cookie:sellerCookie,body:{product_id:productId},expected:201});
-await request('fairs/'+fairId+'/applications',{method:'POST',cookie:buyerCookie,body:{product_id:productId},expected:409});
+await request('fairs/'+fairId+'/applications',{method:'POST',cookie:buyerCookie,body:{product_id:productId},expected:403});
 assert.equal((await request('fairs/'+fairId,{cookie:buyerCookie})).data.products.length,0);
 await request('fairs/manage/'+fairId+'/applications/'+productId,{method:'PATCH',cookie:buyerCookie,body:{status:'approved'},expected:403});
 await request('fairs/manage/'+fairId+'/applications/'+productId,{method:'PATCH',cookie:adminCookie,body:{status:'approved'}});
