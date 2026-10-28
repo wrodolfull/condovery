@@ -23,6 +23,8 @@ import {handleAdminDirectory} from '@/server/admin-directory';
 import {handlePlatformCondominiums} from '@/server/platform-condominiums';
 import {handleSellerInsights} from '@/server/seller-insights';
 import {handleCommunityFairs} from '@/server/community-fairs';
+import {limitAuthentication,clearAuthenticationFailures} from '@/lib/auth-rate-limit';
+import {protectMutation} from '@/lib/request-protection';
 
 export const runtime='nodejs';
 export const dynamic='force-dynamic';
@@ -122,6 +124,7 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
     const input=z.object({invite:z.string().min(10).max(150)}).parse(await body(req));
     const invite=input.invite;
     if(invite.length<10)bad('Informe um convite válido.');
+    await limitAuthentication(req,'invitation',invite);
     const result=await query(
       'SELECT name,towers FROM condominiums WHERE invite_code_hash=$1 AND is_active=true',
       [inviteHash(invite)]
@@ -133,6 +136,7 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
   if(path==='auth/providers'&&method==='GET')return out({google:googleConfigured(),email:emailConfigured(),passwordRecovery:recoveryConfigured()});
   if(path==='auth/google'&&method==='GET'){
     if(!googleConfigured())bad('Login Google não configurado.',503);
+    await limitAuthentication(req,'oauth','google');
     const {client,pkceValues}=googleAuthClient();
     const callback=safeAppOrigin(req)+'/api/auth/google/callback';
     const {data,error}=await client.auth.signInWithOAuth({
@@ -194,6 +198,7 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
     const pending=req.cookies.get('condovery_google_signup')?.value;
     if(!pending)bad('Inicie o cadastro pelo Google.',401);
     const b=googleRegister.parse(await body(req));
+    await limitAuthentication(req,'registration',pending);
     const result=await transaction(async tx=>{
       const waiting=await tx.query(
         'DELETE FROM google_signup_pending WHERE token_hash=$1 AND expires_at>now() RETURNING *',
@@ -230,14 +235,9 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
   if(path==='auth/password/request'&&method==='POST'){
     if(!recoveryConfigured())bad('Recuperação do Supabase Auth não configurada.',503);
     const b=z.object({email:z.string().email().max(250).transform(v=>v.trim().toLowerCase())}).parse(await body(req));
-    const ip=clean(req.headers.get('x-real-ip')||req.headers.get('cf-connecting-ip')||'unknown',80);
-    const hits=await query(
-      "SELECT (SELECT count(*)::int FROM password_reset_attempts WHERE email=$1 AND created_at>now()-interval '1 hour') AS email_count,(SELECT count(*)::int FROM password_reset_attempts WHERE ip=$2 AND created_at>now()-interval '1 hour') AS ip_count",
-      [b.email,ip]
-    );
     const generic='Se houver uma conta cadastrada, você receberá um e-mail de recuperação do Supabase Auth.';
-    if(hits.rows[0].email_count>=3||hits.rows[0].ip_count>=15)return out({message:generic});
-    await query('INSERT INTO password_reset_attempts(email,ip) VALUES($1,$2)',[b.email,ip]);
+    try{await limitAuthentication(req,'recovery',b.email);}
+    catch(e){if(e instanceof ApiError&&e.status===429)return out({message:generic});throw e;}
     const {error}=await passwordAuthClient().auth.resetPasswordForEmail(b.email,{
       redirectTo:safeAppOrigin(req)+'/api/auth/recovery/verify'
     });
@@ -292,6 +292,7 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
   if(path==='auth/register'&&method==='POST'){
     if(!emailConfigured())bad('Cadastro por e-mail não configurado.',503);
     const b=signup.parse(await body(req));
+    await limitAuthentication(req,'registration',b.email);
     const reRegHash=crypto.createHash('sha256').update(b.email).digest('hex');
     const deleting=await query('SELECT 1 FROM account_deletion_jobs WHERE email_hash=$1 AND finished_at IS NULL',
       [reRegHash]);
@@ -337,17 +338,11 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
   if(path==='auth/login'&&method==='POST'){
     if(!emailConfigured())bad('Login por e-mail não configurado.',503);
     const b=credentials.parse(await body(req));
-    const failures=await query(
-      "SELECT count(*)::int AS count FROM login_attempts WHERE email=$1 AND occurred_at>now()-interval '15 minutes'",
-      [b.email]
-    );
-    if(failures.rows[0].count>=8)bad('Muitas tentativas. Tente novamente em 15 minutos.',429);
+    await limitAuthentication(req,'login',b.email);
     const {data,error}=await passwordAuthClient().auth.signInWithPassword({email:b.email,password:b.password});
-    if(error||!data.user?.id||!data.user.email_confirmed_at){
-      await query('INSERT INTO login_attempts(email,ip) VALUES($1,$2)',
-        [b.email,clean(req.headers.get('x-real-ip')||'unknown',80)]);
+    if(error?.status===429)bad('Muitas tentativas. Tente novamente mais tarde.',429);
+    if(error||!data.user?.id||!data.user.email_confirmed_at)
       bad('Credenciais inválidas ou e-mail ainda não confirmado.',401);
-    }
     const verifiedUser=data.user!;
     const member=await query(
       'SELECT id,status,supabase_auth_user_id FROM users WHERE supabase_auth_user_id=$1 OR email=$2 LIMIT 1',
@@ -363,7 +358,7 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
       await query('UPDATE users SET supabase_auth_user_id=$1 WHERE id=$2 AND supabase_auth_user_id IS NULL',
         [verifiedUser.id,member.rows[0].id]);
     }
-    await query('DELETE FROM login_attempts WHERE email=$1',[b.email]);
+    await clearAuthenticationFailures('login',b.email);
     return (await issueAppLogin(member.rows[0].id)).response;
   }
   if(path==='auth/logout'&&method==='POST'){
@@ -1293,6 +1288,7 @@ async function endpoint(req:NextRequest,method:Verb) {
   const parts=req.nextUrl.pathname.replace(/^\/api\/?/,'').split('/').filter(Boolean);
   let response:NextResponse;
   try {
+    protectMutation(req,method);
     response=await processApi({req,method,parts});
   } catch(error) {
     if(error instanceof Error&&error.message==='TENANT_NOT_FOUND')
