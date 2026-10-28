@@ -243,6 +243,8 @@ export default function Page(){
   const [shopDeleteConfirmation,setShopDeleteConfirmation]=useState('');
   const [cropRequest,setCropRequest]=useState<{file:File;kind:ImageKind}|null>(null);
   const [myProducts,setMyProducts]=useState<Product[]>([]);
+  const [adminTab,setAdminTab]=useState<'overview'|'residents'|'shops'|'fairs'|'categories'|'settings'|'reports'>('overview');
+  const [platformTab,setPlatformTab]=useState<'condominiums'|'administrators'>('condominiums');
   const [adminData,setAdminData]=useState<AdminData|null>(null);
   const [tenants,setTenants]=useState<Tenant[]>([]);
   const [tenantMenuOpen,setTenantMenuOpen]=useState(false);
@@ -1604,7 +1606,8 @@ export default function Page(){
       {view==='platform'&&viewer.is_superadmin&&<>
         <button className="back-link" onClick={()=>go('account')}><ArrowLeft size={18}/> Minha conta</button>
         <div className="page-title"><h1>Superadmin Condovery</h1><p>Gerencie os condomínios e alterne o ambiente administrado.</p></div>
-        <section className="admin-section white-panel"><h2>Criar condomínio</h2>
+        <nav className="management-tabs" aria-label="Seções do Superadmin">{([['condominiums','Condomínios'],['administrators','Administradores']] as const).map(([key,label])=><button type="button" key={key} className={platformTab===key?'selected':''} onClick={()=>setPlatformTab(key)}>{label}</button>)}</nav>
+        {platformTab==='condominiums'&&<section className="admin-section white-panel"><h2>Criar condomínio</h2>
           <form className="form-stack" onSubmit={createTenant}>
             <label>Nome<input required minLength={3} maxLength={100} value={tenantForm.name}
               onChange={e=>setTenantForm(v=>({...v,name:e.target.value}))}/></label>
@@ -1623,7 +1626,7 @@ export default function Page(){
             <button className="primary-button" disabled={busy} type="submit">Criar condomínio</button>
           </form>
         </section>
-        <section className="admin-section white-panel"><h2>Criar administrador local</h2>
+        {platformTab==='administrators'&&<section className="admin-section white-panel"><h2>Criar administrador local</h2>
           <form className="form-stack" onSubmit={provisionTenantAdmin}>
             <label>Condomínio<select required value={tenantAdmin.condominium_id}
               onChange={e=>setTenantAdmin(v=>({...v,condominium_id:e.target.value}))}>
@@ -1641,13 +1644,14 @@ export default function Page(){
         </section>
       </>}
       {view==='admin'&&viewer.role==='admin'&&<><button className="back-link" onClick={()=>go('account')}><ArrowLeft size={18}/> Minha conta</button><div className="page-title"><h1>Administração do condomínio</h1><p>Gerencie moradores, lojas e categorias da sua comunidade.</p></div>
-        {adminData?<><div className="admin-stats"><div><strong>{adminData.stats.residents}</strong><span>Moradores ativos</span></div><div><strong>{adminData.stats.shops}</strong><span>Lojas ativas</span></div><div><strong>{adminData.stats.orders}</strong><span>Pedidos criados</span></div></div>
-        <AdminFairs condominiumId={viewer.condominium_id}/>
-        <AdminDirectory key={viewer.condominium_id+'-'+adminData.towers.join('|')} kind="users" condominiumId={viewer.condominium_id} towers={adminData.towers}
-          onChanged={()=>{void loadAdmin().catch(fail);void loadHome().catch(fail);}}/>
-        <AdminDirectory kind="shops" condominiumId={viewer.condominium_id} towers={adminData.towers}
-          onChanged={()=>{void loadAdmin().catch(fail);void loadHome().catch(fail);}}/>
-        <section className="admin-section white-panel">
+        {adminData?<><nav className="management-tabs" aria-label="Seções da administração">{([['overview','Resumo'],['residents','Moradores'],['shops','Lojas'],['fairs','Feiras'],['categories','Categorias'],['settings','Configurações'],['reports','Denúncias']] as const).map(([key,label])=><button type="button" key={key} className={adminTab===key?'selected':''} onClick={()=>setAdminTab(key)}>{label}{key==='reports'&&reports.filter(r=>r.status==='open').length>0?' ('+reports.filter(r=>r.status==='open').length+')':''}</button>)}</nav>
+        {adminTab==='overview'&&<div className="admin-stats"><div><strong>{adminData.stats.residents}</strong><span>Moradores ativos</span></div><div><strong>{adminData.stats.shops}</strong><span>Lojas ativas</span></div><div><strong>{adminData.stats.orders}</strong><span>Pedidos criados</span></div></div>
+        {adminTab==='fairs'&&<AdminFairs condominiumId={viewer.condominium_id}/>}
+        {adminTab==='residents'&&<AdminDirectory key={viewer.condominium_id+'-'+adminData.towers.join('|')} kind="users" condominiumId={viewer.condominium_id} towers={adminData.towers}
+          onChanged={()=>{void loadAdmin().catch(fail);void loadHome().catch(fail);}}/>}
+        {adminTab==='shops'&&<AdminDirectory kind="shops" condominiumId={viewer.condominium_id} towers={adminData.towers}
+          onChanged={()=>{void loadAdmin().catch(fail);void loadHome().catch(fail);}}/>}
+        {adminTab==='settings'&&<section className="admin-section white-panel">
           <h2><LayoutGrid size={20}/> Torres do condomínio</h2>
           <p className="muted">Defina como os moradores identificam as torres. Letras: A até AD. Números: 1 até 30. A alteração por posição mantém os moradores em sua torre correspondente.</p>
           <form className="form-stack tower-settings" onSubmit={saveTowers}>
@@ -1665,8 +1669,8 @@ export default function Page(){
             <button type="submit" className="outline-button" disabled={busy||towerCount<1||towerCount>30||!Number.isInteger(towerCount)}>
               Salvar configuração das torres</button>
           </form>
-        </section>
-        <section className="admin-section white-panel"><h2><LayoutGrid size={20}/> Categorias</h2><div className="filter-chips">{adminData.categories.filter(c=>c.name!=='Serviços'&&c.name!=='Moda'&&c.name!=='Desapego').map(c=><span className="category-tag" key={c.id}>{c.name}</span>)}</div>
+        </section>}
+        {adminTab==='categories'&&<section className="admin-section white-panel"><h2><LayoutGrid size={20}/> Categorias</h2><div className="filter-chips">{adminData.categories.filter(c=>c.name!=='Serviços'&&c.name!=='Moda'&&c.name!=='Desapego').map(c=><span className="category-tag" key={c.id}>{c.name}</span>)}</div>
           <div style={{display:'grid',gap:10,margin:'16px 0'}}>
             {adminData.categories.filter(c=>c.name==='Serviços'||c.name==='Moda'||c.name==='Desapego').map(c=>
               <div key={c.id} className="admin-row">
@@ -1680,8 +1684,8 @@ export default function Page(){
                 </label>
               </div>)}
           </div>
-          <form className="admin-category-form" onSubmit={createCategory}><input required minLength={2} maxLength={60} value={newCategory} onChange={e=>setNewCategory(e.target.value)} placeholder="Nova categoria de alimentação"/><select value={categoryIcon} onChange={e=>setCategoryIcon(e.target.value)} aria-label="Ícone"><option value="cake-slice">Bolos</option><option value="sandwich">Alimentos</option><option value="coffee">Bebidas</option><option value="pizza">Lanches</option><option value="ice-cream-cone">Sobremesas</option><option value="shopping-basket">Mercadinho</option></select><button className="outline-button" disabled={busy} type="submit"><Plus size={16}/>Adicionar</button></form></section>
-                <section className="admin-section white-panel">
+          <form className="admin-category-form" onSubmit={createCategory}><input required minLength={2} maxLength={60} value={newCategory} onChange={e=>setNewCategory(e.target.value)} placeholder="Nova categoria de alimentação"/><select value={categoryIcon} onChange={e=>setCategoryIcon(e.target.value)} aria-label="Ícone"><option value="cake-slice">Bolos</option><option value="sandwich">Alimentos</option><option value="coffee">Bebidas</option><option value="pizza">Lanches</option><option value="ice-cream-cone">Sobremesas</option><option value="shopping-basket">Mercadinho</option></select><button className="outline-button" disabled={busy} type="submit"><Plus size={16}/>Adicionar</button></form></section>}
+                {adminTab==='reports'&&<section className="admin-section white-panel">
           <h2><ShieldCheck size={20}/> Denúncias de conteúdo
             {reports.filter(r=>r.status==='open').length>0&&<span className="review-pending-counter">
               {reports.filter(r=>r.status==='open').length}</span>}</h2>
@@ -1708,8 +1712,8 @@ export default function Page(){
                     onClick={()=>unblockProduct(r.target_id)}>Permitir revisão do produto</button>
                 </div>)}
             </div>}
-        </section>
-<section className="admin-section white-panel">
+        </section>}
+{adminTab==='settings'&&<section className="admin-section white-panel">
   <h2><ShieldCheck size={20}/> Código do condomínio</h2>
   <p>Você escolhe o código. Quem o informar pode entrar após confirmar o e-mail.</p>
   <form className="form-stack" onSubmit={saveInvite}>
@@ -1721,7 +1725,7 @@ export default function Page(){
   {invite&&<div className="invite-code"><code>{invite}</code>
     <button onClick={()=>navigator.clipboard.writeText(invite).then(()=>notify('Código copiado.')).catch(fail)}>Copiar</button></div>}
   <small>O código anterior deixa de funcionar quando você salva outro. Compartilhe somente com moradores.</small>
-</section>
+</section>}
         </>:<Empty title="Carregando administração" subtitle="Confira sua conexão e tente novamente." action="Recarregar" onAction={()=>loadAdmin().catch(fail)}/>}
       </>}
       {reopenWhatsAppUrl&&<div className="share-fallback-overlay" role="presentation"
