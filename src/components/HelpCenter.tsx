@@ -1,7 +1,7 @@
 'use client';
 
 import {useEffect,useMemo,useState} from 'react';
-import {ArrowLeft,BookOpen,ChevronDown,HelpCircle,Search,ShieldCheck,ShoppingBag,Store,X} from 'lucide-react';
+import {ArrowLeft,BookOpen,ChevronDown,CircleHelp,Search,ShieldCheck,ShoppingBag,Store,X} from 'lucide-react';
 import {helpArticles,type HelpArea,type HelpArticle} from '@/lib/help-content';
 
 type Access='loading'|'guest'|'resident'|'admin'|'unavailable';
@@ -71,7 +71,7 @@ export function HelpCenter(){
         </label>}
       </div>
       {access==='loading'?<div className="help-state" role="status">Carregando sua central de ajuda...</div>:
-       access==='guest'?<div className="help-state"><HelpCircle size={30}/><h2>Entre para consultar a ajuda</h2><p>A central acompanha seu perfil de morador ou administrador.</p><a className="help-main-action" href="/">Entrar no Condovery</a></div>:
+       access==='guest'?<div className="help-state"><CircleHelp size={30}/><h2>Entre para consultar a ajuda</h2><p>A central acompanha seu perfil de morador ou administrador.</p><a className="help-main-action" href="/">Entrar no Condovery</a></div>:
        access==='unavailable'?<div className="help-state" role="alert"><h2>Não foi possível confirmar seu acesso</h2><p>Entre na sua conta e tente novamente.</p><a className="help-main-action" href="/">Voltar ao Condovery</a></div>:
        <>
          {!searching&&<section className="help-areas" aria-label="Áreas de ajuda">
@@ -91,14 +91,14 @@ export function HelpCenter(){
              <p>{articles.length} {articles.length===1?'dúvida encontrada':'dúvidas encontradas'}</p></div>
              {searching&&<button type="button" className="help-clear" onClick={()=>setSearch('')}>Limpar busca</button>}
            </div>
-           {articles.length===0?<div className="help-empty"><HelpCircle size={26}/><h3>Nenhuma dúvida encontrada</h3>
+           {articles.length===0?<div className="help-empty"><CircleHelp size={26}/><h3>Nenhuma dúvida encontrada</h3>
              <p>Tente outro termo ou escolha um assunto diferente.</p></div>:
            groups.map(group=><div key={group.name} className="help-group">
              <h3>{group.name}</h3>
              <div className="help-list">{group.items.map(article=><Question key={article.id} article={article}/>)}</div>
            </div>)}
          </section>
-         <aside className="help-footer-note"><HelpCircle size={19}/><span>Não encontrou o que procura? Consulte a administração do seu condomínio para orientações específicas.</span></aside>
+         <aside className="help-footer-note"><CircleHelp size={19}/><span>Não encontrou o que procura? Consulte a administração do seu condomínio para orientações específicas.</span></aside>
        </>}
     </main>
   </div>;
