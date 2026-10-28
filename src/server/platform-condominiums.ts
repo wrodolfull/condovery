@@ -14,6 +14,10 @@ const out=(value:unknown,status=200)=>NextResponse.json(value,{status,headers:{'
 export async function handlePlatformCondominiums(req:NextRequest,method:string,path:string,u:Viewer):Promise<NextResponse|null>{
   if(path==='platform/condominiums'&&method==='GET'){
     if(!u.is_superadmin)bad('Acesso exclusivo do superadmin.',403);
+    if(req.nextUrl.searchParams.get('mode')==='options'){
+      const options=await query('SELECT id,name FROM condominiums WHERE is_active=true ORDER BY name LIMIT 1000');
+      return out({condominiums:options.rows,active_condominium_id:u.condominium_id});
+    }
     const page=Number(req.nextUrl.searchParams.get('page')||0);
     if(!Number.isInteger(page)||page<0||page>10000)bad('Página inválida.');
     const search=(req.nextUrl.searchParams.get('search')||'').trim().slice(0,100);
