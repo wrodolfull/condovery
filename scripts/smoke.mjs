@@ -23,7 +23,7 @@ async function request(path, {method='GET', body, cookie, expected=200}={}) {
   assert.equal(response.status,expected,method+' /api/'+path+': '+JSON.stringify(data));
   return {data,cookie:response.headers.get('set-cookie')?.split(';')[0]};
 }
-const pass='TestPassword789!';const invite=process.env.BOOTSTRAP_INVITE_CODE;
+const pass='A1!aaaaa';const invite=process.env.BOOTSTRAP_INVITE_CODE;
 assert.ok(invite);
 await request('home',{expected:401});
 const condo=(await request('public/condominium',{method:'POST',body:{invite}})).data;
@@ -32,6 +32,13 @@ assert.equal(condo.towers.length,30);
 const firstTower=condo.towers[0],secondTower=condo.towers[1];
 assert.equal(firstTower,'Torre A');
 assert.equal(condo.towers[29],'Torre AD');
+// Shared password policy must be enforced on the server before creating an Auth account.
+for(const [index,weakPassword] of ['A1!aaaa','a1!aaaaa','Aa!aaaaa','Aa1aaaaa'].entries()){
+  await request('auth/register',{method:'POST',expected:400,body:{
+    name:'Password Policy Test',email:'invalid-password-'+index+'@example.com',phone:'11999991234',
+    password:weakPassword,invite,tower:firstTower,apartment:'201'
+  }});
+}
 const buyerEmail='buyer-smoke@example.com';
 const sellerEmail='seller-smoke@example.com';
 for(const [name,email,apt] of [['Buyer Test',buyerEmail,'101'],['Seller Test',sellerEmail,'102']]){
@@ -595,6 +602,10 @@ const verify=await fetch(origin+'/api/auth/recovery/verify?type=recovery&token_h
 assert.equal(verify.status,307);
 const recoveryCookie=verify.headers.get('set-cookie')?.split(';')[0];
 assert.ok(recoveryCookie?.startsWith('condovery_recovery='));
+await request('auth/password/confirm',{method:'POST',cookie:recoveryCookie,
+  body:{password:'a1!aaaaa'},expected:400});
+// Invalid password must not consume the valid one-time recovery ticket.
+
 await request('auth/password/confirm',{
   method:'POST',cookie:recoveryCookie,body:{password:'NewPassword123!'}
 });
