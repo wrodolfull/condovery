@@ -1221,3 +1221,57 @@ font-weight:750;padding:12px 20px;cursor:pointer}
   .help-answer{padding:0 23px 20px}
 }
 @media(max-width:380px){.help-return{font-size:11px}.help-brand{font-size:23px}.help-topic-selector{align-items:stretch;flex-direction:column;gap:6px}.help-topic-selector select{width:100%}}
+
+
+/* Advertiser reports: compact, mobile-first, standalone and admin views */
+.adreport{background:#fff;color:#272421;max-width:100%;min-width:0;padding:8px 0 18px}
+.adreport-public{max-width:940px;margin:20px auto;padding:18px;background:#fff;border:1px solid #eee9e4;border-radius:18px}
+.adreport-public-brand{font-size:23px;letter-spacing:-1px;font-weight:800;margin:2px 0 22px}
+.adreport-public-brand span{color:#fc6741}
+.adreport-public-brand small{font-size:11px;letter-spacing:0;font-weight:600;color:#716d68;margin-left:12px}
+.adreport-header{display:flex;flex-wrap:wrap;align-items:flex-start;justify-content:space-between;gap:12px;margin:6px 0 20px}
+.adreport-header h2{font-size:clamp(21px,4vw,29px);letter-spacing:-.5px;margin:5px 0 6px}
+.adreport-header p{font-size:13px;line-height:1.5;color:#716c66;margin:0;max-width:520px}
+.adreport-eyebrow{font-size:10px;font-weight:800;letter-spacing:1.1px;color:#c26041}
+.adreport-download{display:inline-flex;align-items:center;gap:7px;font-size:13px;white-space:nowrap;text-decoration:none}
+.adreport-filter{display:flex;flex-wrap:wrap;gap:9px;align-items:center;font-weight:700;font-size:13px;margin-bottom:8px}
+.adreport-filter select,.adreport-share-form select{min-height:40px;max-width:100%;padding:8px 11px;font-size:13px;border:1px solid #ddd8d2;border-radius:9px;background:white;color:#282522}
+.adreport-period{font-size:12px;margin:6px 0 16px}
+.adreport-kpis{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px;margin:12px 0 23px}
+.adreport-kpis>div{display:flex;flex-direction:column;gap:7px;padding:12px 10px;border:1px solid #ebe6e0;background:#faf9f7;border-radius:12px;min-width:0}
+.adreport-kpis svg{color:#ee7452;width:19px}
+.adreport-kpis small{font-size:11px;color:#6c665f}
+.adreport-kpis strong{font-size:clamp(17px,3vw,25px);letter-spacing:-.5px;overflow-wrap:anywhere}
+.adreport-section{margin-top:22px}
+.adreport-section h3{font-size:16px;margin:0 0 13px}
+.adreport-chart-scroll{width:100%;min-width:0;overflow-x:auto}
+.adreport-chart{height:164px;min-width:340px;display:flex;align-items:flex-end;gap:4px;padding:12px 8px 0;background:linear-gradient(to top,#f3efeb 1px,transparent 1px) 0 0/100% 41px}
+.adreport-bar-column{flex:1;min-width:5px;height:100%;display:flex;align-items:flex-end}
+.adreport-bar-track{width:100%;height:145px;display:flex;align-items:flex-end}
+.adreport-bar-track>span{display:block;width:100%;min-height:0;background:#fc6741;border-radius:4px 4px 0 0}
+.adreport-chart-labels{display:flex;justify-content:space-between;gap:8px;font-size:11px;color:#716c66;margin:8px 0}
+.adreport-section>.muted{font-size:11px;line-height:1.5}
+.adreport-table-scroll{max-width:100%;overflow-x:auto;max-height:430px;overflow-y:auto;border:1px solid #ede9e4;border-radius:12px}
+.adreport-table-scroll table{width:100%;border-collapse:collapse;font-size:12px}
+.adreport-table-scroll th{text-align:left;position:sticky;top:0;background:#f7f5f2;color:#59534e;font-size:11px;padding:11px 12px}
+.adreport-table-scroll td{padding:10px 12px;border-top:1px solid #f0ede9}
+.adreport-table-scroll th:not(:first-child),.adreport-table-scroll td:not(:first-child){text-align:right}
+.adreport-disclaimer,.adreport-footnote{font-size:11px;line-height:1.65;color:#77706a;margin:19px 0 0}
+.adreport-error{color:#ab2929;font-size:13px}
+.adreport-share-box{border-top:1px solid #ece6df;padding:22px 0 8px;margin-top:21px}
+.adreport-share-box h3{display:flex;align-items:center;gap:9px;margin:0 0 8px;font-size:17px}
+.adreport-share-box>p{color:#77716a;font-size:12px;line-height:1.5;margin:0 0 16px}
+.adreport-share-box h4{margin:23px 0 9px;font-size:14px}
+.adreport-share-form{display:flex;align-items:end;flex-wrap:wrap;gap:12px}
+.adreport-share-form label{display:flex;flex-direction:column;gap:5px;font-size:12px;font-weight:700}
+.adreport-share-form button{min-height:40px}
+.adreport-created{margin-top:14px;border:1px solid #dcded8;border-radius:12px;padding:12px;display:flex;flex-wrap:wrap;gap:9px;align-items:end}
+.adreport-created label{display:flex;flex:1 1 220px;min-width:0;flex-direction:column;gap:6px;font-size:12px;font-weight:600}
+.adreport-created input{width:100%;max-width:100%;min-width:0;font-size:12px}
+.adreport-created small{flex:1 0 100%;font-size:11px;color:#817970}
+.adreport-share-row{padding:11px 0;border-top:1px solid #edeae6;display:flex;align-items:center;justify-content:space-between;gap:12px}
+.adreport-share-row strong{display:block;font-size:13px}
+.adreport-share-row small{display:block;font-size:11px;color:#747069;line-height:1.5;margin-top:3px}
+.adreport-share-row button{display:inline-flex;align-items:center;gap:4px}
+@media(min-width:650px){.adreport-public{margin:32px auto;padding:30px}.adreport-kpis{gap:13px}.adreport-kpis>div{padding:17px}.adreport-chart{height:185px}}
+@media(max-width:360px){.adreport-kpis>div{padding:10px 6px}.adreport-kpis small{font-size:10px}.adreport-kpis strong{font-size:16px}.adreport-download{width:100%;justify-content:center}}
