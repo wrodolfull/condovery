@@ -184,6 +184,36 @@ const product=await request('products',{method:'POST',cookie:sellerCookie,body:{
 const productId=product.data.product.id;
 const visible=(await request('home',{cookie:buyerCookie})).data;
 assert.ok(visible.products.find(p=>p.id===productId));
+// Feira digital: admin creates, seller enrolls, admin moderates, resident buys via existing catalog.
+const fairPayload={
+  title:'Feira de Bolos',description:'Vitrine da comunidade',
+  starts_at:new Date(Date.now()-60_000).toISOString(),
+  ends_at:new Date(Date.now()+86_400_000).toISOString(),
+  published:true,cover_image_url:''
+};
+await request('fairs/manage',{method:'POST',cookie:sellerCookie,body:fairPayload,expected:403});
+const createdFair=(await request('fairs/manage',{method:'POST',cookie:adminCookie,body:fairPayload,expected:201})).data;
+const fairId=createdFair.id;
+// Superadmin must not see or mutate fairs outside the selected condominium.
+await request('platform/condominiums/switch',{method:'POST',cookie:adminCookie,body:{condominium_id:newTenant.id}});
+assert.ok(!(await request('fairs/manage',{cookie:adminCookie})).data.fairs.some(f=>f.id===fairId));
+await request('fairs/manage/'+fairId,{method:'PATCH',cookie:adminCookie,body:{published:false},expected:404});
+await request('platform/condominiums/switch',{method:'POST',cookie:adminCookie,body:{condominium_id:originalTenant}});
+assert.ok((await request('fairs',{cookie:buyerCookie})).data.fairs.some(f=>f.id===fairId));
+const sellerFairs=(await request('fairs/seller',{cookie:sellerCookie})).data;
+assert.ok(sellerFairs.fairs.some(f=>f.id===fairId));
+assert.ok(sellerFairs.products.some(p=>p.id===productId));
+await request('fairs/'+fairId+'/applications',{method:'POST',cookie:sellerCookie,body:{product_id:productId},expected:201});
+await request('fairs/'+fairId+'/applications',{method:'POST',cookie:buyerCookie,body:{product_id:productId},expected:403});
+assert.equal((await request('fairs/'+fairId,{cookie:buyerCookie})).data.products.length,0);
+await request('fairs/manage/'+fairId+'/applications/'+productId,{method:'PATCH',cookie:buyerCookie,body:{status:'approved'},expected:403});
+await request('fairs/manage/'+fairId+'/applications/'+productId,{method:'PATCH',cookie:adminCookie,body:{status:'approved'}});
+assert.ok((await request('fairs/'+fairId,{cookie:buyerCookie})).data.products.some(p=>p.id===productId));
+await request('fairs/manage/'+fairId,{method:'PATCH',cookie:adminCookie,body:{published:false}});
+await request('fairs/'+fairId,{cookie:buyerCookie,expected:404});
+await request('fairs/manage/'+fairId,{method:'PATCH',cookie:adminCookie,body:{published:true}});
+console.log('Community fair tenant participation, moderation, publication and product listing PASS.');
+
 const checkoutKey=crypto.randomUUID();
 const checkoutBody={
   shop_id:shopId,items:[{id:productId,quantity:2}],fulfillment:'delivery',
@@ -210,6 +240,14 @@ await request('orders/'+orderId,{method:'PATCH',cookie:sellerCookie,body:{status
 await request('orders/'+orderId+'/whatsapp',{cookie:buyerCookie,expected:404});
 const final=(await request('orders',{cookie:buyerCookie})).data.orders.find(o=>o.id===orderId);
 assert.equal(final.status,'completed');
+const sellerInsights=(await request('seller/insights?days=30',{cookie:sellerCookie})).data;
+assert.ok(sellerInsights.summary.completed>=1);
+assert.ok(Number(sellerInsights.summary.completed_cents)>=5000);
+assert.ok(sellerInsights.topProducts.some(p=>p.product_id===productId&&p.units>=2));
+await request('seller/insights?days=15',{cookie:sellerCookie,expected:400});
+await request('seller/insights?days=30',{cookie:adminCookie,expected:403});
+console.log('Seller insights scoped to owner, status and confirmed order snapshots PASS.');
+
 assert.equal(final.total_cents,5000);
 assert.equal(final.can_review,true,'A different resident who completed an order can rate it.');
 assert.equal(final.is_own_shop,false);

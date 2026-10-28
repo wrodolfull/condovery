@@ -21,6 +21,8 @@ import {ApiError,bad} from '@/lib/api-error';
 import {handleAdsApi} from '@/server/ads';
 import {handleAdminDirectory} from '@/server/admin-directory';
 import {handlePlatformCondominiums} from '@/server/platform-condominiums';
+import {handleSellerInsights} from '@/server/seller-insights';
+import {handleCommunityFairs} from '@/server/community-fairs';
 
 export const runtime='nodejs';
 export const dynamic='force-dynamic';
@@ -392,6 +394,10 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
   if(adminDirectory)return adminDirectory;
   const platformResponse=await handlePlatformCondominiums(req,method,path,u);
   if(platformResponse)return platformResponse;
+  const insightsResponse=await handleSellerInsights(req,method,path,u);
+  if(insightsResponse)return insightsResponse;
+  const fairsResponse=await handleCommunityFairs(req,method,path,parts,u);
+  if(fairsResponse)return fairsResponse;
   if(path==='me'&&method==='PATCH'){
     approved(u);
     const b=z.object({name:z.string().trim().min(2).max(90),phone:z.string().trim().min(10).max(20),tower:z.string().min(1).max(60),apartment:z.string().min(1).max(24),avatar_image:z.string().nullable().optional()}).parse(await body(req));
@@ -811,16 +817,17 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
     const p=await query("SELECT id,shop_id,category_id,name,description,price_cents,promo_price_cents,image_url,stock,visibility,lead_time,option_groups FROM products p WHERE shop_id=$1 AND condominium_id=$2 AND visibility<>'hidden' AND deleted_at IS NULL AND EXISTS (SELECT 1 FROM categories c WHERE c.id=p.category_id AND c.condominium_id=p.condominium_id AND c.is_active=true) ORDER BY created_at DESC",[s.rows[0].id,u.condominium_id]);
     return out({shop:s.rows[0],products:p.rows});
   }
-  if((path==='media'||path==='media/profile'||path==='media/ad'||path==='media/giveaway')&&method==='POST'){
+  if((path==='media'||path==='media/profile'||path==='media/ad'||path==='media/giveaway'||path==='media/fair')&&method==='POST'){
     const personal=path==='media/profile';
-    const adImage=path==='media/ad',giveawayImage=path==='media/giveaway';
+    const adImage=path==='media/ad',giveawayImage=path==='media/giveaway',fairImage=path==='media/fair';
+    if(fairImage)admin(u);
     if(adImage&&!u.is_superadmin)bad('Acesso restrito ao superadmin.',403);
     if(giveawayImage){
       approved(u);
       const active=await query("SELECT 1 FROM categories WHERE condominium_id=$1 AND name='Desapego' AND is_active=true",[u.condominium_id]);
       if(!active.rowCount)bad('Desapego desabilitado.',403);
     }
-    const shop=personal||adImage||giveawayImage?null:await shopOwned(u);
+    const shop=personal||adImage||giveawayImage||fairImage?null:await shopOwned(u);
     const form=await req.formData();
     let mediaCondoId=u.condominium_id;
     if(adImage){
@@ -851,7 +858,7 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
         .webp({quality:78,effort:4}).toBuffer();
     }catch{bad('Imagem inválida ou com resolução excessiva.');}
     // Only server uses the private Storage service credential.
-    const objectKey=mediaCondoId+'/'+(adImage?'ads':giveawayImage?'giveaways/'+u.id:personal?'profile/'+u.id:shop!.id)+'/'+crypto.randomUUID()+'.webp';
+    const objectKey=mediaCondoId+'/'+(fairImage?'fairs':adImage?'ads':giveawayImage?'giveaways/'+u.id:personal?'profile/'+u.id:shop!.id)+'/'+crypto.randomUUID()+'.webp';
     const {error:uploadError}=await storageAdmin().storage.from(STORAGE_BUCKET).upload(
       objectKey,optimized!,{contentType:'image/webp',upsert:false,cacheControl:'86400'}
     );

@@ -4,6 +4,8 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import {IllustrationSlot} from '@/components/IllustrationSlot';
 import {AdsCarousel,type AdCampaign} from '@/components/AdsCarousel';
 import {AdsAdmin} from '@/components/AdsAdmin';
+import {SellerInsights} from '@/components/SellerInsights';
+import {FairHomeTeaser,FairMarketplace,SellerFairs,AdminFairs} from '@/components/CommunityFairs';
 import {AdminDirectory} from '@/components/AdminDirectory';
 import {Giveaways} from '@/components/Giveaways';
 import {RoundedStars} from '@/components/RoundedStars';
@@ -62,7 +64,7 @@ function MoneyInput({cents,onValue}:{cents:number;onValue:(value:number)=>void})
 }
 type HomeData={categories:Category[];shops:Shop[];products:Product[]};
 type AdminData={towers:string[];stats:{residents:number;shops:number;orders:number};categories:Category[]};
-type View='ads-admin'|'home'|'categories'|'favorites'|'orders'|'account'|'shop'|'product'|'cart'|'success'|'seller'|'admin'|'platform'|'giveaways';
+type View='fairs'|'ads-admin'|'home'|'categories'|'favorites'|'orders'|'account'|'shop'|'product'|'cart'|'success'|'seller'|'admin'|'platform'|'giveaways';
 type Tenant={id:string;name:string;slug:string;subdomain:string;custom_domain:string|null;is_active:boolean;residents:number;shops:number};
 const money=(n:number)=>new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(n/100);
 const price=(p:Product)=>p.promo_price_cents??p.price_cents;
@@ -245,7 +247,7 @@ export default function Page(){
   const [tenantMenuLoading,setTenantMenuLoading]=useState(false);
   const [tenantForm,setTenantForm]=useState({name:'',slug:'',invite_code:'',tower_scheme:'letters',tower_count:30,custom_domain:''});
   const [tenantAdmin,setTenantAdmin]=useState({condominium_id:'',name:'',email:'',password:''});
-  const [sellerTab,setSellerTab]=useState<'orders'|'products'|'reviews'|'settings'>('orders');
+  const [sellerTab,setSellerTab]=useState<'orders'|'products'|'reviews'|'settings'|'insights'|'fairs'>('orders');
   const [shopForm,setShopForm]=useState({name:'',description:'',whatsapp:'',is_open:true,delivery_enabled:true,delivery_fee_cents:0,pickup_enabled:true,lead_time:'',pickup_instructions:'',cover_image:'',logo_image:'',payment_methods:['pix','credit_card','debit_card','cash'] as PaymentMethod[]});
   const [productForm,setProductForm]=useState({id:'',name:'',description:'',category_id:'',price:'',promo:'',stock:'',image_url:'',visibility:'available' as Product['visibility'],lead_time:'',option_groups:[] as OptionGroup[]});
   const [editingProduct,setEditingProduct]=useState(false);
@@ -987,6 +989,7 @@ export default function Page(){
     </div></header>
     <div className="desktop-nav"><div className="desktop-nav-inner">
       {bottomNav.map(([target,Icon,label])=><button key={target} className={view===target?'active':''} onClick={()=>go(target)}><Icon size={18}/>{label}</button>)}
+      <button onClick={()=>go('fairs')}><Gift size={18}/>Feiras</button>
       <button onClick={()=>{loadMine();go('seller');}}><Store size={18}/>Minha loja</button>
       {viewer.role==='admin'&&<button onClick={()=>{loadAdmin();go('admin');}}><ShieldCheck size={18}/>Administração</button>}
       {viewer.is_superadmin&&<><button onClick={()=>{loadTenants();go('ads-admin');}}><Megaphone size={18}/>ADS</button><button onClick={()=>{loadTenants();go('platform');}}><Building2 size={18}/>Superadmin</button></>}
@@ -1017,6 +1020,7 @@ export default function Page(){
             <CategoryArtwork category={c}/><span>{c.name}</span></button>)}
         </div>
         {!query&&<>
+          <FairHomeTeaser condominiumId={viewer.condominium_id} onOpen={()=>go('fairs')}/>
           {ads.length>0?<AdsCarousel campaigns={ads}/>:<section className="weekly-offer-banner">
             <div className="weekly-offer-copy">
               <span className="eyebrow">ACHADINHOS DA VIZINHANÇA</span>
@@ -1276,7 +1280,7 @@ export default function Page(){
           <div className="field-grid"><label>Torre<select value={profile.tower} onChange={e=>setProfile(s=>({...s,tower:e.target.value}))}>{viewer.towers.map(t=><option key={t} value={t}>{t}</option>)}</select></label><label>Apartamento<input required value={profile.apartment} onChange={e=>setProfile(s=>({...s,apartment:e.target.value}))}/></label></div>
           <button type="submit" className="outline-button" disabled={busy}>Salvar meus dados</button>
         </form></div>
-        <div className="account-shortcuts"><button onClick={()=>{loadMine();go('seller');}}><Store size={23}/><span><strong>{myShop?'Minha loja':'Quero vender'}</strong><small>{myShop?'Gerencie produtos e pedidos':'Crie sua loja e comece a vender'}</small></span><ChevronRight/></button>
+        <div className="account-shortcuts"><button onClick={()=>go('fairs')}><Gift size={23}/><span><strong>Feiras do condomínio</strong><small>Descubra ofertas temáticas dos vizinhos</small></span><ChevronRight/></button><button onClick={()=>{loadMine();go('seller');}}><Store size={23}/><span><strong>{myShop?'Minha loja':'Quero vender'}</strong><small>{myShop?'Gerencie produtos e pedidos':'Crie sua loja e comece a vender'}</small></span><ChevronRight/></button>
         <button onClick={()=>{loadOrders();go('orders');}}><Receipt size={23}/><span><strong>Meus pedidos</strong><small>Acompanhe suas compras</small></span><ChevronRight/></button>
         {viewer.role==='admin'&&<button onClick={()=>{loadAdmin();go('admin');}}><ShieldCheck size={23}/><span><strong>Administração</strong><small>Segurança e configurações</small></span><ChevronRight/></button>}
         {viewer.is_superadmin&&<><button onClick={()=>{loadTenants();go('ads-admin');}}><Megaphone size={23}/><span><strong>Condovery ADS</strong><small>Campanhas e publicidade</small></span><ChevronRight/></button><button onClick={()=>{loadTenants();go('platform');}}><Building2 size={23}/><span><strong>Painel Superadmin</strong><small>Todos os condomínios</small></span><ChevronRight/></button></>}
@@ -1411,8 +1415,12 @@ export default function Page(){
               Avaliações {sellerReviews.filter(r=>r.status==='pending').length>0&&
                 <span className="review-pending-counter">{sellerReviews.filter(r=>r.status==='pending').length}</span>}
             </button>
+            <button className={sellerTab==='insights'?'active':''} onClick={()=>setSellerTab('insights')}>Resultados</button>
+            <button className={sellerTab==='fairs'?'active':''} onClick={()=>setSellerTab('fairs')}>Feiras</button>
             <button className={sellerTab==='settings'?'active':''} onClick={()=>setSellerTab('settings')}>Configurações</button>
           </div>
+          {sellerTab==='insights'&&<SellerInsights condominiumId={viewer.condominium_id}/>}
+          {sellerTab==='fairs'&&<SellerFairs condominiumId={viewer.condominium_id}/>}
           {sellerTab==='orders'&&<>{sellerOrders.length?<div className="order-list">{sellerOrders.map(o=><article className="order-card" key={o.id}>
             <div className="order-top"><strong>Pedido #{o.code}</strong><Pill tone={o.status==='completed'?'green':'orange'}>{statusLabel[o.status]??o.status}</Pill></div>
             <p><strong>{o.buyer_name}</strong> · {o.fulfillment==='delivery'?o.tower+' · Ap. '+o.apartment:'Retirada'}</p>
@@ -1569,6 +1577,7 @@ export default function Page(){
         </>}
       </>}
 
+      {view==='fairs'&&<><button className="back-link" onClick={()=>go('home')}><ArrowLeft size={18}/> Início</button><FairMarketplace condominiumId={viewer.condominium_id} onOpenProduct={p=>openProduct(p)}/></>}
       {view==='giveaways'&&<><button className="back-link" onClick={()=>go('home')}><ArrowLeft size={18}/> Início</button><Giveaways viewerId={viewer.id}/></>}
       {view==='ads-admin'&&viewer.is_superadmin&&<>
         <button className="back-link" onClick={()=>go('account')}><ArrowLeft size={18}/> Minha conta</button>
@@ -1616,6 +1625,7 @@ export default function Page(){
       </>}
       {view==='admin'&&viewer.role==='admin'&&<><button className="back-link" onClick={()=>go('account')}><ArrowLeft size={18}/> Minha conta</button><div className="page-title"><h1>Administração do condomínio</h1><p>Gerencie moradores, lojas e categorias da sua comunidade.</p></div>
         {adminData?<><div className="admin-stats"><div><strong>{adminData.stats.residents}</strong><span>Moradores ativos</span></div><div><strong>{adminData.stats.shops}</strong><span>Lojas ativas</span></div><div><strong>{adminData.stats.orders}</strong><span>Pedidos criados</span></div></div>
+        <AdminFairs condominiumId={viewer.condominium_id}/>
         <AdminDirectory key={viewer.condominium_id+'-'+adminData.towers.join('|')} kind="users" condominiumId={viewer.condominium_id} towers={adminData.towers}
           onChanged={()=>{void loadAdmin().catch(fail);void loadHome().catch(fail);}}/>
         <AdminDirectory kind="shops" condominiumId={viewer.condominium_id} towers={adminData.towers}
