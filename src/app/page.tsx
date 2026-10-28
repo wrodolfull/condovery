@@ -218,6 +218,7 @@ export default function Page(){
   const [reviewRating,setReviewRating]=useState(0);
   const [reviewText,setReviewText]=useState('');
   const [sharedShopId,setSharedShopId]=useState<string|null>(null);
+  const [sharedShopWelcome,setSharedShopWelcome]=useState<{shop:string;condominium:string}|null>(null);
   const [shareFallback,setShareFallback]=useState<{link:string;name:string}|null>(null);
   const [selectedProduct,setSelectedProduct]=useState<Product|null>(null);
   const [qty,setQty]=useState(1);
@@ -393,6 +394,7 @@ export default function Page(){
     const link=window.location.pathname.startsWith('/loja/')?decodeURIComponent(window.location.pathname.slice(6).split('/')[0]):new URLSearchParams(window.location.search).get('loja');
     if(link&&/^(?:[0-9a-f]{8}-[0-9a-f-]{27,}|[a-z0-9]+(?:-[a-z0-9]+)*)$/i.test(link)){
       setSharedShopId(link);
+      fetch('/api/share/shop?slug='+encodeURIComponent(link)).then(async response=>response.ok?response.json():null).then(data=>{if(data)setSharedShopWelcome({shop:data.shop,condominium:data.condominium});}).catch(()=>{});
     }
     api<{google:boolean;passwordRecovery:boolean}>('auth/providers').then(r=>{
       setGoogleEnabled(r.google);setPasswordRecoveryEnabled(r.passwordRecovery);
@@ -955,6 +957,11 @@ export default function Page(){
         </div>
         <IllustrationSlot className="auth-mobile-art" src={artwork.login} alt="Ilustração de boas-vindas" eager fallback={<img src="/hero.png" alt=""/>}/>
       </div>
+      {sharedShopId&&sharedShopWelcome&&<div className="shared-shop-welcome" role="note">
+        <ShoppingBag size={23}/><div><strong>{sharedShopWelcome.shop}</strong>
+        <p>Esta loja faz parte do condomínio <b>{sharedShopWelcome.condominium}</b>. Se você já é morador, entre na sua conta para conhecer a loja. Ainda não tem cadastro? Crie sua conta para participar da comunidade.</p>
+        <div className="shared-shop-actions"><button type="button" className="outline-button" onClick={()=>setAuthMode('login')}>Sou morador · Entrar</button><button type="button" className="outline-button" onClick={()=>setAuthMode('register')}>Criar minha conta</button></div></div>
+      </div>}
       <div className="welcome-emoji"><ShoppingBag size={28}/></div>
       <h2>{googleSignup?'Informações do morador':authMode==='login'?'Bem-vindo(a)!':'Cadastrar conta'}</h2>
       <p>{googleSignup?'Seu e-mail já está confirmado. Informe os dados do condomínio para entrar.':authMode==='login'?'Acesse sua conta para continuar.':'Crie sua conta e descubra o que seus vizinhos oferecem.'}</p>
