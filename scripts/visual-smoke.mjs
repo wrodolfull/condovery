@@ -47,6 +47,14 @@ try{
     await page.goto(origin,{waitUntil:'domcontentloaded'});
     await page.locator('.auth-card').waitFor({state:'visible'});
     await verify(page,'login',width);
+    await page.getByRole('button',{name:'Cadastre-se',exact:true}).click();
+    const registerPassword=page.locator('.auth-card input[autocomplete="new-password"]');
+    await registerPassword.fill('A1!aaaaa');
+    const feedback=await page.locator('.password-feedback').innerText();
+    if(!feedback.includes('8 caracteres')||!feedback.includes('Todos os requisitos obrigatórios'))
+      throw new Error('Password strength and requirement indicators did not update live: '+feedback);
+    await verify(page,'password-feedback',width);
+    await page.locator('.auth-switch button').click();
     await page.locator('.auth-card input[type="email"]').fill('buyer-smoke@example.com');
     await page.locator('.auth-card input[type="password"]').fill('NewPassword123!');
     const loginReply=page.waitForResponse(response=>response.url().includes('/api/auth/login')&&response.request().method()==='POST');
