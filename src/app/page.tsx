@@ -219,6 +219,7 @@ export default function Page(){
   const [reviewText,setReviewText]=useState('');
   const [sharedShopId,setSharedShopId]=useState<string|null>(null);
   const [sharedShopWelcome,setSharedShopWelcome]=useState<{shop:string;condominium:string}|null>(null);
+  const [sharedShopChoice,setSharedShopChoice]=useState(false);
   const [shareFallback,setShareFallback]=useState<{link:string;name:string}|null>(null);
   const [selectedProduct,setSelectedProduct]=useState<Product|null>(null);
   const [qty,setQty]=useState(1);
@@ -946,6 +947,24 @@ export default function Page(){
       <button className="text-button" onClick={()=>{setAuthMode('login');setError('');}}>Voltar ao login</button>
     </section>
   </main>;
+  if(!viewer&&sharedShopId&&sharedShopWelcome&&!sharedShopChoice&&authMode==='login')return <main className="auth-layout">
+    <div className="auth-aside"><div className="auth-logo">condovery<span>.</span></div>
+      <IllustrationSlot className="auth-art" src={artwork.login} alt="Boas-vindas ao Condovery" eager fallback={<img src="/hero.png" alt=""/>}/>
+      <h1>Seu condomínio mais perto de você!</h1><p>Compre dos seus vizinhos. Apoie comércios locais. Receba no seu condomínio.</p>
+    </div>
+    <section className="auth-card">
+      <div className="auth-mobile-logo">condovery<span>.</span></div>
+      <div className="welcome-emoji"><ShoppingBag size={28}/></div>
+      <h2>Você recebeu um convite!</h2>
+      <p><strong>{sharedShopWelcome.shop}</strong> faz parte do <strong>{sharedShopWelcome.condominium}</strong>.</p>
+      <p>Essa loja é exclusiva para moradores do condomínio. Já mora aqui? Entre na sua conta para conhecer os produtos. Ainda não tem cadastro? Crie sua conta para participar da comunidade.</p>
+      <div className="form-stack" style={{marginTop:20}}>
+        <button type="button" className="primary-button" onClick={()=>{setSharedShopChoice(true);setAuthMode('login');}}>Sou morador · Entrar <ArrowRight size={18}/></button>
+        <button type="button" className="outline-button" onClick={()=>{setSharedShopChoice(true);setAuthMode('register');}}>Criar minha conta</button>
+      </div>
+      <p className="auth-privacy"><ShieldCheck size={14}/> Exclusivo para moradores autorizados.</p>
+    </section>
+  </main>;
   if(!viewer)return <main className="auth-layout">
     <div className="auth-aside"><div className="auth-logo">condovery<span>.</span></div><IllustrationSlot className="auth-art" src={artwork.login} alt="Ilustração de boas-vindas do Condovery" eager fallback={<img src="/hero.png" alt=""/>}/><h1>Seu condomínio mais perto de você!</h1><p>Compre dos seus vizinhos. Apoie comércios locais. Receba no seu condomínio.</p></div>
     <section className="auth-card">
@@ -957,11 +976,6 @@ export default function Page(){
         </div>
         <IllustrationSlot className="auth-mobile-art" src={artwork.login} alt="Ilustração de boas-vindas" eager fallback={<img src="/hero.png" alt=""/>}/>
       </div>
-      {sharedShopId&&sharedShopWelcome&&<div className="shared-shop-welcome" role="note">
-        <ShoppingBag size={23}/><div><strong>{sharedShopWelcome.shop}</strong>
-        <p>Esta loja faz parte do condomínio <b>{sharedShopWelcome.condominium}</b>. Se você já é morador, entre na sua conta para conhecer a loja. Ainda não tem cadastro? Crie sua conta para participar da comunidade.</p>
-        <div className="shared-shop-actions"><button type="button" className="outline-button" onClick={()=>setAuthMode('login')}>Sou morador · Entrar</button><button type="button" className="outline-button" onClick={()=>setAuthMode('register')}>Criar minha conta</button></div></div>
-      </div>}
       <div className="welcome-emoji"><ShoppingBag size={28}/></div>
       <h2>{googleSignup?'Informações do morador':authMode==='login'?'Bem-vindo(a)!':'Cadastrar conta'}</h2>
       <p>{googleSignup?'Seu e-mail já está confirmado. Informe os dados do condomínio para entrar.':authMode==='login'?'Acesse sua conta para continuar.':'Crie sua conta e descubra o que seus vizinhos oferecem.'}</p>
