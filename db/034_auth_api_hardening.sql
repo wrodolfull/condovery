@@ -25,3 +25,8 @@ END $$;
 -- password hashes are not consulted by any login or recovery handler.
 -- Leave the nullable column for backward-compatible INSERTs; destroy hashes.
 UPDATE public.users SET password_hash=NULL WHERE password_hash IS NOT NULL;
+
+-- Legacy rate-limit tables previously contained raw e-mail and IP values.
+-- New handlers use only HMAC digests. Erase obsolete authentication logs.
+DELETE FROM public.login_attempts;
+DELETE FROM public.password_reset_attempts;
