@@ -69,6 +69,8 @@ try {
   await client.query(adminPagination);
   const advertiserReports=await readFile(new URL('../db/036_advertiser_report_shares.sql',import.meta.url),'utf8');
   await client.query(advertiserReports);
+  const categoryCatalog=await readFile(new URL('../db/037_category_catalog.sql',import.meta.url),'utf8');
+  await client.query(categoryCatalog);
   console.log('Condovery database schema applied successfully.');
 } finally {
   await client.end();

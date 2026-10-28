@@ -1235,18 +1235,15 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
     if(!uuid(id))bad('Categoria inválida.');
     const b=z.object({is_active:z.boolean()}).parse(await body(req));
     const changed=await query(
-      "UPDATE categories SET is_active=$1 WHERE id=$2 AND condominium_id=$3 AND name IN ('Serviços','Moda','Desapego') RETURNING id,name,is_active",
+      "UPDATE categories SET is_active=$1 WHERE id=$2 AND condominium_id=$3 RETURNING id,name,is_active",
       [b.is_active,id,u.condominium_id]
     );
-    if(!changed.rowCount)bad('Somente Serviços e Moda podem ser alternadas neste painel.',404);
+    if(!changed.rowCount)bad('Categoria não encontrada.',404);
     return out({category:changed.rows[0]});
   }
   if(path==='admin/categories'&&method==='POST'){
     admin(u);
-    const b=z.object({name:z.string().trim().min(2).max(60),icon:z.enum(['cake-slice','sandwich','utensils','coffee','pizza','ice-cream-cone','shopping-basket'])}).parse(await body(req));
-    const normalized=b.name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
-    if(['servicos','desapego','beleza','saude e bem-estar','moda','casa e decoracao','eletronicos','presentes','outros'].includes(normalized))
-      bad('Somente categorias de alimentação são permitidas.');
+    const b=z.object({name:z.string().trim().min(2).max(60),icon:z.enum(['cake-slice','sandwich','utensils','coffee','pizza','ice-cream-cone','shopping-basket','sparkles','heart-pulse','house','smartphone','gift','shopping-bag','wrench','shirt'])}).parse(await body(req));
     try{
       const r=await query('INSERT INTO categories(condominium_id,name,icon) VALUES($1,$2,$3) RETURNING *',[u.condominium_id,b.name,b.icon]);
       return out({category:r.rows[0]},201);

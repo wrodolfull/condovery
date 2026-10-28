@@ -11,7 +11,3 @@ ON CONFLICT(condominium_id,name) DO NOTHING;
 UPDATE categories SET icon='wrench' WHERE name='Serviços' AND icon IS DISTINCT FROM 'wrench';
 UPDATE categories SET icon='shirt' WHERE name='Moda' AND icon IS DISTINCT FROM 'shirt';
 
--- Categorias legadas ainda ativas passam a opcionais somente uma vez.
--- O marcador sort_order (70/71) evita desabilitar decisões posteriores do administrador.
-UPDATE categories SET is_active=false,sort_order=70 WHERE name='Serviços' AND sort_order<>70;
-UPDATE categories SET is_active=false,sort_order=71 WHERE name='Moda' AND sort_order<>71;
