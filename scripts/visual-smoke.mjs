@@ -104,7 +104,7 @@ try{
       await sellerPage.getByRole('button',{name:'Entrar com e-mail'}).click();
       await sellerPage.locator('.hero-banner').waitFor({state:'visible',timeout:15000});
       await sellerPage.locator('.bottom-nav').getByRole('button',{name:'Conta'}).click();
-      await sellerPage.locator('.account-shortcuts button').first().click();
+      await sellerPage.locator('.account-shortcuts button').filter({hasText:/Minha loja|Quero vender/}).first().click();
       await sellerPage.locator('.seller-tabs').waitFor({state:'visible'});
       await sellerPage.locator('.seller-tabs button').filter({hasText:'Avaliações'}).click();
       await sellerPage.locator('.seller-review-card').first().waitFor({state:'visible'});
