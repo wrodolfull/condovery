@@ -1135,3 +1135,13 @@ font-weight:750;padding:12px 20px;cursor:pointer}
 .auth-legal-notice{color:var(--muted);font-size:11px;line-height:1.6;margin:0!important;text-align:left}
 .auth-legal-notice a{color:#99622b;font-weight:800;text-decoration:underline;text-underline-offset:2px}
 @media(max-width:570px){.account-legal-links>div{grid-template-columns:1fr}}
+
+
+/* Compact, mobile-first management navigation */
+.management-tabs{display:flex;align-items:center;gap:6px;overflow-x:auto;max-width:100%;padding:3px 0 10px;margin:6px 0 12px;scrollbar-width:thin;-webkit-overflow-scrolling:touch}
+.management-tabs button{flex:0 0 auto;white-space:nowrap;padding:9px 13px;border:1px solid var(--border,#e5e7eb);border-radius:10px;background:transparent;color:inherit;font:inherit;font-size:13px;font-weight:600;cursor:pointer;min-height:40px}
+.management-tabs button.selected{background:#18181b;border-color:#18181b;color:#fff}
+.management-tabs button:focus-visible{outline:2px solid #52525b;outline-offset:2px}
+.management-ads{margin-top:12px!important}
+.management-ads .admin-row{padding-block:10px}
+@media(max-width:600px){.management-tabs{margin-inline:-4px;padding-inline:4px}.management-tabs button{padding:9px 11px;font-size:12px}.management-ads{padding:14px!important}.management-ads .admin-row{gap:8px}}
