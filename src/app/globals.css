@@ -1335,3 +1335,9 @@ font-weight:750;padding:12px 20px;cursor:pointer}
 .orders-refresh-controls{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:9px}
 .orders-refresh-controls small{color:var(--muted,#716b61);font-size:12px}
 .orders-refresh-controls .outline-button{min-height:34px;padding:6px 14px;font-size:12px}
+
+/* An explicit seller draft is retained while the user navigates between tabs. */
+.shop-draft-message{display:flex;flex-direction:column;align-items:flex-start;gap:8px;padding:14px 16px;border:1px solid #e8d59c;border-radius:14px;background:#fff9e9;color:#3e392d}
+.shop-draft-message strong{font-size:14px}
+.shop-draft-message span{font-size:13px;line-height:1.5}
+.shop-draft-message .outline-button{min-height:34px;font-size:12px}
