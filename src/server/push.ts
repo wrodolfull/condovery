@@ -5,7 +5,7 @@ import { query, transaction } from "@/lib/db";
 import { bad } from "@/lib/api-error";
 import { sessionCredential, tokenHash, type Viewer } from "@/lib/auth";
 
-export type PushKind = "condominium" | "shop" | "order" | "seller_order";
+export type PushKind = "condominium" | "order" | "seller_order";
 const json = (value: unknown, status = 200) =>
   NextResponse.json(value, {
     status,
@@ -96,7 +96,6 @@ export async function enqueueOrderStatus(
 
 async function broadcast(
   u: Viewer,
-  shopId: string | null,
   b: { title: string; body: string; client_key: string },
 ) {
   return transaction(async (tx) => {
@@ -111,7 +110,7 @@ async function broadcast(
     if (
       id &&
       (old.rows[0].condominium_id !== u.condominium_id ||
-        old.rows[0].shop_id !== shopId)
+        old.rows[0].shop_id !== null)
     )
       bad("Chave de envio já utilizada em outro contexto.", 409);
     if (!id) {
@@ -122,29 +121,22 @@ async function broadcast(
       if (count.rows[0].n >= 5)
         bad("Limite de cinco avisos por hora atingido.", 429);
       const r = await tx.query(
-        "INSERT INTO push_broadcasts(sender_id,condominium_id,shop_id,client_key) VALUES($1,$2,$3,$4) RETURNING id",
-        [u.id, u.condominium_id, shopId, b.client_key],
+        "INSERT INTO push_broadcasts(sender_id,condominium_id,shop_id,client_key) VALUES($1,$2,NULL,$3) RETURNING id",
+        [u.id, u.condominium_id, b.client_key],
       );
       id = r.rows[0].id;
       await tx.query(
         "INSERT INTO push_notifications(user_id,condominium_id,kind,title,body,target_id,event_key) " +
           "SELECT u.id,u.condominium_id,$3,$4,$5,$2,$6 FROM users u WHERE u.condominium_id=$1 AND u.status='approved' " +
-          "AND ($2::uuid IS NULL OR EXISTS(SELECT 1 FROM shop_push_subscriptions sub WHERE sub.user_id=u.id AND sub.shop_id=$2 AND sub.condominium_id=$1)) ON CONFLICT(user_id,event_key) DO NOTHING",
-        [
-          u.condominium_id,
-          shopId,
-          shopId ? "shop" : "condominium",
-          b.title,
-          b.body,
-          "broadcast:" + id,
-        ],
+          "ON CONFLICT(user_id,event_key) DO NOTHING",
+        [u.condominium_id, "condominium", b.title, b.body, "broadcast:" + id],
       );
       await tx.query(
         "INSERT INTO push_deliveries(notification_id,device_id,session_hash) " +
           "SELECT n.id,d.id,d.session_hash FROM push_notifications n JOIN push_devices d ON d.user_id=n.user_id AND d.condominium_id=n.condominium_id " +
           "JOIN sessions s ON s.token_hash=d.session_hash AND s.user_id=d.user_id LEFT JOIN push_preferences p ON p.user_id=n.user_id " +
           "WHERE n.event_key=$1 AND n.condominium_id=$2 AND d.disabled=false AND s.expires_at>now() AND s.client_kind='mobile' " +
-          "AND (n.kind='shop' OR COALESCE(p.condominium,true)) ON CONFLICT DO NOTHING",
+          "AND n.kind='condominium' AND COALESCE(p.condominium,true) ON CONFLICT DO NOTHING",
         ["broadcast:" + id, u.condominium_id],
       );
     }
@@ -162,19 +154,13 @@ export async function handlePushApi(
   parts: string[],
   u: Viewer,
 ): Promise<NextResponse | null> {
-  if (path === "admin/push/announcements" || path === "shops/mine/push") {
+  // Seller broadcasts are retired. Reject even old clients using the route.
+  if (path === "shops/mine/push")
+    bad("Avisos de lojas foram desativados.", 410);
+  if (path === "admin/push/announcements") {
     if (method !== "POST") bad("Método não permitido.", 405);
-    let shopId: string | null = null;
-    if (path.startsWith("admin/")) {
-      if (u.role !== "admin") bad("Acesso restrito à administração.", 403);
-    } else {
-      const owned = await query(
-        "SELECT id FROM shops WHERE owner_id=$1 AND condominium_id=$2 AND status='approved'",
-        [u.id, u.condominium_id],
-      );
-      if (!owned.rowCount) bad("Loja indisponível.", 403);
-      shopId = owned.rows[0].id;
-    }
+    if (u.role !== "admin" || u.status !== "approved")
+      bad("Acesso restrito à administração.", 403);
     const b = z
       .object({
         title: z.string().trim().min(3).max(70),
@@ -183,7 +169,7 @@ export async function handlePushApi(
       })
       .strict()
       .parse(await req.json());
-    return json(await broadcast(u, shopId, b), 201);
+    return json(await broadcast(u, b), 201);
   }
   if (!path.startsWith("push/")) return null;
   if (path === "push/devices") {
@@ -284,41 +270,15 @@ export async function handlePushApi(
       return json({ ok: true });
     }
   }
-  if (parts[1] === "shops" && parts.length === 3) {
-    const id = uuid.parse(parts[2]);
-    const shop = await query(
-      "SELECT 1 FROM shops WHERE id=$1 AND condominium_id=$2 AND status='approved'",
-      [id, u.condominium_id],
-    );
-    if (!shop.rowCount) bad("Loja não encontrada.", 404);
-    if (method === "GET") {
-      const r = await query(
-        "SELECT 1 FROM shop_push_subscriptions WHERE user_id=$1 AND shop_id=$2 AND condominium_id=$3",
-        [u.id, id, u.condominium_id],
-      );
-      return json({ subscribed: Boolean(r.rowCount) });
-    }
-    if (method === "PUT") {
-      await query(
-        "INSERT INTO shop_push_subscriptions(user_id,shop_id,condominium_id) VALUES($1,$2,$3) ON CONFLICT DO NOTHING",
-        [u.id, id, u.condominium_id],
-      );
-      return json({ subscribed: true });
-    }
-    if (method === "DELETE") {
-      await query(
-        "DELETE FROM shop_push_subscriptions WHERE user_id=$1 AND shop_id=$2",
-        [u.id, id],
-      );
-      return json({ subscribed: false });
-    }
-  }
+  // Old versions may still request subscriptions. Do not restore a send path.
+  if (parts[1] === "shops" && parts.length === 3)
+    bad("Avisos de lojas foram desativados.", 410);
   if (path === "push/inbox" && method === "GET") {
     const page = Number(req.nextUrl.searchParams.get("page") ?? 0);
     if (!Number.isInteger(page) || page < 0 || page > 10000)
       bad("Página inválida.");
     const r = await query(
-      "SELECT id,kind,title,body,target_id,read_at,created_at FROM push_notifications WHERE user_id=$1 AND condominium_id=$2 ORDER BY created_at DESC,id DESC LIMIT 31 OFFSET $3",
+      "SELECT id,kind,title,body,target_id,read_at,created_at FROM push_notifications WHERE user_id=$1 AND condominium_id=$2 AND kind<>'shop' ORDER BY created_at DESC,id DESC LIMIT 31 OFFSET $3",
       [u.id, u.condominium_id, page * 30],
     );
     return json({
@@ -330,7 +290,7 @@ export async function handlePushApi(
     const id = uuid.parse(parts[2]);
     if (method === "GET") {
       const r = await query(
-        "SELECT id,kind,title,body,target_id,read_at,created_at FROM push_notifications WHERE id=$1 AND user_id=$2 AND condominium_id=$3",
+        "SELECT id,kind,title,body,target_id,read_at,created_at FROM push_notifications WHERE id=$1 AND user_id=$2 AND condominium_id=$3 AND kind<>'shop'",
         [id, u.id, u.condominium_id],
       );
       if (!r.rowCount) bad("Aviso não encontrado.", 404);
@@ -338,7 +298,7 @@ export async function handlePushApi(
     }
     if (method === "PATCH") {
       await query(
-        "UPDATE push_notifications SET read_at=COALESCE(read_at,now()) WHERE id=$1 AND user_id=$2 AND condominium_id=$3",
+        "UPDATE push_notifications SET read_at=COALESCE(read_at,now()) WHERE id=$1 AND user_id=$2 AND condominium_id=$3 AND kind<>'shop'",
         [id, u.id, u.condominium_id],
       );
       return json({ ok: true });
