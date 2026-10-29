@@ -15,6 +15,7 @@ import {PasswordFeedback} from '@/components/PasswordFeedback';
 import {isValidPassword} from '@/lib/password-policy';
 import {clientUUID} from '@/lib/client-uuid';
 import {parseMoneyInput} from '@/lib/money-input';
+import {mergeRefreshedOrders} from '@/lib/order-live-refresh';
 import {shopSharePath} from '@/lib/shop-slug';
 import {PAYMENT_METHODS,PAYMENT_LABELS,allowedPaymentMethods,type PaymentMethod} from '@/lib/payment-methods';
 import {supportsMessengerIntent,whatsappMessengerHref} from '@/lib/whatsapp-launch';
@@ -245,7 +246,12 @@ export default function Page(){
   const [orderFilter,setOrderFilter]=useState<OrderFilter>('all');
   const [ordersLoading,setOrdersLoading]=useState(false);
   const [ordersLoadingMore,setOrdersLoadingMore]=useState(false);
+  const [ordersRefreshing,setOrdersRefreshing]=useState(false);
+  const [ordersRefreshError,setOrdersRefreshError]=useState('');
+  const [ordersUpdatedAt,setOrdersUpdatedAt]=useState<Date|null>(null);
   const [ordersCursor,setOrdersCursor]=useState<string|null>(null);
+  const buyerHistoryExpanded=useRef(false);
+  const lastBuyerRefreshAt=useRef(0);
   const [sellerOrders,setSellerOrders]=useState<Order[]>([]);
   const [sellerOrdersCursor,setSellerOrdersCursor]=useState<string|null>(null);
   const [sellerOrdersLoadingMore,setSellerOrdersLoadingMore]=useState(false);
@@ -326,19 +332,31 @@ export default function Page(){
       lead_time:data.shop.lead_time??'',pickup_instructions:data.shop.pickup_instructions??'',cover_image:data.shop.cover_image??'',logo_image:data.shop.logo_image??'',payment_methods:allowedPaymentMethods(data.shop.payment_methods)
     });
   },[]);
-  const loadOrders=useCallback(async(filter:OrderFilter='all',cursor?:string)=>{
+  const loadOrders=useCallback(async(filter:OrderFilter='all',cursor?:string,mode:'replace'|'refresh'='replace')=>{
     const current=++buyerOrdersRequest.current;
     const params=new URLSearchParams({limit:'20'});
     if(filter!=='all')params.set('status',filter);
     if(cursor)params.set('cursor',cursor);
     const result=await api<{orders:Order[];nextCursor:string|null}>('orders?'+params.toString());
     if(current!==buyerOrdersRequest.current)return;
-    if(cursor)setOrders(previous=>{
-      const existing=new Set(previous.map(o=>o.id));
-      return [...previous,...result.orders.filter(o=>!existing.has(o.id))];
-    });
-    else setOrders(result.orders);
-    setOrdersCursor(result.nextCursor??null);
+    if(cursor){
+      buyerHistoryExpanded.current=true;
+      setOrders(previous=>{
+        const existing=new Set(previous.map(o=>o.id));
+        return [...previous,...result.orders.filter(o=>!existing.has(o.id))];
+      });
+      setOrdersCursor(result.nextCursor??null);
+    }else if(mode==='refresh'){
+      setOrders(previous=>mergeRefreshedOrders(result.orders,previous,buyerHistoryExpanded.current));
+      if(!buyerHistoryExpanded.current)setOrdersCursor(result.nextCursor??null);
+    }else{
+      buyerHistoryExpanded.current=false;
+      setOrders(result.orders);
+      setOrdersCursor(result.nextCursor??null);
+    }
+    lastBuyerRefreshAt.current=Date.now();
+    setOrdersUpdatedAt(new Date());
+    setOrdersRefreshError('');
   },[]);
   const loadSellerOrders=useCallback(async(cursor?:string)=>{
     const current=++sellerOrdersRequest.current;
@@ -493,12 +511,42 @@ export default function Page(){
   useEffect(()=>{
     if(view!=='orders'||viewer?.status!=='approved')return;
     let active=true;
-    setOrders([]);setOrdersCursor(null);
+    buyerHistoryExpanded.current=false;
+    buyerOrdersRequest.current++;
+    setOrders([]);setOrdersCursor(null);setOrdersUpdatedAt(null);setOrdersRefreshError('');
     setOrdersLoading(true);
     loadOrders(orderFilter).catch(e=>{if(active)fail(e);})
       .finally(()=>{if(active)setOrdersLoading(false);});
-    return()=>{active=false;};
-  },[view,orderFilter,viewer?.status,loadOrders]);
+    return()=>{
+      active=false;
+      buyerOrdersRequest.current++; // Ignore in-flight results after changing screens or filters.
+    };
+  },[view,orderFilter,viewer?.status,viewer?.condominium_id,loadOrders]);
+  useEffect(()=>{
+    if(view!=='orders'||viewer?.status!=='approved')return;
+    let active=true;
+    let inFlight=false;
+    const refresh=async(force=false)=>{
+      if(!active||inFlight||document.visibilityState==='hidden'||ordersLoadingMore||ordersLoading)return;
+      // Focus + visibilitychange may fire together: fetch once, not twice.
+      if(!force&&Date.now()-lastBuyerRefreshAt.current<5000)return;
+      inFlight=true;
+      setOrdersRefreshing(true);
+      try{await loadOrders(orderFilter,undefined,'refresh');}
+      catch{if(active)setOrdersRefreshError('Não foi possível atualizar os pedidos. Tente novamente.');}
+      finally{inFlight=false;if(active)setOrdersRefreshing(false);}
+    };
+    const timer=window.setInterval(()=>{void refresh(true);},20000);
+    const onForeground=()=>{if(document.visibilityState==='visible')void refresh();};
+    document.addEventListener('visibilitychange',onForeground);
+    window.addEventListener('focus',onForeground);
+    return()=>{
+      active=false;
+      window.clearInterval(timer);
+      document.removeEventListener('visibilitychange',onForeground);
+      window.removeEventListener('focus',onForeground);
+    };
+  },[view,viewer?.status,viewer?.condominium_id,orderFilter,ordersLoading,ordersLoadingMore,loadOrders]);
   useEffect(()=>{setCatalogPage(0);setCatalogProducts([]);},[query,category]);
   useEffect(()=>{
     if(!viewer||viewer.status!=='approved'||(view!=='home'&&view!=='categories'))return;
@@ -1334,7 +1382,17 @@ export default function Page(){
         )}</div>:!favoriteShops.length&&<Empty art="emptyFavorites" title="Nenhum favorito por enquanto" subtitle="Toque no coração de um produto para encontrá-lo facilmente depois." action="Explorar produtos" onAction={()=>go('categories')}/>}
       </>}
             {view==='orders'&&<>
-        <div className="page-title"><h1>Meus pedidos</h1><p>Acompanhe seus pedidos com os vizinhos.</p></div>
+        <div className="page-title"><h1>Meus pedidos</h1><p>Acompanhe seus pedidos com os vizinhos.</p>
+          <div className="orders-refresh-controls">
+            <small role="status">{ordersRefreshing?'Atualizando pedidos...':ordersUpdatedAt?'Atualizado às '+ordersUpdatedAt.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}):'Carregando pedidos...'}</small>
+            {ordersRefreshError&&<small role="alert">{ordersRefreshError}</small>}
+            <button type="button" className="outline-button" disabled={ordersLoading||ordersRefreshing||ordersLoadingMore} onClick={async()=>{
+              setOrdersRefreshing(true);
+              try{await loadOrders(orderFilter,undefined,'refresh');}catch{setOrdersRefreshError('Não foi possível atualizar os pedidos. Tente novamente.');}
+              finally{setOrdersRefreshing(false);}
+            }}>Atualizar</button>
+          </div>
+        </div>
         <div className="order-filters" role="group" aria-label="Filtrar pedidos por situação">
           {orderFilters.map(option=><button key={option.key} type="button"
             aria-pressed={orderFilter===option.key}

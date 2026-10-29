@@ -1329,3 +1329,9 @@ font-weight:750;padding:12px 20px;cursor:pointer}
 .checkout-layout.is-shop-closed .checkout-total{background:#f4f4f2}
 
 .shop-row.is-shop-closed,.saved-shop-card.is-shop-closed,.shop-cover.is-shop-closed,.shop-profile-photo.is-shop-closed{filter:grayscale(1);opacity:.58}
+
+
+/* Order updates must be unobtrusive and remain operable on narrow screens. */
+.orders-refresh-controls{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:9px}
+.orders-refresh-controls small{color:var(--muted,#716b61);font-size:12px}
+.orders-refresh-controls .outline-button{min-height:34px;padding:6px 14px;font-size:12px}
