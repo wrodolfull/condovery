@@ -9,6 +9,9 @@ const id = "22da294e-aab1-43ba-b9df-4807b87cf880";
 test("mobile credentials can buy and use owner-scoped seller capabilities", () => {
   for (const [path, method] of [
     ["home", "GET"],
+    ["favorite-shops","GET"],
+    ["favorite-shops","POST"],
+    ["favorite-shops/"+id,"DELETE"],
     ["orders", "POST"],
     ["orders/quote", "POST"],
     ["shops/" + id + "/reviews", "GET"],
@@ -79,4 +82,12 @@ test("mobile seller operations are allowlisted but privileged admin endpoints re
   ]) assert.equal(mobileRouteAllowed(route,method),true,route+" "+method);
   for (const route of ["admin/summary","fairs/manage","media/ad"])
     assert.equal(mobileRouteAllowed(route,"POST"),false,route);
+});
+
+test("shop bookmarks keep mobile mutation methods explicitly scoped", () => {
+  for (const [path,method] of [
+    ["favorite-shops","DELETE"],["favorite-shops","PATCH"],
+    ["favorite-shops/"+id,"GET"],["favorite-shops/"+id,"POST"],
+    ["favorite-shops/not-a-uuid","DELETE"],
+  ]) assert.equal(mobileRouteAllowed(path,method),false,path+" "+method);
 });

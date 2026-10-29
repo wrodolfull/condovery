@@ -517,6 +517,38 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
     return response;
   }
   approved(u);
+  // Shared web/native shop bookmarks; tenant and user are always taken from the session.
+  if(path==='favorite-shops'&&method==='GET'){
+    const r=await query(
+      "SELECT s.id,s.slug,s.name,s.description,s.logo_image,s.cover_image,s.is_open,s.delivery_enabled,s.pickup_enabled,s.lead_time "+
+      "FROM shop_favorites f JOIN shops s ON s.id=f.shop_id AND s.condominium_id=f.condominium_id "+
+      "WHERE f.condominium_id=$1 AND f.user_id=$2 AND s.status='approved' "+
+      "ORDER BY f.created_at DESC LIMIT 100",
+      [u.condominium_id,u.id]
+    );
+    return out({ids:r.rows.map(row=>row.id),shops:r.rows});
+  }
+  if(path==='favorite-shops'&&method==='POST'){
+    const b=z.object({shop_id:z.string().uuid()}).parse(await body(req));
+    const valid=await query(
+      "SELECT id FROM shops WHERE id=$1 AND condominium_id=$2 AND status='approved'",
+      [b.shop_id,u.condominium_id]
+    );
+    if(!valid.rowCount)bad('Loja indisponível.',404);
+    await query(
+      'INSERT INTO shop_favorites(condominium_id,user_id,shop_id) VALUES($1,$2,$3) ON CONFLICT DO NOTHING',
+      [u.condominium_id,u.id,b.shop_id]
+    );
+    return out({ok:true,saved:true});
+  }
+  if(parts.length===2&&parts[0]==='favorite-shops'&&method==='DELETE'){
+    if(!uuid(parts[1]))bad('Loja inválida.');
+    await query(
+      'DELETE FROM shop_favorites WHERE condominium_id=$1 AND user_id=$2 AND shop_id=$3',
+      [u.condominium_id,u.id,parts[1]]
+    );
+    return out({ok:true,saved:false});
+  }
   if(path==='favorites'&&method==='GET'){
     const r=await query(
       "SELECT p.id,p.shop_id,p.category_id,p.name,p.description,p.price_cents,p.promo_price_cents,p.image_url,p.stock,p.visibility,p.lead_time,p.is_featured,p.option_groups,s.name AS shop_name,s.is_open FROM favorites f JOIN products p ON p.id=f.product_id AND p.condominium_id=f.condominium_id JOIN categories c ON c.id=p.category_id AND c.condominium_id=p.condominium_id AND c.is_active=true JOIN shops s ON s.id=p.shop_id AND s.condominium_id=f.condominium_id WHERE f.condominium_id=$1 AND f.user_id=$2 AND p.visibility<>'hidden' AND p.deleted_at IS NULL AND s.status='approved' ORDER BY f.created_at DESC LIMIT 150",

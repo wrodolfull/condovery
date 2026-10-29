@@ -196,6 +196,19 @@ try {
       expected: 201,
     })
   ).data.shop;
+  // Native and web credentials see the same resident's saved shops.
+  assert.deepEqual((await request("favorite-shops",{token:buyer.token})).data.ids,[]);
+  await request("favorite-shops",{token:buyer.token,method:"POST",body:{shop_id:owned.id}});
+  await request("favorite-shops",{token:buyer.token,method:"POST",body:{shop_id:owned.id}});
+  const savedMobile=(await request("favorite-shops",{token:buyer.token})).data;
+  const savedWeb=(await request("favorite-shops",{cookie:buyer.cookie})).data;
+  assert.deepEqual(savedMobile.ids,[owned.id]);
+  assert.deepEqual(savedWeb.ids,savedMobile.ids);
+  assert.equal(savedMobile.shops[0].name,owned.name);
+  assert.deepEqual((await request("favorite-shops",{token:seller.token})).data.ids,[]);
+  await request("favorite-shops",{token:buyer.token,method:"POST",body:{shop_id:crypto.randomUUID()},expected:404});
+  await request("favorite-shops/"+owned.id,{token:buyer.token,method:"DELETE"});
+  assert.deepEqual((await request("favorite-shops",{cookie:buyer.cookie})).data.ids,[]);
   await request("push/shops/" + owned.id, {
     method: "PUT",
     token: buyer.token,
