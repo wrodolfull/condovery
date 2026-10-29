@@ -13,6 +13,7 @@ test("mobile credentials can buy and use owner-scoped seller capabilities", () =
     ["favorite-shops","POST"],
     ["favorite-shops/"+id,"DELETE"],
     ["orders", "POST"],
+    ["orders/"+id,"GET"],
     ["orders/quote", "POST"],
     ["shops/" + id + "/reviews", "GET"],
     ["media/" + id, "GET"],
