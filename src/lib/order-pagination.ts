@@ -2,7 +2,7 @@
  * unique monotonically allocated orders.code. Cursor is opaque to clients. */
 export const ORDER_PAGE_SIZE = 20;
 export const MAX_ORDER_PAGE_SIZE = 50;
-const MAX_ORDER_CODE = 9223372036854775807n;
+const MAX_ORDER_CODE = BigInt('9223372036854775807');
 
 export type OrderPaging = { limit: number; cursor: string | null };
 export function parseOrderPaging(params: URLSearchParams): OrderPaging | null {
