@@ -1720,7 +1720,7 @@ export default function Page(){
             <button className={sellerTab==='fairs'?'active':''} onClick={()=>setSellerTab('fairs')}>Feiras</button>
             <button className={sellerTab==='settings'?'active':''} onClick={()=>setSellerTab('settings')}>Configurações</button>
           </div>
-          {sellerTab==='settings'&&<PushComposer audience="shop"/>}
+
           {sellerTab==='insights'&&<SellerInsights condominiumId={viewer.condominium_id}/>}
           {sellerTab==='fairs'&&<SellerFairs condominiumId={viewer.condominium_id}/>}
           {sellerTab==='orders'&&<>{sellerOrders.length?<div className="order-list">{sellerOrders.map(o=><article className="order-card" key={o.id}>
@@ -1942,7 +1942,7 @@ export default function Page(){
       {view==='admin'&&viewer.role==='admin'&&<><button className="back-link" onClick={()=>go('account')}><ArrowLeft size={18}/> Minha conta</button><div className="page-title"><h1>Administração do condomínio</h1><p>Gerencie moradores, lojas e categorias da sua comunidade.</p></div>
         {adminData?<><nav className="management-tabs" aria-label="Seções da administração">{([['overview','Resumo'],['residents','Moradores'],['shops','Lojas'],['fairs','Feiras'],['categories','Categorias'],['settings','Configurações'],['reports','Denúncias']] as const).map(([key,label])=><button type="button" key={key} className={adminTab===key?'selected':''} onClick={()=>setAdminTab(key)}>{label}{key==='reports'&&reports.filter(r=>r.status==='open').length>0?' ('+reports.filter(r=>r.status==='open').length+')':''}</button>)}</nav>
         {adminTab==='overview'&&<div className="admin-stats"><div><strong>{adminData.stats.residents}</strong><span>Moradores ativos</span></div><div><strong>{adminData.stats.shops}</strong><span>Lojas ativas</span></div><div><strong>{adminData.stats.orders}</strong><span>Pedidos criados</span></div></div>}
-        {adminTab==='settings'&&<PushComposer audience="condominium"/>}
+        {adminTab==='settings'&&<PushComposer/>}
         {adminTab==='fairs'&&<AdminFairs condominiumId={viewer.condominium_id}/>}
         {adminTab==='residents'&&<AdminDirectory key={viewer.condominium_id+'-'+adminData.towers.join('|')} kind="users" condominiumId={viewer.condominium_id} towers={adminData.towers}
           onChanged={()=>{void loadAdmin().catch(fail);void loadHome().catch(fail);}}/>}

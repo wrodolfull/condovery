@@ -1,11 +1,7 @@
 "use client";
 import { useRef, useState } from "react";
 import { clientUUID } from "@/lib/client-uuid";
-export function PushComposer({
-  audience,
-}: {
-  audience: "condominium" | "shop";
-}) {
+export function PushComposer() {
   const [title, setTitle] = useState(""),
     [text, setText] = useState(""),
     [busy, setBusy] = useState(false),
@@ -14,12 +10,10 @@ export function PushComposer({
   return (
     <section className="white-panel form-stack" style={{ marginTop: 24 }}>
       <h2>
-        {audience === "condominium" ? "Avisos do condomínio" : "Avisos da loja"}
+        Avisos do condomínio
       </h2>
       <p>
-        {audience === "condominium"
-          ? "Publique um aviso para os moradores deste condomínio."
-          : "Publique um aviso para os moradores que escolheram receber novidades da sua loja."}{" "}
+        Publique um aviso institucional para os moradores deste condomínio.{" "}
         A notificação push depende da permissão e das preferências no
         aplicativo.
       </p>
@@ -62,10 +56,7 @@ export function PushComposer({
           key.current ??= clientUUID();
           try {
             const r = await fetch(
-              "/api/" +
-                (audience === "condominium"
-                  ? "admin/push/announcements"
-                  : "shops/mine/push"),
+              "/api/admin/push/announcements",
               {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },

@@ -57,6 +57,14 @@ export async function dispatchPush(transport: typeof fetch = fetch) {
   await query(
     "UPDATE push_deliveries SET state='pending' WHERE state='sending' AND available_at<now()",
   );
+  // Seller-authored shop messages are retired. Do not send old queued ones.
+  // Keep their historical database records for audit; never expose their
+  // content again in the resident inbox.
+  await query(
+    "UPDATE push_deliveries d SET state='failed',last_error='SHOP_NOTICES_DISABLED' " +
+      "FROM push_notifications n WHERE n.id=d.notification_id AND n.kind='shop' " +
+      "AND d.state IN ('pending','receipt')",
+  );
   // Recheck current binding, authorization and opt-out at dispatch, not only at enqueue time.
   await query(
     "UPDATE push_deliveries d SET state='failed',last_error='INELIGIBLE' WHERE state IN ('pending','receipt') AND (created_at<now()-interval '24 hours' OR NOT EXISTS(" +
@@ -72,7 +80,7 @@ export async function dispatchPush(transport: typeof fetch = fetch) {
     const r = await tx.query<Delivery>(
       "SELECT d.id,d.device_id,d.attempts,dev.expo_token,n.id AS notification_id,n.title,n.body,n.kind " +
         "FROM push_deliveries d JOIN push_devices dev ON dev.id=d.device_id AND dev.session_hash=d.session_hash JOIN push_notifications n ON n.id=d.notification_id AND n.user_id=dev.user_id AND n.condominium_id=dev.condominium_id " +
-        "WHERE d.state='pending' AND d.available_at<=now() ORDER BY d.created_at LIMIT 100 FOR UPDATE OF d SKIP LOCKED",
+        "WHERE d.state='pending' AND n.kind<>'shop' AND d.available_at<=now() ORDER BY d.created_at LIMIT 100 FOR UPDATE OF d SKIP LOCKED",
     );
     for (const d of r.rows) {
       d.attempts++;

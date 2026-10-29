@@ -209,47 +209,31 @@ try {
   await request("favorite-shops",{token:buyer.token,method:"POST",body:{shop_id:crypto.randomUUID()},expected:404});
   await request("favorite-shops/"+owned.id,{token:buyer.token,method:"DELETE"});
   assert.deepEqual((await request("favorite-shops",{cookie:buyer.cookie})).data.ids,[]);
-  await request("push/shops/" + owned.id, {
-    method: "PUT",
-    token: buyer.token,
-  });
+  // Even an old native app, browser client or crafted HTTP request may not
+  // publish a shop-originated notice. No broadcast or inbox entry is created.
   const notice = {
     title: "Novidade para os vizinhos",
     body: "Aviso de teste isolado.",
     client_key: crypto.randomUUID(),
   };
-  const mobileNotice = (await request("shops/mine/push", {
-    method: "POST",
-    token: seller.token,
-    body: notice,
-    expected: 201,
-  })).data;
-  const one = (
+  for (const options of [{ token: seller.token }, { cookie: seller.cookie }]) {
     await request("shops/mine/push", {
-      method: "POST",
-      cookie: seller.cookie,
-      body: notice,
-      expected: 201,
-    })
-  ).data;
-  const two = (
-    await request("shops/mine/push", {
-      method: "POST",
-      cookie: seller.cookie,
-      body: notice,
-      expected: 201,
-    })
-  ).data;
-  assert.equal(mobileNotice.id, one.id);
-  assert.equal(one.id, two.id);
-  assert.equal(one.recipients, 1);
-  const inbox = (await request("push/inbox", { token: buyer.token })).data
-    .notifications;
-  assert.ok(inbox.some((n) => n.title === notice.title));
-  await request("push/inbox/" + inbox[0].id, {
-    token: seller.token,
-    expected: 404,
+      method: "POST", ...options, body: notice, expected: 410,
+    });
+  }
+  await request("shops/mine/push", {
+    method: "POST",cookie: buyer.cookie,body: notice,expected: 410,
   });
+  for (const method of ["GET","PUT","DELETE"]) {
+    await request("push/shops/" + owned.id, {
+      method,token:buyer.token,expected:410,
+    });
+  }
+  const blockedBroadcasts=await db.query(
+    "SELECT count(*)::int AS n FROM push_broadcasts WHERE sender_id=$1 AND shop_id=$2",
+    [seller.me.id,owned.id]
+  );
+  assert.equal(blockedBroadcasts.rows[0].n,0);
   await request("push/preferences", {
     token: buyer.token,
     method: "PATCH",
@@ -258,15 +242,6 @@ try {
   assert.equal(
     (await request("push/preferences", { token: buyer.token })).data.preferences
       .condominium,
-    false,
-  );
-  await request("push/shops/" + owned.id, {
-    token: buyer.token,
-    method: "DELETE",
-  });
-  assert.equal(
-    (await request("push/shops/" + owned.id, { token: buyer.token })).data
-      .subscribed,
     false,
   );
   await request("platform/condominiums/switch", {
@@ -289,29 +264,16 @@ try {
     body: notice,
     expected: 403,
   });
-  await request("admin/push/announcements", {
+  const adminAnnouncement=(await request("admin/push/announcements", {
     cookie: admin,
     method: "POST",
     body: { ...notice, client_key: crypto.randomUUID() },
     expected: 201,
-  });
-  const foreign = await db.query(
-    "INSERT INTO condominiums(name,slug,invite_code_hash,towers) VALUES('Foreign',$1,$2,'[\"Torre A\"]') RETURNING id",
-    ["foreign-" + tag, hash(tag)],
-  );
-  const foreignUser = await db.query(
-    "INSERT INTO users(condominium_id,name,email,phone,password_hash,tower,apartment,status) VALUES($1,'Foreign',$2,'11999991234',NULL,'Torre A','1','approved') RETURNING id",
-    [foreign.rows[0].id, "foreign-" + tag + "@example.com"],
-  );
-  const foreignShop = await db.query(
-    "INSERT INTO shops(condominium_id,owner_id,name,whatsapp,status,slug) VALUES($1,$2,'Foreign shop','11999991234','approved',$3) RETURNING id",
-    [foreign.rows[0].id, foreignUser.rows[0].id, "foreign-shop-" + tag],
-  );
-  await request("push/shops/" + foreignShop.rows[0].id, {
-    token: buyer.token,
-    method: "PUT",
-    expected: 404,
-  });
+  })).data;
+  assert.ok(adminAnnouncement.id);
+  const inbox=(await request("push/inbox",{token:buyer.token})).data.notifications;
+  assert.ok(inbox.some(n=>n.title===notice.title&&n.kind==="condominium"));
+  await request("push/inbox/"+inbox[0].id,{token:seller.token,expected:404});
   const categories = (await request("home", { token: buyer.token })).data
     .categories;
   const product = (
@@ -447,6 +409,25 @@ try {
       ),
     });
   };
+  // Historical shop broadcasts may already be queued on deployed instances.
+  // They must disappear from the inbox and must never be delivered by the
+  // upgraded worker, without erasing the historical audit record.
+  const legacyShopNotice=crypto.randomUUID();
+  await db.query(
+    "INSERT INTO push_notifications(id,user_id,condominium_id,kind,title,body,target_id,event_key) VALUES($1,$2,$3,'shop',$4,$5,$6,$7)",
+    [legacyShopNotice,seller.me.id,seller.me.condominium_id,
+      "Old shop message","Retired notice",owned.id,"retired-shop:"+tag]
+  );
+  const legacyDevice=(await db.query(
+    "SELECT id,session_hash FROM push_devices WHERE user_id=$1 LIMIT 1",
+    [seller.me.id]
+  )).rows[0];
+  await db.query(
+    "INSERT INTO push_deliveries(notification_id,device_id,session_hash) VALUES($1,$2,$3)",
+    [legacyShopNotice,legacyDevice.id,legacyDevice.session_hash]
+  );
+  assert.ok(!(await request("push/inbox",{token:seller.token})).data.notifications.some(n=>n.id===legacyShopNotice));
+  await request("push/inbox/"+legacyShopNotice,{token:seller.token,expected:404});
   const staleNotice = crypto.randomUUID(),
     optoutNotice = crypto.randomUUID();
   for (const [id, kind, key] of [
@@ -482,6 +463,11 @@ try {
     body: { condominium: false, orders: true, seller_orders: true },
   });
   const dispatch = await dispatchPush(provider);
+  const retiredState=(await db.query(
+    "SELECT state,last_error FROM push_deliveries WHERE notification_id=$1",
+    [legacyShopNotice]
+  )).rows[0];
+  assert.deepEqual(retiredState,{state:"failed",last_error:"SHOP_NOTICES_DISABLED"});
   assert.ok(dispatch.sent > 0);
   assert.equal(sentCalls, 1);
   const filtered = await db.query(
@@ -510,7 +496,7 @@ try {
     "Provider queue, receipts and invalid-device cleanup PASS (mock transport; no real push sent).",
   );
   console.log(
-    "Mobile audience, identity confirmation, tenant isolation, subscriptions, announcements, idempotency and revocation PASS.",
+    "Mobile audience, identity confirmation, disabled shop announcements, admin messages, orders, idempotency and revocation PASS.",
   );
 } finally {
   await db.end();
