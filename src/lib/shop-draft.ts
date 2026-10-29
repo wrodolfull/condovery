@@ -27,7 +27,7 @@ export function readShopDraft(raw:string|null):ShopDraft|null {
     for(const field of ['is_open','delivery_enabled','pickup_enabled']){
       if(typeof draft[field]!=='boolean')return null;
     }
-    if(!Number.isSafeInteger(draft.delivery_fee_cents)||Number(draft.delivery_fee_cents)<0||Number(draft.delivery_fee_cents)>1_000_000)return null;
+    if(typeof draft.delivery_fee_cents!=='number'||!Number.isSafeInteger(draft.delivery_fee_cents)||Number(draft.delivery_fee_cents)<0||Number(draft.delivery_fee_cents)>1_000_000)return null;
     if(!Array.isArray(draft.payment_methods)||draft.payment_methods.length>4||
       !draft.payment_methods.every(method=>typeof method==='string'&&PAYMENT_METHODS.includes(method as PaymentMethod)))return null;
     return draft as ShopDraft;
