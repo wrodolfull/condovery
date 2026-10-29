@@ -409,6 +409,25 @@ try {
       ),
     });
   };
+  // Historical shop broadcasts may already be queued on deployed instances.
+  // They must disappear from the inbox and must never be delivered by the
+  // upgraded worker, without erasing the historical audit record.
+  const legacyShopNotice=crypto.randomUUID();
+  await db.query(
+    "INSERT INTO push_notifications(id,user_id,condominium_id,kind,title,body,target_id,event_key) VALUES($1,$2,$3,'shop',$4,$5,$6,$7)",
+    [legacyShopNotice,buyer.me.id,buyer.me.condominium_id,
+      "Old shop message","Retired notice",owned.id,"retired-shop:"+tag]
+  );
+  const legacyDevice=(await db.query(
+    "SELECT id,session_hash FROM push_devices WHERE user_id=$1 LIMIT 1",
+    [buyer.me.id]
+  )).rows[0];
+  await db.query(
+    "INSERT INTO push_deliveries(notification_id,device_id,session_hash) VALUES($1,$2,$3)",
+    [legacyShopNotice,legacyDevice.id,legacyDevice.session_hash]
+  );
+  assert.ok(!(await request("push/inbox",{token:buyer.token})).data.notifications.some(n=>n.id===legacyShopNotice));
+  await request("push/inbox/"+legacyShopNotice,{token:buyer.token,expected:404});
   const staleNotice = crypto.randomUUID(),
     optoutNotice = crypto.randomUUID();
   for (const [id, kind, key] of [
@@ -444,6 +463,11 @@ try {
     body: { condominium: false, orders: true, seller_orders: true },
   });
   const dispatch = await dispatchPush(provider);
+  const retiredState=(await db.query(
+    "SELECT state,last_error FROM push_deliveries WHERE notification_id=$1",
+    [legacyShopNotice]
+  )).rows[0];
+  assert.deepEqual(retiredState,{state:"failed",last_error:"SHOP_NOTICES_DISABLED"});
   assert.ok(dispatch.sent > 0);
   assert.equal(sentCalls, 1);
   const filtered = await db.query(
