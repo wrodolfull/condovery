@@ -1327,3 +1327,5 @@ font-weight:750;padding:12px 20px;cursor:pointer}
 .product-detail.is-unavailable{filter:grayscale(1);opacity:.66}
 .product-detail.is-unavailable button:disabled,.checkout-layout.is-shop-closed button:disabled{cursor:not-allowed}
 .checkout-layout.is-shop-closed .checkout-total{background:#f4f4f2}
+
+.shop-row.is-shop-closed,.saved-shop-card.is-shop-closed,.shop-cover.is-shop-closed,.shop-profile-photo.is-shop-closed{filter:grayscale(1);opacity:.58}
