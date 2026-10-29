@@ -1114,7 +1114,7 @@ export default function Page(){
           {catalogLoading?'Carregando...':'Mostrar mais produtos'} <ArrowRight size={17}/>
         </button>}
         {!query&&<><SectionHeader title="Lojas em destaque" action="Ver todas" onAction={()=>{setCategory('');go('categories');}}/>
-          <div className="shops-list">{home.shops.length?home.shops.slice(0,8).map(s=><button className="shop-row" key={s.id} onClick={()=>openShop(s.id)}>
+          <div className="shops-list">{home.shops.length?home.shops.slice(0,8).map(s=><button className={'shop-row'+(!s.is_open?' is-shop-closed':'')} key={s.id} onClick={()=>openShop(s.id)}>
             <ShopLogo src={s.logo_image??s.cover_image} name={s.name}/>
             <div><strong>{s.name}</strong><p>{s.description||'Conheça os produtos dessa loja'}</p><span className={'open-hint'+(!s.is_open?' closed':'')}><span/> {s.is_open?'Aceitando pedidos':'Fechada'}</span></div><ChevronRight size={20}/></button>):
             <Empty art="emptyShops" title="Nenhuma loja publicada" subtitle="Seja a primeira pessoa a abrir uma loja no condomínio." action="Criar minha loja" onAction={()=>go('seller')}/>}</div>
@@ -1143,13 +1143,13 @@ export default function Page(){
           {catalogLoading?'Carregando...':'Mostrar mais produtos'} <ArrowRight size={17}/>
         </button>}
         <SectionHeader title="Todas as lojas"/>
-        <div className="shops-list">{home.shops.map(s=><button key={s.id} className="shop-row" onClick={()=>openShop(s.id)}><ShopLogo src={s.logo_image??s.cover_image} name={s.name}/><div><strong>{s.name}</strong><p>{s.description}</p></div><ChevronRight size={18}/></button>)}</div>
+        <div className="shops-list">{home.shops.map(s=><button key={s.id} className={'shop-row'+(!s.is_open?' is-shop-closed':'')} onClick={()=>openShop(s.id)}><ShopLogo src={s.logo_image??s.cover_image} name={s.name}/><div><strong>{s.name}</strong><p>{s.description}</p></div><ChevronRight size={18}/></button>)}</div>
       </>}
 
       {view==='shop'&&selectedShop&&<>
         <button className="back-link" onClick={()=>go('home')}><ArrowLeft size={18}/> Voltar às lojas</button>
-        <div className="shop-cover">{selectedShop.shop.cover_image?<img src={selectedShop.shop.cover_image} alt={'Capa '+selectedShop.shop.name}/>:<div className="shop-cover-fallback"><Store size={62}/></div>}</div>
-        <div className="shop-profile-photo"><ShopLogo src={selectedShop.shop.logo_image} name={selectedShop.shop.name}/></div>
+        <div className={"shop-cover"+(!selectedShop.shop.is_open?" is-shop-closed":"")}>{selectedShop.shop.cover_image?<img src={selectedShop.shop.cover_image} alt={'Capa '+selectedShop.shop.name}/>:<div className="shop-cover-fallback"><Store size={62}/></div>}</div>
+        <div className={"shop-profile-photo"+(!selectedShop.shop.is_open?" is-shop-closed":"")}><ShopLogo src={selectedShop.shop.logo_image} name={selectedShop.shop.name}/></div>
         <div className="shop-head"><div><h1>{selectedShop.shop.name}</h1><p>{selectedShop.shop.description}</p></div>
           <div className="shop-actions">
             <Pill tone={selectedShop.shop.is_open?'green':'neutral'}>{selectedShop.shop.is_open?'Aceitando pedidos':'Fechada'}</Pill>
@@ -1299,7 +1299,7 @@ export default function Page(){
         <div className="page-title"><h1>Meus favoritos</h1><p>Suas lojas e produtos preferidos, sempre à mão.</p></div>
         {!!favoriteShops.length&&<>
           <SectionHeader title="Lojas salvas"/>
-          <div className="saved-shop-list">{favoriteShops.map(shop=><button type="button" key={shop.id} className="saved-shop-card" onClick={()=>openShop(shop.id)}>
+          <div className="saved-shop-list">{favoriteShops.map(shop=><button type="button" key={shop.id} className={'saved-shop-card'+(!shop.is_open?' is-shop-closed':'')} onClick={()=>openShop(shop.id)}>
             <ShopLogo src={shop.logo_image} name={shop.name}/><span><strong>{shop.name}</strong><small>{shop.description}</small></span><ChevronRight size={18}/>
           </button>)}</div>
         </>}
