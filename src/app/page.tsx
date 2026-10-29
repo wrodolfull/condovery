@@ -206,6 +206,8 @@ export default function Page(){
   const [ads,setAds]=useState<AdCampaign[]>([]);
   const [favoriteIds,setFavoriteIds]=useState<string[]>([]);
   const [favoriteProducts,setFavoriteProducts]=useState<Product[]>([]);
+  const [favoriteShopIds,setFavoriteShopIds]=useState<string[]>([]);
+  const [favoriteShops,setFavoriteShops]=useState<Shop[]>([]);
   const [query,setQuery]=useState('');
   const [category,setCategory]=useState('');
   const [catalogProducts,setCatalogProducts]=useState<Product[]>([]);
@@ -303,6 +305,10 @@ export default function Page(){
     const result=await api<{ids:string[];products:Product[]}>('favorites');
     setFavoriteIds(result.ids);setFavoriteProducts(result.products);
   },[]);
+  const loadShopFavorites=useCallback(async()=>{
+    const result=await api<{ids:string[];shops:Shop[]}>('favorite-shops');
+    setFavoriteShopIds(result.ids);setFavoriteShops(result.shops);
+  },[]);
   const loadMine=useCallback(async()=>{
     const data=await api<{shop:Shop|null;products:Product[]}>('shops/mine');
     setMyShop(data.shop);setMyProducts(data.products);
@@ -380,7 +386,7 @@ export default function Page(){
     setBusy(true);setError('');setTenantMenuOpen(false);
     try{
       await api('platform/condominiums/switch',{method:'POST',body:payload({condominium_id:id})});
-      setCart([]);setSelectedShop(null);setFavoriteIds([]);setFavoriteProducts([]);setOrders([]);setMyShop(null);
+      setCart([]);setSelectedShop(null);setFavoriteIds([]);setFavoriteProducts([]);setFavoriteShopIds([]);setFavoriteShops([]);setOrders([]);setMyShop(null);
       const data=await api<{viewer:Viewer}>('me');
       setViewer(data.viewer);await refresh(data.viewer);
       go('admin');notify('Condomínio ativo alterado para '+data.viewer.condominium_name+'.');
@@ -389,8 +395,8 @@ export default function Page(){
   // Orders are fetched by the orders-view effect when that screen opens.
   // Avoid fetching them at login (and again when entering the orders screen).
   const refresh=useCallback(async(u:Viewer)=>{
-    await Promise.all([loadHome(),loadMine(),loadFavorites()]);
-  },[loadHome,loadMine,loadFavorites]);
+    await Promise.all([loadHome(),loadMine(),loadFavorites(),loadShopFavorites()]);
+  },[loadHome,loadMine,loadFavorites,loadShopFavorites]);
 
   useEffect(()=>{
     const link=window.location.pathname.startsWith('/loja/')?decodeURIComponent(window.location.pathname.slice(6).split('/')[0]):new URLSearchParams(window.location.search).get('loja');
@@ -506,6 +512,17 @@ export default function Page(){
       await loadFavorites();
     }catch(e){await loadFavorites().catch(()=>{});fail(e);}
   }
+  async function toggleShopFavorite(id:string){
+    const saved=favoriteShopIds.includes(id);
+    setFavoriteShopIds(old=>saved?old.filter(x=>x!==id):[id,...old]);
+    try{
+      await api(saved?'favorite-shops/'+id:'favorite-shops',{
+        method:saved?'DELETE':'POST',
+        ...(!saved?{body:payload({shop_id:id})}:{})
+      });
+      await loadShopFavorites();
+    }catch(e){await loadShopFavorites().catch(()=>{});fail(e);}
+  }
   async function submitReset(e:React.FormEvent){
     e.preventDefault();setBusy(true);setError('');
     try{
@@ -575,7 +592,7 @@ export default function Page(){
   }
   async function logout(){
     try{await api('auth/logout',{method:'POST'});}catch{}
-    setViewer(null);setGoogleSignup(null);setHome(emptyHome);setFavoriteIds([]);setFavoriteProducts([]);setCart([]);setMyShop(null);setOrders([]);go('home');
+    setViewer(null);setGoogleSignup(null);setHome(emptyHome);setFavoriteIds([]);setFavoriteProducts([]);setFavoriteShopIds([]);setFavoriteShops([]);setCart([]);setMyShop(null);setOrders([]);go('home');
   }
   async function openShop(id:string){
     setBusy(true);
@@ -589,18 +606,6 @@ export default function Page(){
   async function shareShop(id:string,name:string){
     const shop=home.shops.find(item=>item.id===id)??(selectedShop?.shop.id===id?selectedShop.shop:null)??(myShop?.id===id?myShop:null);
     const link=new URL(shop?.slug?shopSharePath(shop.slug):'/?loja='+encodeURIComponent(id),window.location.origin).toString();
-    // Native Android/iOS share sheet is available on HTTPS (secure context).
-    // Call share directly in the user's click, before any other awaited work.
-    if(window.isSecureContext&&typeof navigator.share==='function'){
-      try{
-        await navigator.share({title:name,text:'Conheça esta loja no Condovery!',url:link});
-        return;
-      }catch(e){
-        if(e instanceof DOMException&&e.name==='AbortError')return;
-      }
-    }
-    // HTTP LAN origins cannot invoke the OS share sheet. Provide useful alternatives
-    // instead of silently copying a link.
     setShareFallback({link,name});
   }
   async function copyShopLink(link:string){
@@ -1142,6 +1147,12 @@ export default function Page(){
         <div className="shop-head"><div><h1>{selectedShop.shop.name}</h1><p>{selectedShop.shop.description}</p></div>
           <div className="shop-actions">
             <Pill tone={selectedShop.shop.is_open?'green':'neutral'}>{selectedShop.shop.is_open?'Aceitando pedidos':'Fechada'}</Pill>
+            <button type="button" className={'shop-save-button'+(favoriteShopIds.includes(selectedShop.shop.id)?' is-saved':'')}
+              aria-pressed={favoriteShopIds.includes(selectedShop.shop.id)}
+              onClick={()=>toggleShopFavorite(selectedShop.shop.id)}>
+              <Heart size={17} fill={favoriteShopIds.includes(selectedShop.shop.id)?'currentColor':'none'}/>
+              {favoriteShopIds.includes(selectedShop.shop.id)?'Loja salva':'Salvar loja'}
+            </button>
             <button className="shop-share-button" onClick={()=>shareShop(selectedShop.shop.id,selectedShop.shop.name)}>
               <Share2 size={17}/> Compartilhar loja
             </button>
@@ -1155,6 +1166,16 @@ export default function Page(){
             <><RoundedStars value={0} size={22}/><span>Sem avaliação</span></>}
         </div>
         <div className="shop-benefits"><span><Truck size={17}/> {selectedShop.shop.delivery_enabled?'Entrega disponível':'Sem entrega'}</span>{selectedShop.shop.pickup_enabled&&<span><ShoppingBag size={17}/> Retirada</span>}{selectedShop.shop.lead_time&&<span><Clock3 size={17}/>{selectedShop.shop.lead_time}</span>}</div>
+        {selectedShop.products.some(p=>p.visibility==='available'&&p.promo_price_cents!=null&&p.promo_price_cents<p.price_cents&&p.stock!==0)&&<>
+          <SectionHeader title="Ofertas"/>
+          <div className="shop-offers-scroll" role="region" aria-label="Ofertas da loja" tabIndex={0}>
+            {selectedShop.products.filter(p=>p.visibility==='available'&&p.promo_price_cents!=null&&p.promo_price_cents<p.price_cents&&p.stock!==0).map(p=>
+              <div className="shop-offer-item" key={p.id}>
+                <ProductCard p={{...p,shop_name:selectedShop.shop.name}} onClick={()=>openProduct({...p,shop_name:selectedShop.shop.name})} favorite={favoriteIds.includes(p.id)} onFavorite={toggleFavorite}/>
+              </div>
+            )}
+          </div>
+        </>}
         <SectionHeader title="Produtos da loja"/>
         <div className="product-grid">{selectedShop.products.map(p=><ProductCard key={p.id} p={{...p,shop_name:selectedShop.shop.name}} onClick={()=>openProduct({...p,shop_name:selectedShop.shop.name})} favorite={favoriteIds.includes(p.id)} onFavorite={toggleFavorite}/>)}</div>
         {!selectedShop.products.length&&<Empty title="Loja sem produtos no momento" subtitle="Em breve, novidades por aqui."/>}
@@ -1268,10 +1289,16 @@ export default function Page(){
         <button className="outline-button" onClick={()=>{loadOrders();go('orders');}}>Acompanhar meus pedidos</button><small>Abrir o WhatsApp não significa que o vendedor recebeu ou confirmou o pedido.</small></div>}
 
       {view==='favorites'&&<>
-        <div className="page-title"><h1>Meus favoritos</h1><p>Seus produtos preferidos, sempre à mão.</p></div>
+        <div className="page-title"><h1>Meus favoritos</h1><p>Suas lojas e produtos preferidos, sempre à mão.</p></div>
+        {!!favoriteShops.length&&<>
+          <SectionHeader title="Lojas salvas"/>
+          <div className="saved-shop-list">{favoriteShops.map(shop=><button type="button" key={shop.id} className="saved-shop-card" onClick={()=>openShop(shop.id)}>
+            <ShopLogo src={shop.logo_image} name={shop.name}/><span><strong>{shop.name}</strong><small>{shop.description}</small></span><ChevronRight size={18}/>
+          </button>)}</div>
+        </>}
         {favoriteProducts.length?<div className="product-grid">{favoriteProducts.map(p=>
           <ProductCard key={p.id} p={p} onClick={()=>openProduct(p)} favorite={favoriteIds.includes(p.id)} onFavorite={toggleFavorite}/>
-        )}</div>:<Empty art="emptyFavorites" title="Nenhum favorito por enquanto" subtitle="Toque no coração de um produto para encontrá-lo facilmente depois." action="Explorar produtos" onAction={()=>go('categories')}/>}
+        )}</div>:!favoriteShops.length&&<Empty art="emptyFavorites" title="Nenhum favorito por enquanto" subtitle="Toque no coração de um produto para encontrá-lo facilmente depois." action="Explorar produtos" onAction={()=>go('categories')}/>}
       </>}
             {view==='orders'&&<>
         <div className="page-title"><h1>Meus pedidos</h1><p>Acompanhe seus pedidos com os vizinhos.</p></div>
@@ -1828,13 +1855,31 @@ export default function Page(){
             <p>{shareFallback.name}</p></div>
             <button type="button" aria-label="Fechar opções de compartilhamento" onClick={()=>setShareFallback(null)}><X size={19}/></button>
           </div>
-          {!window.isSecureContext&&<p className="share-hint">O painel de compartilhamento do celular requer HTTPS.
-            Neste endereço local, escolha WhatsApp ou copie o link.</p>}
-          <div className="share-fallback-actions">
-            <a href={'https://wa.me/?text='+encodeURIComponent('Conheça esta loja no Condovery! '+shareFallback.link)}
-              target="_blank" rel="noopener noreferrer" onClick={()=>setShareFallback(null)}>
-              <MessageCircle size={20}/> Enviar pelo WhatsApp</a>
-            <button type="button" onClick={()=>copyShopLink(shareFallback.link)}><Share2 size={20}/> Copiar link</button>
+          <div className="share-social-grid">
+            {[
+              {label:'WhatsApp',key:'whatsapp',href:'https://wa.me/?text='+encodeURIComponent('Conheça esta loja no Condovery! '+shareFallback.link)},
+              {label:'Facebook',key:'facebook',href:'https://www.facebook.com/sharer/sharer.php?u='+encodeURIComponent(shareFallback.link)},
+              {label:'X',key:'x',href:'https://twitter.com/intent/tweet?text='+encodeURIComponent('Conheça esta loja no Condovery!')+'&url='+encodeURIComponent(shareFallback.link)},
+              {label:'Telegram',key:'telegram',href:'https://t.me/share/url?url='+encodeURIComponent(shareFallback.link)+'&text='+encodeURIComponent('Conheça esta loja!')},
+              {label:'SMS',key:'sms',href:'sms:?body='+encodeURIComponent('Conheça esta loja! '+shareFallback.link)},
+              {label:'E-mail',key:'email',href:'mailto:?subject='+encodeURIComponent('Conheça '+shareFallback.name)+'&body='+encodeURIComponent(shareFallback.link)},
+            ].map(item=><a key={item.key} className="share-social-option" href={item.href}
+              target={['sms','email'].includes(item.key)?undefined:'_blank'} rel="noopener noreferrer"
+              onClick={()=>setShareFallback(null)}>
+              <span className={'share-social-icon '+item.key}>{item.key==='whatsapp'?<MessageCircle/>:item.key==='facebook'?'f':item.key==='x'?'X':item.key==='telegram'?<Share2/>:item.key==='sms'?<MessageCircle/>:<FileText/>}</span>
+              <span>{item.label}</span>
+            </a>)}
+            <button type="button" className="share-social-option" onClick={async()=>{
+              if(navigator.share){try{await navigator.share({title:shareFallback.name,url:shareFallback.link});setShareFallback(null);}catch(e){if(!(e instanceof DOMException&&e.name==='AbortError'))fail(e);}}
+              else {await copyShopLink(shareFallback.link);notify('Link copiado. Cole no Instagram para compartilhar.');}
+            }}><span className="share-social-icon instagram"><Share2/></span><span>Instagram</span></button>
+            <button type="button" className="share-social-option" onClick={()=>copyShopLink(shareFallback.link)}>
+              <span className="share-social-icon copy"><Share2/></span><span>Copiar link</span>
+            </button>
+            <button type="button" className="share-social-option" onClick={async()=>{
+              if(navigator.share){try{await navigator.share({title:shareFallback.name,url:shareFallback.link});setShareFallback(null);}catch(e){if(!(e instanceof DOMException&&e.name==='AbortError'))fail(e);}}
+              else await copyShopLink(shareFallback.link);
+            }}><span className="share-social-icon more"><Share2/></span><span>Mais</span></button>
           </div>
         </section>
       </div>}
