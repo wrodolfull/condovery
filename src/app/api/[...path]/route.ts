@@ -28,6 +28,7 @@ import {protectMutation} from '@/lib/request-protection';
 import {isValidPassword} from '@/lib/password-policy';
 import {mobileRouteAllowed} from '@/lib/mobile-policy';
 import {parseOrderPaging,orderPage} from '@/lib/order-pagination';
+import {parseShopPaging,shopPage} from '@/lib/shop-pagination';
 import {availableForNewOrders,buyerAvailableStockSQL} from '@/lib/pending-stock';
 import {handleMobileAuth,passwordMember} from '@/server/mobile-auth';
 import {handlePushApi,enqueueNewOrder,enqueueOrderStatus} from '@/server/push';
@@ -641,6 +642,18 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
       if(!result.rowCount)bad('Item não encontrado ou sem permissão.',404);
       return out({ok:true});
     }
+  }
+  if(path==='shops'&&method==='GET'){
+    const paging=parseShopPaging(req.nextUrl.searchParams);
+    if(!paging)bad('Paginação de lojas inválida.');
+    const {limit,cursor}=paging!;
+    const search=clean(req.nextUrl.searchParams.get('search'),100).replace(/[%_\\\\]/g,'');
+    const result=await query(
+      "SELECT id,name,slug,description,cover_image,logo_image,is_open,delivery_enabled,pickup_enabled,delivery_fee_cents,payment_methods,lead_time,created_at::text AS cursor_created_at FROM shops WHERE condominium_id=$1 AND status='approved' AND ($2::boolean IS NULL OR (is_open,created_at,id)<($2::boolean,$3::timestamptz,$4::uuid)) AND ($5::text='' OR name ILIKE $5) ORDER BY is_open DESC,created_at DESC,id DESC LIMIT $6",
+      [u.condominium_id,cursor?.isOpen??null,cursor?.createdAt??null,cursor?.id??null,search?'%'+search+'%':'',limit+1]
+    );
+    const page=shopPage(result.rows,limit);
+    return out({shops:page.shops.map(({cursor_created_at,...shop})=>shop),hasMore:page.hasMore,nextCursor:page.nextCursor});
   }
   if(path==='home'&&method==='GET'){
     const [categories,shops,products]=await Promise.all([
