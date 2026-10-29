@@ -247,6 +247,7 @@ export default function Page(){
   const [ordersLoading,setOrdersLoading]=useState(false);
   const [ordersLoadingMore,setOrdersLoadingMore]=useState(false);
   const [ordersRefreshing,setOrdersRefreshing]=useState(false);
+  const [ordersRefreshError,setOrdersRefreshError]=useState('');
   const [ordersUpdatedAt,setOrdersUpdatedAt]=useState<Date|null>(null);
   const [ordersCursor,setOrdersCursor]=useState<string|null>(null);
   const buyerHistoryExpanded=useRef(false);
@@ -355,6 +356,7 @@ export default function Page(){
     }
     lastBuyerRefreshAt.current=Date.now();
     setOrdersUpdatedAt(new Date());
+    setOrdersRefreshError('');
   },[]);
   const loadSellerOrders=useCallback(async(cursor?:string)=>{
     const current=++sellerOrdersRequest.current;
@@ -511,7 +513,7 @@ export default function Page(){
     let active=true;
     buyerHistoryExpanded.current=false;
     buyerOrdersRequest.current++;
-    setOrders([]);setOrdersCursor(null);setOrdersUpdatedAt(null);
+    setOrders([]);setOrdersCursor(null);setOrdersUpdatedAt(null);setOrdersRefreshError('');
     setOrdersLoading(true);
     loadOrders(orderFilter).catch(e=>{if(active)fail(e);})
       .finally(()=>{if(active)setOrdersLoading(false);});
@@ -531,7 +533,7 @@ export default function Page(){
       inFlight=true;
       setOrdersRefreshing(true);
       try{await loadOrders(orderFilter,undefined,'refresh');}
-      catch(e){if(active)fail(e);}
+      catch{if(active)setOrdersRefreshError('Não foi possível atualizar os pedidos. Tente novamente.');}
       finally{inFlight=false;if(active)setOrdersRefreshing(false);}
     };
     const timer=window.setInterval(()=>{void refresh(true);},20000);
@@ -1383,9 +1385,10 @@ export default function Page(){
         <div className="page-title"><h1>Meus pedidos</h1><p>Acompanhe seus pedidos com os vizinhos.</p>
           <div className="orders-refresh-controls">
             <small role="status">{ordersRefreshing?'Atualizando pedidos...':ordersUpdatedAt?'Atualizado às '+ordersUpdatedAt.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}):'Carregando pedidos...'}</small>
+            {ordersRefreshError&&<small role="alert">{ordersRefreshError}</small>}
             <button type="button" className="outline-button" disabled={ordersLoading||ordersRefreshing||ordersLoadingMore} onClick={async()=>{
               setOrdersRefreshing(true);
-              try{await loadOrders(orderFilter,undefined,'refresh');}catch(e){fail(e);}
+              try{await loadOrders(orderFilter,undefined,'refresh');}catch{setOrdersRefreshError('Não foi possível atualizar os pedidos. Tente novamente.');}
               finally{setOrdersRefreshing(false);}
             }}>Atualizar</button>
           </div>
