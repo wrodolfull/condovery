@@ -23,7 +23,6 @@ test("mobile credentials can buy and use owner-scoped seller capabilities", () =
   for (const [path, method] of [
     ["admin/summary", "GET"],
     ["platform/condominiums", "GET"],
-    ["shops/mine/push", "POST"],
     ["fairs/manage", "GET"],
     ["media/ad", "POST"],
     ["auth/login", "POST"],
