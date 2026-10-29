@@ -9,6 +9,7 @@ const id = "22da294e-aab1-43ba-b9df-4807b87cf880";
 test("mobile credentials can buy and use owner-scoped seller capabilities", () => {
   for (const [path, method] of [
     ["home", "GET"],
+    ["shops", "GET"],
     ["favorite-shops","GET"],
     ["favorite-shops","POST"],
     ["favorite-shops/"+id,"DELETE"],
