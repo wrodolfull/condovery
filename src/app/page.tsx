@@ -33,7 +33,7 @@ import {
 type Viewer={id:string;condominium_id:string;name:string;email:string;phone:string;avatar_image:string|null;role:'admin'|'resident';status:'pending'|'approved'|'suspended';tower:string;apartment:string;condominium_name:string;towers:string[];is_superadmin?:boolean};
 type Category={id:string;name:string;icon:string;is_active?:boolean};
 type Shop={id:string;slug:string;name:string;description:string;cover_image:string|null;logo_image:string|null;status?:string;is_open:boolean;delivery_enabled:boolean;delivery_fee_cents:number;pickup_enabled:boolean;lead_time:string;pickup_instructions?:string;whatsapp?:string;payment_methods:PaymentMethod[]};
-type Product={id:string;shop_id:string;shop_name?:string;visibility:'available'|'unavailable'|'hidden';category_id:string;name:string;description:string;price_cents:number;promo_price_cents:number|null;image_url:string|null;stock:number|null;is_available?:boolean;lead_time?:string;is_featured?:boolean;option_groups?:OptionGroup[]};
+type Product={id:string;shop_id:string;shop_name?:string;is_open?:boolean;visibility:'available'|'unavailable'|'hidden';category_id:string;name:string;description:string;price_cents:number;promo_price_cents:number|null;image_url:string|null;stock:number|null;is_available?:boolean;lead_time?:string;is_featured?:boolean;option_groups?:OptionGroup[]};
 type Order={id:string;code:number;status:string;review_status?:'pending'|'approved'|'rejected'|null;can_review?:boolean;is_own_shop?:boolean;total_cents:number;shop_name:string;buyer_name:string;buyer_phone:string;tower:string;apartment:string;fulfillment:string;delivery_day:string|null;delivery_window:string;delivery_instructions:string[];note:string;subtotal_cents:number;delivery_fee_cents:number;payment_method?:PaymentMethod|null;items:{name:string;quantity:number;unit_price_cents:number;note:string;options?:{group:string;name:string;price_cents:number}[]}[];created_at:string};
 type ReviewStatus='pending'|'approved'|'rejected';
 type PublicReview={id:string;rating:number;description:string;created_at:string};
@@ -169,16 +169,18 @@ function OrderProgress({status}:{status:string}) {
 }
 function ProductCard({p,onClick,favorite,onFavorite}:{p:Product;onClick:()=>void;favorite:boolean;onFavorite:(id:string)=>void}){
   const soldOut=p.stock===0;
-  return <article className={'product-card'+(soldOut||p.visibility==='unavailable'?' is-unavailable':'')}>
-    {(soldOut||p.visibility==='unavailable')&&<span className="unavailable-tag">{soldOut?'Esgotado':'Indisponível'}</span>}
-    <button className="product-open" onClick={onClick} aria-label={'Ver '+p.name}>
+  const closed=p.is_open===false;
+  const unavailable=closed||soldOut||p.visibility==='unavailable';
+  return <article className={'product-card'+(unavailable?' is-unavailable':'')+(closed?' is-shop-closed':'')}>
+    {unavailable&&<span className="unavailable-tag">{closed?'Loja fechada':soldOut?'Esgotado':'Indisponível'}</span>}
+    <button className="product-open" disabled={unavailable} onClick={onClick} aria-label={'Ver '+p.name}>
       <ProductPicture src={p.image_url} name={p.name}/>
       {p.promo_price_cents!=null&&<span className="card-offer">Oferta</span>}
       <div className="product-meta"><span className="product-name">{p.name}</span><span className="muted ellipsis">{p.shop_name??''}</span>
         <div className="product-prices">{p.promo_price_cents!=null&&<del>{money(p.price_cents)}</del>}<strong>{money(price(p))}</strong></div>
       </div>
     </button>
-    <button className={'favorite-heart'+(favorite?' is-favorite':'')} onClick={()=>onFavorite(p.id)} aria-label={favorite?'Remover dos favoritos':'Salvar nos favoritos'} aria-pressed={favorite}>
+    <button disabled={closed} className={'favorite-heart'+(favorite?' is-favorite':'')} onClick={()=>onFavorite(p.id)} aria-label={favorite?'Remover dos favoritos':'Salvar nos favoritos'} aria-pressed={favorite}>
       <Heart size={19} fill={favorite?'currentColor':'none'}/>
     </button>
   </article>;
@@ -638,7 +640,7 @@ export default function Page(){
       notify(status==='approved'?'Avaliação publicada.':'Avaliação não publicada.');
     }catch(e){fail(e);}finally{setBusy(false);}
   }
-  function openProduct(p:Product){setSelectedProduct(p);setQty(1);setItemNote('');setProductChoices({});go('product');}
+  function openProduct(p:Product){if(!productCanBuy(p))return;setSelectedProduct(p);setQty(1);setItemNote('');setProductChoices({});go('product');}
   function changeChoice(group:OptionGroup,id:string){
     setProductChoices(current=>{
       const currentIds=current[group.id]??[];
@@ -648,7 +650,10 @@ export default function Page(){
       return {...current,[group.id]:selected};
     });
   }
-  const productCanBuy=(p:Product)=>p.visibility==='available'&&p.stock!==0;
+  const productCanBuy=(p:Product)=>{
+    const shop=selectedShop?.shop.id===p.shop_id?selectedShop.shop:home.shops.find(s=>s.id===p.shop_id);
+    return p.visibility==='available'&&p.stock!==0&&p.is_open!==false&&shop?.is_open!==false;
+  };
   async function changeProductVisibility(id:string,visibility:Product['visibility']){
     setBusy(true);setError('');
     try{
@@ -689,7 +694,7 @@ export default function Page(){
   }
   function addToCart(){
     if(!selectedProduct)return;
-    if(!productCanBuy(selectedProduct)){notify('Este produto está indisponível.');return;}
+    if(!productCanBuy(selectedProduct)){notify('Produto indisponível ou loja fechada.');return;}
     try{selectedOptions(selectedProduct.option_groups??[],productChoices);}
     catch(e){fail(e);return;}
     if(cart.length&&cart[0].product.shop_id!==selectedProduct.shop_id){
@@ -716,6 +721,7 @@ export default function Page(){
   }
   async function checkout(confirmed=false){
     if(!cart.length||busy)return;
+    if(cartShop?.is_open===false){setError('Loja fechada. Não é possível fazer pedidos agora.');return;}
     if(!paymentMethod||!acceptedPaymentMethods.includes(paymentMethod)){setError('Selecione um meio de pagamento aceito pela loja.');return;}
     setBusy(true);setError('');
     const key=checkoutKey??clientUUID();
@@ -1171,11 +1177,12 @@ export default function Page(){
           <div className="shop-offers-scroll" role="region" aria-label="Ofertas da loja" tabIndex={0}>
             {selectedShop.products.filter(p=>p.visibility==='available'&&p.promo_price_cents!=null&&p.promo_price_cents<p.price_cents&&p.stock!==0).map(p=>
               <div className="shop-offer-item" key={p.id}>
-                <ProductCard p={{...p,shop_name:selectedShop.shop.name}} onClick={()=>openProduct({...p,shop_name:selectedShop.shop.name})} favorite={favoriteIds.includes(p.id)} onFavorite={toggleFavorite}/>
+                <ProductCard p={{...p,shop_name:selectedShop.shop.name,is_open:selectedShop.shop.is_open}} onClick={()=>openProduct({...p,shop_name:selectedShop.shop.name,is_open:selectedShop.shop.is_open})} favorite={favoriteIds.includes(p.id)} onFavorite={toggleFavorite}/>
               </div>
             )}
           </div>
         </>}
+        {!selectedShop.shop.is_open&&<p className="shop-closed-notice" role="status">Loja fechada. Os produtos estão disponíveis para consulta, mas as compras estão temporariamente suspensas.</p>}
         <SectionHeader title="Produtos da loja"/>
         <div className="product-grid">{selectedShop.products.map(p=><ProductCard key={p.id} p={{...p,shop_name:selectedShop.shop.name}} onClick={()=>openProduct({...p,shop_name:selectedShop.shop.name})} favorite={favoriteIds.includes(p.id)} onFavorite={toggleFavorite}/>)}</div>
         {!selectedShop.products.length&&<Empty title="Loja sem produtos no momento" subtitle="Em breve, novidades por aqui."/>}
@@ -1200,12 +1207,12 @@ export default function Page(){
         <div className={'product-detail'+(!productCanBuy(selectedProduct)?' is-unavailable':'')}>
           <ProductPicture src={selectedProduct.image_url} name={selectedProduct.name} large/>
           <div className="product-detail-copy">
-            {!productCanBuy(selectedProduct)?<Pill tone="neutral">{selectedProduct.stock===0?'Esgotado':'Indisponível no momento'}</Pill>:<Pill tone="orange">Da nossa vizinhança</Pill>}<h1>{selectedProduct.name}</h1>
+            {!productCanBuy(selectedProduct)?<Pill tone="neutral">{!productCanBuy(selectedProduct)&&(selectedProduct.is_open===false||home.shops.find(s=>s.id===selectedProduct.shop_id)?.is_open===false||selectedShop?.shop.id===selectedProduct.shop_id&&selectedShop.shop.is_open===false)?'Loja fechada':selectedProduct.stock===0?'Esgotado':'Indisponível no momento'}</Pill>:<Pill tone="orange">Da nossa vizinhança</Pill>}<h1>{selectedProduct.name}</h1>
             <p className="seller-by">Por {selectedProduct.shop_name??home.shops.find(s=>s.id===selectedProduct.shop_id)?.name}</p>
             <div className="detail-price">{selectedProduct.promo_price_cents!=null&&<del>{money(selectedProduct.price_cents)}</del>}<strong>{money(price(selectedProduct))}</strong></div>
             <p>{selectedProduct.description||'Produto disponível diretamente com um morador do condomínio.'}</p>
             {selectedProduct.lead_time&&<p className="time-hint"><Clock3 size={16}/> Prazo informado: {selectedProduct.lead_time}</p>}
-            {(selectedProduct.option_groups??[]).map(group=><fieldset className="options-picker" key={group.id}>
+            {(selectedProduct.option_groups??[]).map(group=><fieldset className="options-picker" key={group.id} disabled={!productCanBuy(selectedProduct)}>
               <legend><strong>{group.name}</strong><small>{group.required?' Obrigatório':' Opcional'} · {group.multiple?'Várias escolhas':'Escolha uma'}</small></legend>
               {group.options.map(choice=><label className="option-item" key={choice.id}>
                 <input type={group.multiple?'checkbox':'radio'} name={'group-'+group.id}
@@ -1216,10 +1223,10 @@ export default function Page(){
                 <button type="button" className="quiet-link"
                   onClick={()=>setProductChoices(c=>({...c,[group.id]:[]}))}>Limpar escolha</button>}
             </fieldset>)}
-            <label className="field-label">Observações sobre este produto<textarea maxLength={200} rows={3} value={itemNote} onChange={e=>setItemNote(e.target.value)} placeholder="Ex.: sem cobertura, embalagem para presente..."/></label>
-            <div className="add-row"><div className="quantity"><button onClick={()=>setQty(Math.max(1,qty-1))} aria-label="Diminuir"><Minus size={18}/></button><strong>{qty}</strong><button onClick={()=>setQty(Math.min(Math.max(1,selectedProduct.stock??30),qty+1))} aria-label="Aumentar"><Plus size={18}/></button></div>
+            <label className="field-label">Observações sobre este produto<textarea disabled={!productCanBuy(selectedProduct)} maxLength={200} rows={3} value={itemNote} onChange={e=>setItemNote(e.target.value)} placeholder="Ex.: sem cobertura, embalagem para presente..."/></label>
+            <div className="add-row"><div className="quantity"><button disabled={!productCanBuy(selectedProduct)} onClick={()=>setQty(Math.max(1,qty-1))} aria-label="Diminuir"><Minus size={18}/></button><strong>{qty}</strong><button disabled={!productCanBuy(selectedProduct)} onClick={()=>setQty(Math.min(Math.max(1,selectedProduct.stock??30),qty+1))} aria-label="Aumentar"><Plus size={18}/></button></div>
             <button className="primary-button" disabled={!productCanBuy(selectedProduct)} onClick={addToCart}><Plus size={18}/>Adicionar · {money((price(selectedProduct)+addOns(selectedProduct,productChoices))*qty)}</button></div>
-            {!productCanBuy(selectedProduct)&&<p className="helper-note">Este produto continua visível, mas não pode ser comprado agora.</p>}
+            {!productCanBuy(selectedProduct)&&<p className="helper-note">Produto indisponível ou loja fechada. Compras temporariamente desativadas.</p>}
             <button className="report-trigger" onClick={()=>setReportTarget({type:'product',id:selectedProduct.id,name:selectedProduct.name})}>Denunciar produto</button>
           </div>
         </div>
@@ -1228,7 +1235,7 @@ export default function Page(){
       {view==='cart'&&<>
         <div className="page-title"><h1>Meu carrinho</h1><p>Escolha a entrega e finalize diretamente com o vendedor pelo WhatsApp.</p></div>
         {!cart.length?<Empty title="Seu carrinho está vazio" subtitle="Adicione produtos de uma loja para começar." action="Explorar produtos" onAction={()=>go('categories')}/>:
-        <div className="checkout-layout"><section className="checkout-main">
+        <div className={"checkout-layout"+(cartShop?.is_open===false?" is-shop-closed":"")}><section className="checkout-main">{cartShop?.is_open===false&&<div className="shop-closed-notice" role="status">Loja fechada. Não é possível concluir este pedido agora. Você pode remover os itens do carrinho.</div>}
           <div className="white-panel"><h2><Store size={19}/> {cartShop?.name??'Sua loja'}</h2>{cart.map((item,index)=><div className="cart-item" key={item.product.id+'-'+index}>
             <ProductPicture src={item.product.image_url} name={item.product.name}/><div className="cart-item-details"><strong>{item.product.name}</strong>
               {(item.product.option_groups??[]).flatMap(g=>(item.selections?.[g.id]??[]).map(id=>{
@@ -1266,12 +1273,12 @@ export default function Page(){
             <p>Anterior: {money(cartTotal)} → <strong>Atual: {money(revisedQuote.total_cents)}</strong></p>
             {revisedQuote.lines.map((line,n)=><small key={n}>{line.quantity}× {line.name} — {money(line.total_cents)}</small>)}
             <small>Taxa de entrega: {money(revisedQuote.delivery_fee_cents)}</small>
-            <button type="button" className="primary-button" disabled={busy} onClick={()=>checkout(true)}>
+            <button type="button" className="primary-button" disabled={busy||cartShop?.is_open===false} onClick={()=>checkout(true)}>
               Confirmar novo valor e continuar
             </button>
             <button type="button" className="outline-button" onClick={()=>setRevisedQuote(null)}>Revisar carrinho</button>
           </div>}
-          {!revisedQuote&&<button className="primary-button" disabled={busy} onClick={()=>checkout()}>
+          {!revisedQuote&&<button className="primary-button" disabled={busy||cartShop?.is_open===false} onClick={()=>checkout()}>
             {busy?'Conferindo valores...':preferWhatsAppMessenger()?'Registrar pedido':'Continuar no WhatsApp'}<ArrowRight size={18}/>
           </button>}
           <small>O pedido fica registrado mesmo se você fechar o WhatsApp. Apenas a loja poderá confirmá-lo.</small>
