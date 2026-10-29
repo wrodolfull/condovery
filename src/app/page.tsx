@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {IllustrationSlot} from '@/components/IllustrationSlot';
 import {AdsCarousel,type AdCampaign} from '@/components/AdsCarousel';
 import {PushComposer} from '@/components/PushComposer';
@@ -244,7 +244,13 @@ export default function Page(){
   const [orders,setOrders]=useState<Order[]>([]);
   const [orderFilter,setOrderFilter]=useState<OrderFilter>('all');
   const [ordersLoading,setOrdersLoading]=useState(false);
+  const [ordersLoadingMore,setOrdersLoadingMore]=useState(false);
+  const [ordersCursor,setOrdersCursor]=useState<string|null>(null);
   const [sellerOrders,setSellerOrders]=useState<Order[]>([]);
+  const [sellerOrdersCursor,setSellerOrdersCursor]=useState<string|null>(null);
+  const [sellerOrdersLoadingMore,setSellerOrdersLoadingMore]=useState(false);
+  const buyerOrdersRequest=useRef(0);
+  const sellerOrdersRequest=useRef(0);
   const [myShop,setMyShop]=useState<Shop|null>(null);
   const [showDeleteShop,setShowDeleteShop]=useState(false);
   const [shopDeleteConfirmation,setShopDeleteConfirmation]=useState('');
@@ -320,13 +326,32 @@ export default function Page(){
       lead_time:data.shop.lead_time??'',pickup_instructions:data.shop.pickup_instructions??'',cover_image:data.shop.cover_image??'',logo_image:data.shop.logo_image??'',payment_methods:allowedPaymentMethods(data.shop.payment_methods)
     });
   },[]);
-  const loadOrders=useCallback(async(filter:OrderFilter='all')=>{
-    const search=filter==='all'?'':'?status='+encodeURIComponent(filter);
-    const result=await api<{orders:Order[]}>('orders'+search);
-    setOrders(result.orders);
+  const loadOrders=useCallback(async(filter:OrderFilter='all',cursor?:string)=>{
+    const current=++buyerOrdersRequest.current;
+    const params=new URLSearchParams({limit:'20'});
+    if(filter!=='all')params.set('status',filter);
+    if(cursor)params.set('cursor',cursor);
+    const result=await api<{orders:Order[];nextCursor:string|null}>('orders?'+params.toString());
+    if(current!==buyerOrdersRequest.current)return;
+    if(cursor)setOrders(previous=>{
+      const existing=new Set(previous.map(o=>o.id));
+      return [...previous,...result.orders.filter(o=>!existing.has(o.id))];
+    });
+    else setOrders(result.orders);
+    setOrdersCursor(result.nextCursor??null);
   },[]);
-  const loadSellerOrders=useCallback(async()=>{
-    const result=await api<{orders:Order[]}>('orders?scope=seller');setSellerOrders(result.orders);
+  const loadSellerOrders=useCallback(async(cursor?:string)=>{
+    const current=++sellerOrdersRequest.current;
+    const params=new URLSearchParams({scope:'seller',limit:'20'});
+    if(cursor)params.set('cursor',cursor);
+    const result=await api<{orders:Order[];nextCursor:string|null}>('orders?'+params.toString());
+    if(current!==sellerOrdersRequest.current)return;
+    if(cursor)setSellerOrders(previous=>{
+      const existing=new Set(previous.map(o=>o.id));
+      return [...previous,...result.orders.filter(o=>!existing.has(o.id))];
+    });
+    else setSellerOrders(result.orders);
+    setSellerOrdersCursor(result.nextCursor??null);
   },[]);
   const loadSellerReviews=useCallback(async()=>{
     const result=await api<{reviews:SellerReview[]}>('shops/mine/reviews');
@@ -388,7 +413,7 @@ export default function Page(){
     setBusy(true);setError('');setTenantMenuOpen(false);
     try{
       await api('platform/condominiums/switch',{method:'POST',body:payload({condominium_id:id})});
-      setCart([]);setSelectedShop(null);setFavoriteIds([]);setFavoriteProducts([]);setFavoriteShopIds([]);setFavoriteShops([]);setOrders([]);setMyShop(null);
+      setCart([]);setSelectedShop(null);setFavoriteIds([]);setFavoriteProducts([]);setFavoriteShopIds([]);setFavoriteShops([]);setOrders([]);setOrdersCursor(null);setSellerOrdersCursor(null);setMyShop(null);
       const data=await api<{viewer:Viewer}>('me');
       setViewer(data.viewer);await refresh(data.viewer);
       go('admin');notify('Condomínio ativo alterado para '+data.viewer.condominium_name+'.');
@@ -586,7 +611,7 @@ export default function Page(){
       });
       try{window.localStorage.removeItem('condovery_cart');}catch{}
       setCart([]);setViewer(null);setGoogleSignup(null);setHome(emptyHome);
-      setOrders([]);setSellerOrders([]);setMyShop(null);setMyProducts([]);
+      setOrders([]);setOrdersCursor(null);setSellerOrders([]);setSellerOrdersCursor(null);setMyShop(null);setMyProducts([]);
       setFavoriteIds([]);setFavoriteProducts([]);
       setShowDeleteAccount(false);setDeleteConfirmation('');setDeletePassword('');
       setAuthMode('login');go('home');notify(result.message);
@@ -594,7 +619,7 @@ export default function Page(){
   }
   async function logout(){
     try{await api('auth/logout',{method:'POST'});}catch{}
-    setViewer(null);setGoogleSignup(null);setHome(emptyHome);setFavoriteIds([]);setFavoriteProducts([]);setFavoriteShopIds([]);setFavoriteShops([]);setCart([]);setMyShop(null);setOrders([]);go('home');
+    setViewer(null);setGoogleSignup(null);setHome(emptyHome);setFavoriteIds([]);setFavoriteProducts([]);setFavoriteShopIds([]);setFavoriteShops([]);setCart([]);setMyShop(null);setOrders([]);setOrdersCursor(null);setSellerOrders([]);setSellerOrdersCursor(null);go('home');
   }
   async function openShop(id:string){
     setBusy(true);
@@ -803,7 +828,7 @@ export default function Page(){
         method:'DELETE',body:payload({confirmation:shopDeleteConfirmation})
       });
       setShowDeleteShop(false);setShopDeleteConfirmation('');
-      setMyShop(null);setMyProducts([]);setSellerOrders([]);setSellerReviews([]);
+      setMyShop(null);setMyProducts([]);setSellerOrders([]);setSellerOrdersCursor(null);setSellerReviews([]);
       setShopForm({name:'',description:'',whatsapp:'',is_open:true,delivery_enabled:true,delivery_fee_cents:0,pickup_enabled:true,lead_time:'',pickup_instructions:'',cover_image:'',logo_image:'',payment_methods:['pix','credit_card','debit_card','cash'] as PaymentMethod[]});
       setCart(items=>items.filter(item=>item.product.shop_id!==oldId));
       if(selectedShop?.shop.id===oldId)setSelectedShop(null);
@@ -1359,6 +1384,10 @@ export default function Page(){
           subtitle={orderFilter==='all'?'Encontre algo gostoso ou útil vendido pertinho de você.':'Experimente outra situação para consultar seus pedidos.'}
           action={orderFilter==='all'?'Começar a comprar':'Ver todos'}
           onAction={()=>{if(orderFilter!=='all')setOrderFilter('all');else go('home');}}/>}
+        {!!ordersCursor&&<div className="orders-pagination"><button type="button" className="outline-button" disabled={ordersLoadingMore||ordersLoading} onClick={async()=>{
+          setOrdersLoadingMore(true);
+          try{await loadOrders(orderFilter,ordersCursor);}catch(e){fail(e);}finally{setOrdersLoadingMore(false);}
+        }}>{ordersLoadingMore?'Carregando pedidos...':'Ver pedidos anteriores'}</button></div>}
       </>}
 
       {view==='account'&&<><div className="page-title"><h1>Meu perfil</h1><p>Seu endereço, seus pedidos e tudo sobre sua conta.</p></div>
@@ -1511,7 +1540,7 @@ export default function Page(){
                 onChange={e=>{const file=e.target.files?.[0];e.target.value='';choosePhoto(file,'logo');}}/>
             </label>
           </div>}
-          <div className="seller-metrics"><div><small>Pedidos aguardando</small><strong>{sellerOrders.filter(o=>o.status==='awaiting_confirmation').length}</strong></div><div><small>Vendas concluídas</small><strong>{money(sellerOrders.filter(o=>o.status==='completed').reduce((n,o)=>n+o.total_cents,0))}</strong></div></div>
+          <div className="seller-metrics"><div><small>Aguardando (carregados)</small><strong>{sellerOrders.filter(o=>o.status==='awaiting_confirmation').length}</strong></div><div><small>Vendas concluídas (carregadas)</small><strong>{money(sellerOrders.filter(o=>o.status==='completed').reduce((n,o)=>n+o.total_cents,0))}</strong></div></div>
           <div className="seller-tabs">
             <button className={sellerTab==='orders'?'active':''} onClick={()=>{setSellerTab('orders');loadSellerOrders().catch(fail);}}>Pedidos</button>
             <button className={sellerTab==='products'?'active':''} onClick={()=>setSellerTab('products')}>Produtos</button>
@@ -1540,7 +1569,12 @@ export default function Page(){
             {o.note&&<p>Observação: {o.note}</p>}{o.delivery_instructions?.length>0&&<p>Instruções: {o.delivery_instructions.join(', ')}</p>}
             <div className="order-bottom"><strong>Subtotal {money(o.subtotal_cents??o.total_cents)} · Total {money(o.total_cents)}</strong><div className="inline-actions">{o.status==='awaiting_confirmation'&&<><button disabled={busy} onClick={()=>updateStatus(o.id,'confirmed')}>Confirmar</button><button className="danger-text" disabled={busy} onClick={()=>updateStatus(o.id,'cancelled')}>Cancelar</button></>}
               {o.status==='confirmed'&&<><button disabled={busy} onClick={()=>updateStatus(o.id,'completed')}>Concluir</button><button className="danger-text" disabled={busy} onClick={()=>updateStatus(o.id,'cancelled')}>Cancelar</button></>}</div></div>
-          </article>)}</div>:<Empty title="Sem pedidos ainda" subtitle="Quando moradores comprarem na sua loja, os pedidos aparecerão aqui."/>}</>}
+          </article>)}</div>:<Empty title="Sem pedidos ainda" subtitle="Quando moradores comprarem na sua loja, os pedidos aparecerão aqui."/>}
+          {!!sellerOrdersCursor&&<div className="orders-pagination"><button className="outline-button" type="button" disabled={sellerOrdersLoadingMore||busy} onClick={async()=>{
+            setSellerOrdersLoadingMore(true);
+            try{await loadSellerOrders(sellerOrdersCursor);}catch(e){fail(e);}finally{setSellerOrdersLoadingMore(false);}
+          }}>{sellerOrdersLoadingMore?'Carregando pedidos...':'Ver pedidos anteriores'}</button></div>}
+          </>}
           {sellerTab==='reviews'&&<>
             <div className="section-heading"><h2>Moderar avaliações</h2></div>
             <p className="muted moderation-help">Somente avaliações de compras concluídas entram nesta lista. Apenas as aprovadas aparecem publicamente e contam para a média da loja.</p>
