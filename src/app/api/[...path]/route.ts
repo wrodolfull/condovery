@@ -1014,6 +1014,25 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
     });
     return out({product:r.rows[0]});
   }
+  // Deep links and old orders must resolve independently of list pagination.
+  // Exact buyer scoping prevents knowing whether another resident's ID exists.
+  if(parts.length===2&&parts[0]==='orders'&&method==='GET'){
+    if(!uuid(parts[1]))bad('Pedido inválido.');
+    const r=await query(
+      "SELECT o.*,(SELECT rv.status FROM shop_reviews rv WHERE rv.order_id=o.id AND rv.condominium_id=o.condominium_id) AS review_status,"+
+      " (s.owner_id=o.buyer_id) AS is_own_shop,"+
+      " (o.status='completed' AND o.buyer_id<>s.owner_id AND s.status='approved' AND NOT EXISTS (SELECT 1 FROM shop_reviews r WHERE r.order_id=o.id AND r.condominium_id=o.condominium_id)) AS can_review,"+
+      " s.name AS shop_name,bu.name AS buyer_name,bu.tower,bu.apartment,bu.phone AS buyer_phone,"+
+      " COALESCE(json_agg(json_build_object('name',i.name_snapshot,'quantity',i.quantity,'unit_price_cents',i.unit_price_cents,'note',i.note,'options',i.options)) FILTER (WHERE i.id IS NOT NULL),'[]'::json) AS items "+
+      "FROM orders o JOIN shops s ON s.id=o.shop_id JOIN users bu ON bu.id=o.buyer_id "+
+      "LEFT JOIN order_items i ON i.order_id=o.id "+
+      "WHERE o.id=$3 AND o.condominium_id=$1 AND o.buyer_id=$2 "+
+      "GROUP BY o.id,s.id,s.name,bu.id",
+      [u.condominium_id,u.id,parts[1]]
+    );
+    if(!r.rowCount)bad('Pedido não encontrado.',404);
+    return out({order:r.rows[0]});
+  }
   if(parts[0]==='orders'&&parts[1]&&parts[2]==='whatsapp'&&method==='GET'){
     if(!uuid(parts[1]))bad('Pedido inválido.');
     const found=await query(
