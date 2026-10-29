@@ -75,6 +75,8 @@ try {
   await client.query(mobilePush);
   const shopFavorites=await readFile(new URL('../db/039_shop_favorites.sql',import.meta.url),'utf8');
   await client.query(shopFavorites);
+  const pendingStockIndexes=await readFile(new URL('../db/040_pending_stock_indexes.sql',import.meta.url),'utf8');
+  await client.query(pendingStockIndexes);
   console.log('Condovery database schema applied successfully.');
 } finally {
   await client.end();
