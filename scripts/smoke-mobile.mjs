@@ -125,7 +125,8 @@ try {
     token: seller.token,
     method: "PATCH",
     body: { status: "confirmed" },
-    expected: 403,
+    // The mobile route is allowed; seller ownership is still enforced server-side.
+    expected: 404,
   });
   const asCookie = await request("me", {
     cookie: "condovery_session=" + buyer.token,
