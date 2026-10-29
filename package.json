@@ -13,7 +13,8 @@
     "db:cleanup-shops": "node --env-file=.env.local scripts/cleanup-deleted-shops.mjs",
     "cleanup:giveaways": "node --env-file=.env.local scripts/cleanup-donated-giveaways.mjs",
     "cleanup:ads": "node --env-file=.env.local scripts/cleanup-ad-metrics.mjs",
-    "cleanup:auth-security": "node --env-file=.env.local scripts/cleanup-auth-rate-events.mjs"
+    "cleanup:auth-security": "node --env-file=.env.local scripts/cleanup-auth-rate-events.mjs",
+    "push:dispatch": "node --env-file=.env.local --import tsx scripts/dispatch-push.ts"
   },
   "dependencies": {
     "next": "^15.5.0",
