@@ -36,7 +36,7 @@ export function mobileRouteAllowed(path: string, method: string): boolean {
   if (new RegExp("^products/" + id + "/visibility$").test(path))
     return method === "PATCH";
   if (new RegExp("^orders/" + id + "$").test(path))
-    return method === "PATCH";
+    return method === "PATCH" || method === "GET";
   if (path === "media") return method === "POST";
   if (path === "orders") return method === "POST" || method === "GET";
   if (path === "orders/quote" || path === "reports") return method === "POST";
