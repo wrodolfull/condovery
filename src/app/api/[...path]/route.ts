@@ -28,7 +28,7 @@ import {protectMutation} from '@/lib/request-protection';
 import {isValidPassword} from '@/lib/password-policy';
 import {mobileRouteAllowed} from '@/lib/mobile-policy';
 import {parseOrderPaging,orderPage} from '@/lib/order-pagination';
-import {parseShopPaging,shopPage} from '@/lib/shop-pagination';
+import {parseShopPaging,shopPage,type ShopPagingRow} from '@/lib/shop-pagination';
 import {availableForNewOrders,buyerAvailableStockSQL} from '@/lib/pending-stock';
 import {handleMobileAuth,passwordMember} from '@/server/mobile-auth';
 import {handlePushApi,enqueueNewOrder,enqueueOrderStatus} from '@/server/push';
@@ -648,7 +648,7 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
     if(!paging)bad('Paginação de lojas inválida.');
     const {limit,cursor}=paging!;
     const search=clean(req.nextUrl.searchParams.get('search'),100).replace(/[%_\\\\]/g,'');
-    const result=await query(
+    const result=await query<ShopPagingRow & Record<string,unknown>>(
       "SELECT id,name,slug,description,cover_image,logo_image,is_open,delivery_enabled,pickup_enabled,delivery_fee_cents,payment_methods,lead_time,created_at::text AS cursor_created_at FROM shops WHERE condominium_id=$1 AND status='approved' AND ($2::boolean IS NULL OR (is_open,created_at,id)<($2::boolean,$3::timestamptz,$4::uuid)) AND ($5::text='' OR name ILIKE $5) ORDER BY is_open DESC,created_at DESC,id DESC LIMIT $6",
       [u.condominium_id,cursor?.isOpen??null,cursor?.createdAt??null,cursor?.id??null,search?'%'+search+'%':'',limit+1]
     );
