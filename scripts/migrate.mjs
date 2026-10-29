@@ -77,6 +77,8 @@ try {
   await client.query(shopFavorites);
   const pendingStockIndexes=await readFile(new URL('../db/040_pending_stock_indexes.sql',import.meta.url),'utf8');
   await client.query(pendingStockIndexes);
+  const ordersPagination=await readFile(new URL('../db/041_orders_pagination.sql',import.meta.url),'utf8');
+  await client.query(ordersPagination);
   console.log('Condovery database schema applied successfully.');
 } finally {
   await client.end();

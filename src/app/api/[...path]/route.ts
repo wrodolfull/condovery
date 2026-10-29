@@ -27,6 +27,7 @@ import {limitAuthentication,clearAuthenticationFailures} from '@/lib/auth-rate-l
 import {protectMutation} from '@/lib/request-protection';
 import {isValidPassword} from '@/lib/password-policy';
 import {mobileRouteAllowed} from '@/lib/mobile-policy';
+import {parseOrderPaging,orderPage} from '@/lib/order-pagination';
 import {availableForNewOrders,buyerAvailableStockSQL} from '@/lib/pending-stock';
 import {handleMobileAuth,passwordMember} from '@/server/mobile-auth';
 import {handlePushApi,enqueueNewOrder,enqueueOrderStatus} from '@/server/push';
@@ -1013,6 +1014,25 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
     });
     return out({product:r.rows[0]});
   }
+  // Deep links and old orders must resolve independently of list pagination.
+  // Exact buyer scoping prevents knowing whether another resident's ID exists.
+  if(parts.length===2&&parts[0]==='orders'&&method==='GET'){
+    if(!uuid(parts[1]))bad('Pedido inválido.');
+    const r=await query(
+      "SELECT o.*,(SELECT rv.status FROM shop_reviews rv WHERE rv.order_id=o.id AND rv.condominium_id=o.condominium_id) AS review_status,"+
+      " (s.owner_id=o.buyer_id) AS is_own_shop,"+
+      " (o.status='completed' AND o.buyer_id<>s.owner_id AND s.status='approved' AND NOT EXISTS (SELECT 1 FROM shop_reviews r WHERE r.order_id=o.id AND r.condominium_id=o.condominium_id)) AS can_review,"+
+      " s.name AS shop_name,bu.name AS buyer_name,bu.tower,bu.apartment,bu.phone AS buyer_phone,"+
+      " COALESCE(json_agg(json_build_object('name',i.name_snapshot,'quantity',i.quantity,'unit_price_cents',i.unit_price_cents,'note',i.note,'options',i.options)) FILTER (WHERE i.id IS NOT NULL),'[]'::json) AS items "+
+      "FROM orders o JOIN shops s ON s.id=o.shop_id JOIN users bu ON bu.id=o.buyer_id "+
+      "LEFT JOIN order_items i ON i.order_id=o.id "+
+      "WHERE o.id=$3 AND o.condominium_id=$1 AND o.buyer_id=$2 "+
+      "GROUP BY o.id,s.id,s.name,bu.id",
+      [u.condominium_id,u.id,parts[1]]
+    );
+    if(!r.rowCount)bad('Pedido não encontrado.',404);
+    return out({order:r.rows[0]});
+  }
   if(parts[0]==='orders'&&parts[1]&&parts[2]==='whatsapp'&&method==='GET'){
     if(!uuid(parts[1]))bad('Pedido inválido.');
     const found=await query(
@@ -1133,17 +1153,33 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
     const status=req.nextUrl.searchParams.get('status');
     const statuses=['awaiting_confirmation','confirmed','completed','cancelled'];
     if(status!==null&&!statuses.includes(status))bad('Filtro de pedido inválido.');
+    const paging=parseOrderPaging(req.nextUrl.searchParams);
+    if(paging===null)throw new ApiError(400,'Paginação de pedidos inválida.');
     let shopId:string|undefined;
     if(seller){const sh=await shopOwned(u);shopId=sh.id;}
+    // Strict tenant and owner scoping is applied BEFORE seeking the cursor.
+    // The monotonically allocated code avoids duplicated/omitted historical
+    // orders when new orders arrive while the seller loads older pages.
+    const params:(string|number)[]=[u.condominium_id,seller?shopId!:u.id];
+    let filters='';
+    if(status){params.push(status);filters+=' AND o.status=$'+params.length;}
+    if(paging.cursor){params.push(paging.cursor);filters+=' AND o.code<$'+params.length+'::bigint';}
+    params.push(paging.limit+1);
     const r=await query(
       "SELECT o.*,(SELECT rv.status FROM shop_reviews rv WHERE rv.order_id=o.id AND rv.condominium_id=o.condominium_id) AS review_status,"+
       " (s.owner_id=o.buyer_id) AS is_own_shop,"+
       " (o.status='completed' AND o.buyer_id<>s.owner_id AND s.status='approved' AND NOT EXISTS (SELECT 1 FROM shop_reviews r WHERE r.order_id=o.id AND r.condominium_id=o.condominium_id)) AS can_review,"+
-      " s.name AS shop_name,bu.name AS buyer_name,bu.tower,bu.apartment,bu.phone AS buyer_phone,COALESCE(json_agg(json_build_object('name',i.name_snapshot,'quantity',i.quantity,'unit_price_cents',i.unit_price_cents,'note',i.note,'options',i.options)) FILTER (WHERE i.id IS NOT NULL),'[]'::json) AS items FROM orders o JOIN shops s ON s.id=o.shop_id JOIN users bu ON bu.id=o.buyer_id LEFT JOIN order_items i ON i.order_id=o.id WHERE o.condominium_id=$1 AND "+(seller?'o.shop_id=$2':'o.buyer_id=$2')+(status?' AND o.status=$3':'')+" GROUP BY o.id,s.id,s.name,bu.id ORDER BY o.created_at DESC LIMIT 100",
-      [...[u.condominium_id,seller?shopId:u.id],...(status?[status]:[])]
+      " s.name AS shop_name,bu.name AS buyer_name,bu.tower,bu.apartment,bu.phone AS buyer_phone,"+
+      " COALESCE(json_agg(json_build_object('name',i.name_snapshot,'quantity',i.quantity,'unit_price_cents',i.unit_price_cents,'note',i.note,'options',i.options)) FILTER (WHERE i.id IS NOT NULL),'[]'::json) AS items "+
+      "FROM orders o JOIN shops s ON s.id=o.shop_id JOIN users bu ON bu.id=o.buyer_id "+
+      "LEFT JOIN order_items i ON i.order_id=o.id WHERE o.condominium_id=$1 AND "+
+      (seller?'o.shop_id=$2':'o.buyer_id=$2')+filters+
+      " GROUP BY o.id,s.id,s.name,bu.id ORDER BY o.code DESC LIMIT $"+params.length,
+      params
     );
-    // Buyers do not need to see delivery address of someone else; shop owner sees only data for their own orders.
-    return out({orders:r.rows});
+    // Preserve all historical records and return an opaque cursor for the next page.
+    // Buyers receive only their own orders; sellers only their own shop's orders.
+    return out(orderPage(r.rows as Array<{code:string|number}>,paging.limit));
   }
   if(parts[0]==='orders'&&parts[1]&&method==='PATCH'){
     if(!uuid(parts[1]))bad('Pedido inválido.');
