@@ -74,9 +74,10 @@ const money=(n:number)=>new Intl.NumberFormat('pt-BR',{style:'currency',currency
 const price=(p:Product)=>p.promo_price_cents??p.price_cents;
 const statusLabel:Record<string,string>={awaiting_confirmation:'Aguardando confirmação',confirmed:'Confirmado',completed:'Concluído',cancelled:'Cancelado',pending:'Em análise',approved:'Ativo',suspended:'Suspenso',deleted:'Excluído'};
 const emptyHome:HomeData={categories:[],shops:[],products:[]};
-const cartShopSafe=(cart:CartItem[],shops:Shop[],selected:{shop:Shop}|null)=>{
+const cartShopSafe=(cart:CartItem[],shops:Shop[],selected:{shop:Shop}|null,loaded:Shop|null)=>{
   return shops.find(s=>s.id===cart[0]?.product.shop_id)||
-    (selected&&cart.length>0&&selected.shop.id===cart[0].product.shop_id?selected.shop:undefined);
+    (selected&&cart.length>0&&selected.shop.id===cart[0].product.shop_id?selected.shop:undefined)||
+    (loaded&&cart.length>0&&loaded.id===cart[0].product.shop_id?loaded:undefined);
 };
 type OrderFilter='all'|'awaiting_confirmation'|'confirmed'|'completed'|'cancelled';
 const orderFilters:{key:OrderFilter;label:string}[]=[
@@ -217,6 +218,12 @@ export default function Page(){
   const [catalogPage,setCatalogPage]=useState(0);
   const [catalogHasMore,setCatalogHasMore]=useState(false);
   const [catalogLoading,setCatalogLoading]=useState(false);
+  const [shopDirectory,setShopDirectory]=useState<{key:string;shops:Shop[];nextCursor:string|null;hasMore:boolean}>({key:'',shops:[],nextCursor:null,hasMore:false});
+  const [shopDirectoryRequest,setShopDirectoryRequest]=useState<{key:string;cursor:string|null}>({key:'',cursor:null});
+  const [shopDirectoryLoading,setShopDirectoryLoading]=useState(false);
+  const [shopDirectoryError,setShopDirectoryError]=useState('');
+  const [cartShopLookup,setCartShopLookup]=useState<{id:string;shop:Shop|null;error:string}|null>(null);
+  const [cartShopRetry,setCartShopRetry]=useState(0);
   const [selectedShop,setSelectedShop]=useState<{shop:Shop;products:Product[]}|null>(null);
   const [shopReviews,setShopReviews]=useState<PublicReviews|null>(null);
   const [sellerReviews,setSellerReviews]=useState<SellerReview[]>([]);
@@ -489,6 +496,21 @@ export default function Page(){
     try{const raw=window.localStorage.getItem('condovery_cart');if(raw){const parsed=JSON.parse(raw);if(Array.isArray(parsed))setCart(parsed);}}catch{}
   },[]);
   useEffect(()=>{try{window.localStorage.setItem('condovery_cart',JSON.stringify(cart));}catch{}},[cart]);
+  const cartShopId=cart[0]?.product.shop_id;
+  const requiresCartShopLookup=!!cartShopId&&!home.shops.some(shop=>shop.id===cartShopId)&&selectedShop?.shop.id!==cartShopId;
+  useEffect(()=>{
+    if(!viewer||!requiresCartShopLookup||!cartShopId)return;
+    let active=true;
+    setCartShopLookup(null);
+    api<{shop:Shop;products:Product[]}>('shops/'+cartShopId).then(result=>{
+      if(active)setCartShopLookup({id:cartShopId,shop:result.shop,error:''});
+    }).catch(e=>{
+      if(active)setCartShopLookup({id:cartShopId,shop:null,error:e instanceof Error?e.message:'Loja indisponível.'});
+    });
+    return()=>{active=false;};
+  },[viewer?.id,viewer?.condominium_id,cartShopId,requiresCartShopLookup,cartShopRetry]);
+  const loadedCartShop=requiresCartShopLookup&&cartShopLookup?.id===cartShopId?cartShopLookup.shop:null;
+
   useEffect(()=>{
     setCheckoutKey(null);setRevisedQuote(null);
   },[cart,fulfillment,deliveryDay,deliveryWindow,instructions,checkoutNote,paymentMethod]);
@@ -565,14 +587,43 @@ export default function Page(){
     },query.trim()?300:100);
     return()=>{active=false;window.clearTimeout(timer);};
   },[viewer?.id,viewer?.status,view,category,query,catalogPage]);
+  const shopDirectoryKey=(viewer?.condominium_id??'')+'|'+query.trim();
+  useEffect(()=>{
+    if(view==='categories'&&viewer?.status==='approved'){
+      setShopDirectoryRequest({key:shopDirectoryKey,cursor:null});
+      setShopDirectoryError('');
+      setShopDirectoryLoading(true);
+    }
+  },[view,viewer?.status,shopDirectoryKey]);
+  useEffect(()=>{
+    if(view!=='categories'||viewer?.status!=='approved'||shopDirectoryRequest.key!==shopDirectoryKey)return;
+    let active=true;
+    const params=new URLSearchParams({limit:'24'});
+    if(query.trim())params.set('search',query.trim());
+    if(shopDirectoryRequest.cursor)params.set('cursor',shopDirectoryRequest.cursor);
+    setShopDirectoryLoading(true);setShopDirectoryError('');
+    api<{shops:Shop[];nextCursor:string|null;hasMore:boolean}>('shops?'+params.toString()).then(result=>{
+      if(!active)return;
+      setShopDirectory(previous=>{
+        const shops=shopDirectoryRequest.cursor&&previous.key===shopDirectoryKey
+          ?Array.from(new Map([...previous.shops,...result.shops].map(shop=>[shop.id,shop])).values())
+          :result.shops;
+        return {key:shopDirectoryKey,shops,nextCursor:result.nextCursor,hasMore:result.hasMore};
+      });
+    }).catch(e=>{
+      if(active)setShopDirectoryError(e instanceof Error?e.message:'Não foi possível carregar as lojas.');
+    }).finally(()=>{if(active)setShopDirectoryLoading(false);});
+    return()=>{active=false;};
+  },[view,viewer?.status,shopDirectoryKey,shopDirectoryRequest,query]);
+  const visibleDirectoryShops=shopDirectory.key===shopDirectoryKey?shopDirectory.shops:[];
   useEffect(()=>{if(viewer?.status==='approved'&&new URLSearchParams(window.location.search).get('painel')==='vendedor'){setView('seller');window.history.replaceState({},'','/');}},[viewer?.id]);
   const categoryName=home.categories.find(c=>c.id===category)?.name;
   const filtered=useMemo(()=>view==='categories'||query.trim()?catalogProducts:home.products,
     [view,query,catalogProducts,home.products]);
   const cartSubtotal=cart.reduce((n,i)=>n+cartUnitPrice(i)*i.quantity,0);
-  const actualFulfillment: 'delivery'|'pickup'=cartShopSafe(cart,home.shops,selectedShop)?.delivery_enabled===false?'pickup':
-    (cartShopSafe(cart,home.shops,selectedShop)?.pickup_enabled===false?'delivery':fulfillment);
-  const fee=actualFulfillment==='delivery'?Number(cartShopSafe(cart,home.shops,selectedShop)?.delivery_fee_cents??0):0;
+  const actualFulfillment: 'delivery'|'pickup'=cartShopSafe(cart,home.shops,selectedShop,loadedCartShop)?.delivery_enabled===false?'pickup':
+    (cartShopSafe(cart,home.shops,selectedShop,loadedCartShop)?.pickup_enabled===false?'delivery':fulfillment);
+  const fee=actualFulfillment==='delivery'?Number(cartShopSafe(cart,home.shops,selectedShop,loadedCartShop)?.delivery_fee_cents??0):0;
   const cartTotal=cartSubtotal+fee;
   const cartCount=cart.reduce((n,i)=>n+i.quantity,0);
   const cartShop=home.shops.find(s=>s.id===cart[0]?.product.shop_id)||selectedShop?.shop;
@@ -794,6 +845,7 @@ export default function Page(){
     };
   }
   async function checkout(confirmed=false){
+    if(!cartShop){setError("Não foi possível carregar a loja deste carrinho. Tente novamente.");return;}
     if(!cart.length||busy)return;
     if(cartShop?.is_open===false){setError('Loja fechada. Não é possível fazer pedidos agora.');return;}
     if(!paymentMethod||!acceptedPaymentMethods.includes(paymentMethod)){setError('Selecione um meio de pagamento aceito pela loja.');return;}
@@ -1217,7 +1269,11 @@ export default function Page(){
           {catalogLoading?'Carregando...':'Mostrar mais produtos'} <ArrowRight size={17}/>
         </button>}
         <SectionHeader title="Todas as lojas"/>
-        <div className="shops-list">{home.shops.map(s=><button key={s.id} className={'shop-row'+(!s.is_open?' is-shop-closed':'')} onClick={()=>openShop(s.id)}><ShopLogo src={s.logo_image??s.cover_image} name={s.name}/><div><strong>{s.name}</strong><p>{s.description}</p></div><ChevronRight size={18}/></button>)}</div>
+        <div className="shops-list">{visibleDirectoryShops.map(s=><button key={s.id} className={'shop-row'+(!s.is_open?' is-shop-closed':'')} onClick={()=>openShop(s.id)}><ShopLogo src={s.logo_image??s.cover_image} name={s.name}/><div><strong>{s.name}</strong><p>{s.description}</p></div><ChevronRight size={18}/></button>)}</div>
+        {shopDirectoryLoading&&<div className="loading-inline"><div className="spinner"/> Carregando lojas...</div>}
+        {shopDirectoryError&&<div role="alert" className="loading-inline">{shopDirectoryError} <button className="outline-button" onClick={()=>setShopDirectoryRequest(current=>({...current}))}>Tentar novamente</button></div>}
+        {!shopDirectoryLoading&&!shopDirectoryError&&shopDirectory.key===shopDirectoryKey&&!visibleDirectoryShops.length&&<Empty art="emptyShops" title="Nenhuma loja encontrada" subtitle={query?'Tente buscar por outro nome.':'As lojas aprovadas aparecerão aqui.'}/>}
+        {!shopDirectoryLoading&&!shopDirectoryError&&shopDirectory.key===shopDirectoryKey&&shopDirectory.hasMore&&shopDirectory.nextCursor&&<button className="outline-button load-more" onClick={()=>setShopDirectoryRequest({key:shopDirectoryKey,cursor:shopDirectory.nextCursor})}>Mostrar mais lojas <ArrowRight size={17}/></button>}
       </>}
 
       {view==='shop'&&selectedShop&&<>
@@ -1310,6 +1366,7 @@ export default function Page(){
         <div className="page-title"><h1>Meu carrinho</h1><p>Escolha a entrega e finalize diretamente com o vendedor pelo WhatsApp.</p></div>
         {!cart.length?<Empty title="Seu carrinho está vazio" subtitle="Adicione produtos de uma loja para começar." action="Explorar produtos" onAction={()=>go('categories')}/>:
         <div className={"checkout-layout"+(cartShop?.is_open===false?" is-shop-closed":"")}><section className="checkout-main">{cartShop?.is_open===false&&<div className="shop-closed-notice" role="status">Loja fechada. Não é possível concluir este pedido agora. Você pode remover os itens do carrinho.</div>}
+          {!cartShop&&<div className="shop-closed-notice" role="status">{cartShopLookup?.error||'Carregando informações da loja...'} {cartShopLookup?.error&&<button className="outline-button" onClick={()=>setCartShopRetry(n=>n+1)}>Tentar novamente</button>}</div>}
           <div className="white-panel"><h2><Store size={19}/> {cartShop?.name??'Sua loja'}</h2>{cart.map((item,index)=><div className="cart-item" key={item.product.id+'-'+index}>
             <ProductPicture src={item.product.image_url} name={item.product.name}/><div className="cart-item-details"><strong>{item.product.name}</strong>
               {(item.product.option_groups??[]).flatMap(g=>(item.selections?.[g.id]??[]).map(id=>{
@@ -1347,12 +1404,12 @@ export default function Page(){
             <p>Anterior: {money(cartTotal)} → <strong>Atual: {money(revisedQuote.total_cents)}</strong></p>
             {revisedQuote.lines.map((line,n)=><small key={n}>{line.quantity}× {line.name} — {money(line.total_cents)}</small>)}
             <small>Taxa de entrega: {money(revisedQuote.delivery_fee_cents)}</small>
-            <button type="button" className="primary-button" disabled={busy||cartShop?.is_open===false} onClick={()=>checkout(true)}>
+            <button type="button" className="primary-button" disabled={busy||!cartShop||cartShop.is_open===false} onClick={()=>checkout(true)}>
               Confirmar novo valor e continuar
             </button>
             <button type="button" className="outline-button" onClick={()=>setRevisedQuote(null)}>Revisar carrinho</button>
           </div>}
-          {!revisedQuote&&<button className="primary-button" disabled={busy||cartShop?.is_open===false} onClick={()=>checkout()}>
+          {!revisedQuote&&<button className="primary-button" disabled={busy||!cartShop||cartShop.is_open===false} onClick={()=>checkout()}>
             {busy?'Conferindo valores...':preferWhatsAppMessenger()?'Registrar pedido':'Continuar no WhatsApp'}<ArrowRight size={18}/>
           </button>}
           <small>O pedido fica registrado mesmo se você fechar o WhatsApp. Apenas a loja poderá confirmá-lo.</small>

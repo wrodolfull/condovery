@@ -952,3 +952,64 @@ try{
   await pagingDB.end();
 }
 
+
+
+// Store discovery must expose every approved shop, not only the 100 entries in /home.
+// Use 113 real shops and owners in the isolated integration DB.
+const directoryDB=new pg.Client({connectionString:process.env.DATABASE_URL});
+await directoryDB.connect();
+let directoryOwnerIds=[],directoryShopIds=[];
+try{
+  const owners=await directoryDB.query(
+    "INSERT INTO users(condominium_id,name,email,phone,password_hash,status,tower,apartment) "+
+    "SELECT $1,'Directory QA Owner '||n,'directory-qa-'||n||'-'||$2||'@example.invalid','11999991234',NULL,'approved',$3,'QA'||n "+
+    "FROM generate_series(1,113) AS n RETURNING id",
+    [originalTenant,Date.now(),firstTower]
+  );
+  directoryOwnerIds=owners.rows.map(row=>row.id);
+  const shops=await directoryDB.query(
+    "INSERT INTO shops(condominium_id,owner_id,name,whatsapp,status,is_open,created_at) "+
+    "SELECT $1,u.owner_id,'QA Store Paging '||u.n,'11999991234','approved',u.n%2=0,now()-interval '2 days'+u.n*interval '1 second' "+
+    "FROM unnest($2::uuid[]) WITH ORDINALITY AS u(owner_id,n) RETURNING id",
+    [originalTenant,directoryOwnerIds]
+  );
+  directoryShopIds=shops.rows.map(row=>row.id);
+  assert.equal(directoryShopIds.length,113);
+  const homePage=(await request('home',{cookie:newLogin.cookie})).data;
+  assert.equal(homePage.shops.length,100,'home preview intentionally remains limited to 100');
+  const seen=new Set();
+  let cursor=null,previousOpen=true,pages=0;
+  do{
+    const path='shops?limit=24&search='+encodeURIComponent('QA Store Paging')+
+      (cursor?'&cursor='+encodeURIComponent(cursor):'');
+    const data=(await request(path,{cookie:newLogin.cookie})).data;
+    assert.ok(data.shops.length<=24);
+    for(const shop of data.shops){
+      assert.equal(shop.name.startsWith('QA Store Paging '),true);
+      assert.ok(directoryShopIds.includes(shop.id),'only seeded approved tenant shops');
+      assert.equal(seen.has(shop.id),false,'no duplicate shops across pages');
+      assert.ok(previousOpen||!shop.is_open,'open shops must precede closed ones');
+      if(!shop.is_open)previousOpen=false;
+      seen.add(shop.id);
+    }
+    assert.equal(data.hasMore,!!data.nextCursor);
+    cursor=data.nextCursor;
+    pages++;
+    assert.ok(pages<25,'shop cursor must advance');
+  }while(cursor);
+  assert.equal(seen.size,113,'all 113 shops are reachable');
+  assert.equal(pages,5,'24 shops per page and a fifth page');
+  for(const params of ['limit=0','limit=49','cursor=invalid','limit=-1'])
+    await request('shops?'+params,{cookie:newLogin.cookie,expected:400});
+  const match=(await request('shops?search='+encodeURIComponent('QA Store Paging 113'),{cookie:newLogin.cookie})).data;
+  assert.equal(match.shops.length,1);
+  await request('platform/condominiums/switch',{method:'POST',cookie:adminCookie,body:{condominium_id:newTenant.id}});
+  const foreign=(await request('shops?search='+encodeURIComponent('QA Store Paging'),{cookie:adminCookie})).data;
+  assert.equal(foreign.shops.length,0,'other tenant cannot browse these shops');
+  await request('platform/condominiums/switch',{method:'POST',cookie:adminCookie,body:{condominium_id:originalTenant}});
+  console.log('Shop cursor discovery PASS: 113 shops, 5 pages, search, tenant isolation, invalid cursors.');
+}finally{
+  if(directoryShopIds.length)await directoryDB.query('DELETE FROM shops WHERE id=ANY($1::uuid[])',[directoryShopIds]);
+  if(directoryOwnerIds.length)await directoryDB.query('DELETE FROM users WHERE id=ANY($1::uuid[])',[directoryOwnerIds]);
+  await directoryDB.end();
+}
