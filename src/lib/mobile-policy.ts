@@ -16,6 +16,21 @@ export function mobileRouteAllowed(path: string, method: string): boolean {
   if (/^shops\/(?!mine(?:\/|$))[a-z0-9-]+$/.test(path)) return method === "GET";
   if (new RegExp("^shops/" + id + "/reviews$").test(path))
     return method === "GET";
+  // Seller endpoints retain all server-side owner, tenant and status checks.
+  if (path === "shops/mine")
+    return ["GET", "POST", "PATCH", "DELETE"].includes(method);
+  if (path === "shops/mine/status") return method === "PATCH";
+  if (path === "shops/mine/reviews") return method === "GET";
+  if (new RegExp("^shops/mine/reviews/" + id + "$").test(path))
+    return method === "PATCH";
+  if (path === "products") return method === "POST";
+  if (new RegExp("^products/" + id + "$").test(path))
+    return ["PATCH", "DELETE"].includes(method);
+  if (new RegExp("^products/" + id + "/visibility$").test(path))
+    return method === "PATCH";
+  if (new RegExp("^orders/" + id + "$").test(path))
+    return method === "PATCH";
+  if (path === "media") return method === "POST";
   if (path === "orders") return method === "POST" || method === "GET";
   if (path === "orders/quote" || path === "reports") return method === "POST";
   if (new RegExp("^orders/" + id + "/whatsapp$").test(path))
