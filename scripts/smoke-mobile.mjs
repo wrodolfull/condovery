@@ -110,10 +110,12 @@ try {
   }
   const [buyer, seller] = users;
   await request("home", { token: buyer.token });
+  const emptyShop = await request("shops/mine", { token: buyer.token });
+  assert.equal(emptyShop.data.shop, null);
+  assert.deepEqual(emptyShop.data.products, []);
   for (const path of [
     "admin/summary",
     "platform/condominiums",
-    "shops/mine",
     "fairs/manage",
     "fairs/seller",
     "orders?scope=seller",
