@@ -24,6 +24,7 @@ export function mobileRouteAllowed(path: string, method: string): boolean {
   if (path === "shops/mine")
     return ["GET", "POST", "PATCH", "DELETE"].includes(method);
   if (path === "shops/mine/status") return method === "PATCH";
+  if (path === "shops/mine/push") return method === "POST";
   if (path === "shops/mine/reviews") return method === "GET";
   if (new RegExp("^shops/mine/reviews/" + id + "$").test(path))
     return method === "PATCH";
