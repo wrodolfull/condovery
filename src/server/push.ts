@@ -127,7 +127,7 @@ async function broadcast(
       id = r.rows[0].id;
       await tx.query(
         "INSERT INTO push_notifications(user_id,condominium_id,kind,title,body,target_id,event_key) " +
-          "SELECT u.id,u.condominium_id,$3,$4,$5,$2,$6 FROM users u WHERE u.condominium_id=$1 AND u.status='approved' " +
+          "SELECT u.id,u.condominium_id,$2,$3,$4,NULL,$5 FROM users u WHERE u.condominium_id=$1 AND u.status='approved' " +
           "ON CONFLICT(user_id,event_key) DO NOTHING",
         [u.condominium_id, "condominium", b.title, b.body, "broadcast:" + id],
       );
