@@ -5,7 +5,7 @@ export function mobileRouteAllowed(path: string, method: string): boolean {
   if (path === "me") return ["GET", "PATCH", "DELETE"].includes(method);
   if (path === "auth/logout") return method === "POST";
   if (
-    ["home", "catalog", "favorites", "ads", "fairs"].includes(path) &&
+    ["home", "catalog", "shops", "favorites", "ads", "fairs"].includes(path) &&
     method === "GET"
   )
     return true;
