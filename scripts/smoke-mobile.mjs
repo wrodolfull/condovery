@@ -202,12 +202,12 @@ try {
     body: "Aviso de teste isolado.",
     client_key: crypto.randomUUID(),
   };
-  await request("shops/mine/push", {
+  const mobileNotice = (await request("shops/mine/push", {
     method: "POST",
     token: seller.token,
     body: notice,
-    expected: 403,
-  });
+    expected: 201,
+  })).data;
   const one = (
     await request("shops/mine/push", {
       method: "POST",
@@ -224,6 +224,7 @@ try {
       expected: 201,
     })
   ).data;
+  assert.equal(mobileNotice.id, one.id);
   assert.equal(one.id, two.id);
   assert.equal(one.recipients, 1);
   const inbox = (await request("push/inbox", { token: buyer.token })).data
