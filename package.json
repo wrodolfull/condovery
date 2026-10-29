@@ -12,6 +12,7 @@
     "db:migrate": "node --env-file=.env.local scripts/migrate.mjs",
     "db:cleanup-shops": "node --env-file=.env.local scripts/cleanup-deleted-shops.mjs",
     "cleanup:giveaways": "node --env-file=.env.local scripts/cleanup-donated-giveaways.mjs",
+    "cleanup:orphan-media": "node --env-file=.env.local --import tsx scripts/cleanup-orphan-media.ts",
     "cleanup:ads": "node --env-file=.env.local scripts/cleanup-ad-metrics.mjs",
     "cleanup:auth-security": "node --env-file=.env.local scripts/cleanup-auth-rate-events.mjs",
     "push:dispatch": "node --env-file=.env.local --import tsx scripts/dispatch-push.ts"
