@@ -44,9 +44,8 @@ async function recordMetric(req:NextRequest,u:Viewer,id:string,kind:'impression'
   if(u.status!=='approved')bad('Conta indisponível.',403);
   // Web uses an HttpOnly cookie; the native app uses a scoped bearer session.
   // Both credentials are authenticated by viewer(req) before reaching this handler.
-  const credential=sessionCredential(req);
-  if(!credential)bad('Sessão inválida.',401);
-  const token=credential.token;
+  const token=sessionCredential(req)?.token ?? '';
+  if(!token)bad('Sessão inválida.',401);
   const day=new Date().toISOString().slice(0,10);
   // Hash a high-entropy cookie with day; no raw cookie or user identifier is stored.
   const viewerHash=createHash('sha256').update(day+':'+token).digest('hex');
