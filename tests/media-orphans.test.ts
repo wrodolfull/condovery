@@ -33,7 +33,7 @@ test('protect every persisted use of media, including unpublished records',()=>{
     assert.match(mediaReferencedSQL,new RegExp('FROM public\\.'+table+'\\s'));
     assert.match(mediaReferencedSQL,new RegExp('\\.'+column+'\\)'));
   }
-  assert.equal((mediaReferencedSQL.match(/EXISTS \\(SELECT/g)??[]).length,6);
+  assert.equal((mediaReferencedSQL.match(/EXISTS \(SELECT/g)??[]).length,6);
   assert.doesNotMatch(mediaReferencedSQL,/(status='approved'|published=true|condominium_id=)/);
   assert.match(mediaReferencedSQL,/LOWER/);
 });
