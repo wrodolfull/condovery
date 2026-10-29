@@ -985,12 +985,32 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
     if(b.promo_price_cents!=null&&b.promo_price_cents>=b.price_cents)bad('Preço promocional inválido.');
     const cat=await query('SELECT id FROM categories WHERE id=$1 AND condominium_id=$2 AND is_active=true',[b.category_id,u.condominium_id]);
     if(!cat.rowCount)bad('Categoria inválida.');
-    const r=await query(
-      'UPDATE products SET name=$1,description=$2,category_id=$3,price_cents=$4,promo_price_cents=$5,stock=$6,image_url=$7,is_available=$8,lead_time=$9,visibility=$13,option_groups=$14::jsonb WHERE id=$10 AND shop_id=$11 AND condominium_id=$12 AND deleted_at IS NULL RETURNING *',
-      [b.name,b.description,b.category_id,b.price_cents,b.promo_price_cents,b.stock,imagePath(b.image_url),
-        (b.visibility??(b.is_available===false?'hidden':'available'))==='available',b.lead_time,parts[1],shop.id,u.condominium_id,
-        b.visibility??(b.is_available===false?'hidden':'available'),JSON.stringify(b.option_groups)]
-    );
+    const r=await transaction(async tx=>{
+      // Use the same lock order as checkout (shop, then product). A seller
+      // cannot reduce finite stock below quantities already promised to buyers.
+      await tx.query('SELECT id FROM shops WHERE id=$1 AND condominium_id=$2 FOR UPDATE',[shop.id,u.condominium_id]);
+      const locked=await tx.query(
+        'SELECT id FROM products WHERE id=$1 AND shop_id=$2 AND condominium_id=$3 AND deleted_at IS NULL FOR UPDATE',
+        [parts[1],shop.id,u.condominium_id]
+      );
+      if(!locked.rowCount)bad('Produto não encontrado.',404);
+      if(b.stock!==null){
+        const pending=await tx.query(
+          "SELECT COALESCE(SUM(oi.quantity),0)::int AS quantity FROM order_items oi "+
+          "JOIN orders o ON o.id=oi.order_id WHERE oi.product_id=$1 AND "+
+          "o.condominium_id=$2 AND o.shop_id=$3 AND o.status='awaiting_confirmation'",
+          [parts[1],u.condominium_id,shop.id]
+        );
+        if(Number(pending.rows[0].quantity)>b.stock)
+          bad('Existem pedidos aguardando confirmação para este produto. Cancele ou confirme os pedidos antes de reduzir o estoque.',409);
+      }
+      return tx.query(
+        'UPDATE products SET name=$1,description=$2,category_id=$3,price_cents=$4,promo_price_cents=$5,stock=$6,image_url=$7,is_available=$8,lead_time=$9,visibility=$13,option_groups=$14::jsonb WHERE id=$10 AND shop_id=$11 AND condominium_id=$12 AND deleted_at IS NULL RETURNING *',
+        [b.name,b.description,b.category_id,b.price_cents,b.promo_price_cents,b.stock,imagePath(b.image_url),
+          (b.visibility??(b.is_available===false?'hidden':'available'))==='available',b.lead_time,parts[1],shop.id,u.condominium_id,
+          b.visibility??(b.is_available===false?'hidden':'available'),JSON.stringify(b.option_groups)]
+      );
+    });
     return out({product:r.rows[0]});
   }
   if(parts[0]==='orders'&&parts[1]&&parts[2]==='whatsapp'&&method==='GET'){
