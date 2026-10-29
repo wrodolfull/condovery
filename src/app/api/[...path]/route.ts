@@ -30,6 +30,7 @@ import {mobileRouteAllowed} from '@/lib/mobile-policy';
 import {parseOrderPaging,orderPage} from '@/lib/order-pagination';
 import {parseShopPaging,shopPage,type ShopPagingRow} from '@/lib/shop-pagination';
 import {availableForNewOrders,buyerAvailableStockSQL} from '@/lib/pending-stock';
+import {isCommercialProductCategory,EXCLUSIVE_DESAPEGO_MESSAGE} from '@/lib/category-purpose';
 import {handleMobileAuth,passwordMember} from '@/server/mobile-auth';
 import {handlePushApi,enqueueNewOrder,enqueueOrderStatus} from '@/server/push';
 
@@ -943,8 +944,9 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
     if(violatesCommunityLanguage(...b.option_groups.flatMap(g=>[g.name,...g.options.map(o=>o.name)])))
       bad('Revise as opções de personalização: linguagem imprópria não é permitida.');
     if(b.promo_price_cents!=null&&b.promo_price_cents>=b.price_cents)bad('O preço promocional deve ser menor que o original.');
-    const category=await query('SELECT id FROM categories WHERE id=$1 AND condominium_id=$2 AND is_active=true',[b.category_id,u.condominium_id]);
+    const category=await query('SELECT id,name FROM categories WHERE id=$1 AND condominium_id=$2 AND is_active=true',[b.category_id,u.condominium_id]);
     if(!category.rowCount)bad('Categoria inválida.');
+    if(!isCommercialProductCategory(category.rows[0].name))bad(EXCLUSIVE_DESAPEGO_MESSAGE);
     const r=await query(
       'INSERT INTO products(condominium_id,shop_id,category_id,name,description,price_cents,promo_price_cents,stock,image_url,is_available,visibility,lead_time,option_groups) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13::jsonb) RETURNING *',
       [u.condominium_id,shop.id,b.category_id,b.name,b.description??'',b.price_cents,b.promo_price_cents??null,b.stock??null,imagePath(b.image_url),
@@ -997,8 +999,9 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
     if(violatesCommunityLanguage(...b.option_groups.flatMap(g=>[g.name,...g.options.map(o=>o.name)])))
       bad('Revise as opções de personalização: linguagem imprópria não é permitida.');
     if(b.promo_price_cents!=null&&b.promo_price_cents>=b.price_cents)bad('Preço promocional inválido.');
-    const cat=await query('SELECT id FROM categories WHERE id=$1 AND condominium_id=$2 AND is_active=true',[b.category_id,u.condominium_id]);
+    const cat=await query('SELECT id,name FROM categories WHERE id=$1 AND condominium_id=$2 AND is_active=true',[b.category_id,u.condominium_id]);
     if(!cat.rowCount)bad('Categoria inválida.');
+    if(!isCommercialProductCategory(cat.rows[0].name))bad(EXCLUSIVE_DESAPEGO_MESSAGE);
     const r=await transaction(async tx=>{
       // Use the same lock order as checkout (shop, then product). A seller
       // cannot reduce finite stock below quantities already promised to buyers.
