@@ -217,6 +217,10 @@ export default function Page(){
   const [catalogPage,setCatalogPage]=useState(0);
   const [catalogHasMore,setCatalogHasMore]=useState(false);
   const [catalogLoading,setCatalogLoading]=useState(false);
+  const [shopDirectory,setShopDirectory]=useState<{key:string;shops:Shop[];nextCursor:string|null;hasMore:boolean}>({key:'',shops:[],nextCursor:null,hasMore:false});
+  const [shopDirectoryRequest,setShopDirectoryRequest]=useState<{key:string;cursor:string|null}>({key:'',cursor:null});
+  const [shopDirectoryLoading,setShopDirectoryLoading]=useState(false);
+  const [shopDirectoryError,setShopDirectoryError]=useState('');
   const [selectedShop,setSelectedShop]=useState<{shop:Shop;products:Product[]}|null>(null);
   const [shopReviews,setShopReviews]=useState<PublicReviews|null>(null);
   const [sellerReviews,setSellerReviews]=useState<SellerReview[]>([]);
@@ -565,6 +569,35 @@ export default function Page(){
     },query.trim()?300:100);
     return()=>{active=false;window.clearTimeout(timer);};
   },[viewer?.id,viewer?.status,view,category,query,catalogPage]);
+  const shopDirectoryKey=(viewer?.condominium_id??'')+'|'+query.trim();
+  useEffect(()=>{
+    if(view==='categories'&&viewer?.status==='approved'){
+      setShopDirectoryRequest({key:shopDirectoryKey,cursor:null});
+      setShopDirectoryError('');
+      setShopDirectoryLoading(true);
+    }
+  },[view,viewer?.status,shopDirectoryKey]);
+  useEffect(()=>{
+    if(view!=='categories'||viewer?.status!=='approved'||shopDirectoryRequest.key!==shopDirectoryKey)return;
+    let active=true;
+    const params=new URLSearchParams({limit:'24'});
+    if(query.trim())params.set('search',query.trim());
+    if(shopDirectoryRequest.cursor)params.set('cursor',shopDirectoryRequest.cursor);
+    setShopDirectoryLoading(true);setShopDirectoryError('');
+    api<{shops:Shop[];nextCursor:string|null;hasMore:boolean}>('shops?'+params.toString()).then(result=>{
+      if(!active)return;
+      setShopDirectory(previous=>{
+        const shops=shopDirectoryRequest.cursor&&previous.key===shopDirectoryKey
+          ?Array.from(new Map([...previous.shops,...result.shops].map(shop=>[shop.id,shop])).values())
+          :result.shops;
+        return {key:shopDirectoryKey,shops,nextCursor:result.nextCursor,hasMore:result.hasMore};
+      });
+    }).catch(e=>{
+      if(active)setShopDirectoryError(e instanceof Error?e.message:'Não foi possível carregar as lojas.');
+    }).finally(()=>{if(active)setShopDirectoryLoading(false);});
+    return()=>{active=false;};
+  },[view,viewer?.status,shopDirectoryKey,shopDirectoryRequest,query]);
+  const visibleDirectoryShops=shopDirectory.key===shopDirectoryKey?shopDirectory.shops:[];
   useEffect(()=>{if(viewer?.status==='approved'&&new URLSearchParams(window.location.search).get('painel')==='vendedor'){setView('seller');window.history.replaceState({},'','/');}},[viewer?.id]);
   const categoryName=home.categories.find(c=>c.id===category)?.name;
   const filtered=useMemo(()=>view==='categories'||query.trim()?catalogProducts:home.products,
@@ -1217,7 +1250,11 @@ export default function Page(){
           {catalogLoading?'Carregando...':'Mostrar mais produtos'} <ArrowRight size={17}/>
         </button>}
         <SectionHeader title="Todas as lojas"/>
-        <div className="shops-list">{home.shops.map(s=><button key={s.id} className={'shop-row'+(!s.is_open?' is-shop-closed':'')} onClick={()=>openShop(s.id)}><ShopLogo src={s.logo_image??s.cover_image} name={s.name}/><div><strong>{s.name}</strong><p>{s.description}</p></div><ChevronRight size={18}/></button>)}</div>
+        <div className="shops-list">{visibleDirectoryShops.map(s=><button key={s.id} className={'shop-row'+(!s.is_open?' is-shop-closed':'')} onClick={()=>openShop(s.id)}><ShopLogo src={s.logo_image??s.cover_image} name={s.name}/><div><strong>{s.name}</strong><p>{s.description}</p></div><ChevronRight size={18}/></button>)}</div>
+        {shopDirectoryLoading&&<div className="loading-inline"><div className="spinner"/> Carregando lojas...</div>}
+        {shopDirectoryError&&<div role="alert" className="loading-inline">{shopDirectoryError} <button className="outline-button" onClick={()=>setShopDirectoryRequest(current=>({...current}))}>Tentar novamente</button></div>}
+        {!shopDirectoryLoading&&!shopDirectoryError&&shopDirectory.key===shopDirectoryKey&&!visibleDirectoryShops.length&&<Empty art="emptyShops" title="Nenhuma loja encontrada" subtitle={query?'Tente buscar por outro nome.':'As lojas aprovadas aparecerão aqui.'}/>}
+        {!shopDirectoryLoading&&!shopDirectoryError&&shopDirectory.key===shopDirectoryKey&&shopDirectory.hasMore&&shopDirectory.nextCursor&&<button className="outline-button load-more" onClick={()=>setShopDirectoryRequest({key:shopDirectoryKey,cursor:shopDirectory.nextCursor})}>Mostrar mais lojas <ArrowRight size={17}/></button>}
       </>}
 
       {view==='shop'&&selectedShop&&<>
