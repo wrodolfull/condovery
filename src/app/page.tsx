@@ -1855,13 +1855,31 @@ export default function Page(){
             <p>{shareFallback.name}</p></div>
             <button type="button" aria-label="Fechar opções de compartilhamento" onClick={()=>setShareFallback(null)}><X size={19}/></button>
           </div>
-          {!window.isSecureContext&&<p className="share-hint">O painel de compartilhamento do celular requer HTTPS.
-            Neste endereço local, escolha WhatsApp ou copie o link.</p>}
-          <div className="share-fallback-actions">
-            <a href={'https://wa.me/?text='+encodeURIComponent('Conheça esta loja no Condovery! '+shareFallback.link)}
-              target="_blank" rel="noopener noreferrer" onClick={()=>setShareFallback(null)}>
-              <MessageCircle size={20}/> Enviar pelo WhatsApp</a>
-            <button type="button" onClick={()=>copyShopLink(shareFallback.link)}><Share2 size={20}/> Copiar link</button>
+          <div className="share-social-grid">
+            {[
+              {label:'WhatsApp',key:'whatsapp',href:'https://wa.me/?text='+encodeURIComponent('Conheça esta loja no Condovery! '+shareFallback.link)},
+              {label:'Facebook',key:'facebook',href:'https://www.facebook.com/sharer/sharer.php?u='+encodeURIComponent(shareFallback.link)},
+              {label:'X',key:'x',href:'https://twitter.com/intent/tweet?text='+encodeURIComponent('Conheça esta loja no Condovery!')+'&url='+encodeURIComponent(shareFallback.link)},
+              {label:'Telegram',key:'telegram',href:'https://t.me/share/url?url='+encodeURIComponent(shareFallback.link)+'&text='+encodeURIComponent('Conheça esta loja!')},
+              {label:'SMS',key:'sms',href:'sms:?body='+encodeURIComponent('Conheça esta loja! '+shareFallback.link)},
+              {label:'E-mail',key:'email',href:'mailto:?subject='+encodeURIComponent('Conheça '+shareFallback.name)+'&body='+encodeURIComponent(shareFallback.link)},
+            ].map(item=><a key={item.key} className="share-social-option" href={item.href}
+              target={['sms','email'].includes(item.key)?undefined:'_blank'} rel="noopener noreferrer"
+              onClick={()=>setShareFallback(null)}>
+              <span className={'share-social-icon '+item.key}>{item.key==='whatsapp'?<MessageCircle/>:item.key==='facebook'?'f':item.key==='x'?'X':item.key==='telegram'?<Share2/>:item.key==='sms'?<MessageCircle/>:<FileText/>}</span>
+              <span>{item.label}</span>
+            </a>)}
+            <button type="button" className="share-social-option" onClick={async()=>{
+              if(navigator.share){try{await navigator.share({title:shareFallback.name,url:shareFallback.link});setShareFallback(null);}catch(e){if(!(e instanceof DOMException&&e.name==='AbortError'))fail(e);}}
+              else {await copyShopLink(shareFallback.link);notify('Link copiado. Cole no Instagram para compartilhar.');}
+            }}><span className="share-social-icon instagram"><Share2/></span><span>Instagram</span></button>
+            <button type="button" className="share-social-option" onClick={()=>copyShopLink(shareFallback.link)}>
+              <span className="share-social-icon copy"><Share2/></span><span>Copiar link</span>
+            </button>
+            <button type="button" className="share-social-option" onClick={async()=>{
+              if(navigator.share){try{await navigator.share({title:shareFallback.name,url:shareFallback.link});setShareFallback(null);}catch(e){if(!(e instanceof DOMException&&e.name==='AbortError'))fail(e);}}
+              else await copyShopLink(shareFallback.link);
+            }}><span className="share-social-icon more"><Share2/></span><span>Mais</span></button>
           </div>
         </section>
       </div>}
