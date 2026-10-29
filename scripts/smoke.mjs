@@ -332,6 +332,9 @@ const unfinished=(await request('orders',{method:'POST',cookie:buyerCookie,
   body:{shop_id:shopId,items:[{id:productId,quantity:1}],fulfillment:'pickup'},expected:201})).data.order;
 await request('orders/'+unfinished.id+'/review',{method:'POST',cookie:buyerCookie,
   body:{rating:5,description:'Pedido sem conclusão'},expected:403});
+// The unfinished order was needed for the review eligibility test. Cancel it
+// before subsequent purchases so its pending stock claim is released.
+await request('orders/'+unfinished.id,{method:'PATCH',cookie:sellerCookie,body:{status:'cancelled'}});
 
 const second=await buyAndComplete('Atendimento excelente!',5);
 await request('shops/mine/reviews/'+second.inserted.id,{method:'PATCH',cookie:sellerCookie,
