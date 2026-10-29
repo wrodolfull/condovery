@@ -506,6 +506,11 @@ const rejected=competitors.find(x=>x.status===409);
 assert.ok(winner?.data.order?.id);
 assert.match(rejected?.data.error??'',/pedidos aguardando confirmação/);
 const bookedId=winner.data.order.id;
+await request('products/'+finalUnit.id,{method:'PATCH',cookie:sellerCookie,expected:409,body:{
+  name:'Última unidade reservada',description:'',
+  category_id:sellerHome.categories[0].id,price_cents:2700,promo_price_cents:null,
+  stock:0,image_url:null,visibility:'available',lead_time:'',option_groups:[]
+}});
 for(const route of ['home','catalog','shops/'+shopId]){
   const resp=(await request(route,{cookie:buyerCookie})).data;
   const productLine=resp.products.find(p=>p.id===finalUnit.id);
