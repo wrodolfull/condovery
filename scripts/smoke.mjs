@@ -910,7 +910,7 @@ try{
   let pages=0;
   do{
     const url='orders?limit=25'+(cursor?'&cursor='+encodeURIComponent(cursor):'');
-    const data=(await request(url,{cookie:buyerCookie})).data;
+    const data=(await request(url,{cookie:newLogin.cookie})).data;
     assert.ok(data.orders.length<=25,'page must be bounded');
     for(const order of data.orders){
       assert.ok(!seen.has(order.id),'no duplicate orders across pages');
@@ -929,12 +929,12 @@ try{
   const sellerPage=(await request('orders?scope=seller&limit=20',{cookie:sellerCookie})).data;
   assert.equal(sellerPage.orders.length,20);
   assert.ok(sellerPage.hasMore);
-  const buyerFiltered=(await request('orders?status=completed&limit=30',{cookie:buyerCookie})).data;
+  const buyerFiltered=(await request('orders?status=completed&limit=30',{cookie:newLogin.cookie})).data;
   assert.equal(buyerFiltered.orders.length,30);
   assert.ok(buyerFiltered.orders.every(x=>x.status==='completed'));
-  await request('orders?cursor=undefined',{cookie:buyerCookie,expected:400});
-  await request('orders?limit=51',{cookie:buyerCookie,expected:400});
-  await request('orders?limit=-1',{cookie:buyerCookie,expected:400});
+  await request('orders?cursor=undefined',{cookie:newLogin.cookie,expected:400});
+  await request('orders?limit=51',{cookie:newLogin.cookie,expected:400});
+  await request('orders?limit=-1',{cookie:newLogin.cookie,expected:400});
   await request('orders?scope=seller&cursor=not-a-number',{cookie:sellerCookie,expected:400});
   // Another resident cannot see this buyer's historical IDs.
   const notOwner=(await request('orders?limit=50',{cookie:sellerCookie})).data.orders;
