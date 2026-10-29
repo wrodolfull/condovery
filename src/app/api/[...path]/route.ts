@@ -1028,7 +1028,7 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
         );
         if(previous.rowCount)return {order:previous.rows[0],whatsapp_url:await savedWhatsApp(previous.rows[0] as SavedOrder,u)};
       }
-      if(!shop||!shop.is_open)bad('Loja não está recebendo pedidos.');
+      if(!shop||!shop.is_open)bad('Loja fechada. Não é possível registrar pedidos no momento.',409);
        if(!Array.isArray(shop.payment_methods)||!shop.payment_methods.includes(b.payment_method))bad('Este meio de pagamento não é aceito pela loja.',409);
       if((b.fulfillment==='delivery'&&!shop.delivery_enabled)||
          (b.fulfillment==='pickup'&&!shop.pickup_enabled))bad('Forma de recebimento indisponível.');
