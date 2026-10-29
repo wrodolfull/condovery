@@ -24,7 +24,15 @@ function FairArt({fair}:{fair:Fair}){
 export function FairHomeTeaser({condominiumId,onOpen}:{condominiumId:string;onOpen:()=>void}){
  const [fairs,setFairs]=useState<Fair[]>([]);
  useEffect(()=>{let mounted=true;api<{fairs:Fair[]}>('fairs').then(x=>{if(mounted)setFairs(x.fairs);}).catch(()=>{});return()=>{mounted=false;};},[condominiumId]);
- if(!fairs.length)return null;
+ if(!fairs.length)return <section className="admin-section" aria-label="Feiras do condomínio" style={{margin:'20px 0'}}>
+   <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:10,marginBottom:12}}>
+     <h2>Feiras da vizinhança</h2><button type="button" className="outline-button" onClick={onOpen}>Ver feiras <ArrowRight size={16}/></button>
+   </div>
+   <div className="white-panel" style={{border:'1px solid #eee',borderRadius:14,padding:20}}>
+     <strong>Nenhuma feira acontecendo agora</strong>
+     <p className="muted">Quando uma nova feira for publicada, você poderá conhecê-la por aqui.</p>
+   </div>
+ </section>;
  return <section className="admin-section" aria-label="Feiras do condomínio" style={{margin:'20px 0'}}>
    <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:10,marginBottom:12}}>
      <h2>Feiras da vizinhança</h2><button type="button" className="outline-button" onClick={onOpen}>Ver feiras <ArrowRight size={16}/></button>

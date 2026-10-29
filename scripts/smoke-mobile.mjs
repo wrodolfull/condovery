@@ -131,6 +131,13 @@ try {
   assert.equal(asCookie.data.viewer, null);
   const webToken = buyer.cookie.split("=")[1];
   assert.equal((await request("me", { token: webToken })).data.viewer, null);
+  // Valid mobile bearer and web cookie credentials reach the campaign lookup.
+  // A nonexistent campaign returns 404, not a cookie-only authentication 401.
+  for (const event of ["impression", "click"]) {
+    const endpoint = "ads/" + crypto.randomUUID() + "/" + event;
+    await request(endpoint, { method: "POST", token: buyer.token, expected: 404 });
+    await request(endpoint, { method: "POST", cookie: buyer.cookie, expected: 404 });
+  }
   await request("push/devices", {
     token: buyer.token,
     method: "POST",
