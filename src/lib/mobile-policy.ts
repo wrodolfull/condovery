@@ -10,6 +10,8 @@ export function mobileRouteAllowed(path: string, method: string): boolean {
   )
     return true;
   if (path === "favorites" && method === "POST") return true;
+  if (path === "favorite-shops") return method === "GET" || method === "POST";
+  if (new RegExp("^favorite-shops/" + "[0-9a-fA-F-]{36}" + "$").test(path)) return method === "DELETE";
   const id = "[0-9a-fA-F-]{36}";
   if (new RegExp("^favorites/" + id + "$").test(path))
     return method === "DELETE";
