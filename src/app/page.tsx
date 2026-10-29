@@ -17,6 +17,7 @@ import {clientUUID} from '@/lib/client-uuid';
 import {parseMoneyInput} from '@/lib/money-input';
 import {mergeRefreshedOrders} from '@/lib/order-live-refresh';
 import {shopSharePath} from '@/lib/shop-slug';
+import {isCommercialProductCategory} from '@/lib/category-purpose';
 import {blankShopDraft,shopDraftKey,readShopDraft,type ShopDraft} from '@/lib/shop-draft';
 import {PAYMENT_METHODS,PAYMENT_LABELS,allowedPaymentMethods,type PaymentMethod} from '@/lib/payment-methods';
 import {supportsMessengerIntent,whatsappMessengerHref} from '@/lib/whatsapp-launch';
@@ -658,6 +659,7 @@ export default function Page(){
   const visibleDirectoryShops=shopDirectory.key===shopDirectoryKey?shopDirectory.shops:[];
   useEffect(()=>{if(viewer?.status==='approved'&&new URLSearchParams(window.location.search).get('painel')==='vendedor'){setView('seller');window.history.replaceState({},'','/');}},[viewer?.id]);
   const categoryName=home.categories.find(c=>c.id===category)?.name;
+  const commercialProductCategories=home.categories.filter(c=>isCommercialProductCategory(c.name));
   const filtered=useMemo(()=>view==='categories'||query.trim()?catalogProducts:home.products,
     [view,query,catalogProducts,home.products]);
   const cartSubtotal=cart.reduce((n,i)=>n+cartUnitPrice(i)*i.quantity,0);
@@ -1013,8 +1015,8 @@ export default function Page(){
     }catch(e){fail(e);}finally{setBusy(false);}
   }
   function editProduct(p?:Product){
-    setProductForm(p?{id:p.id,name:p.name,description:p.description,category_id:p.category_id,price:(p.price_cents/100).toFixed(2),promo:p.promo_price_cents?(p.promo_price_cents/100).toFixed(2):'',stock:p.stock==null?'':String(p.stock),image_url:p.image_url??'',visibility:p.visibility??(p.is_available?'available':'hidden'),lead_time:p.lead_time??'',option_groups:p.option_groups??[]}
-      :{id:'',name:'',description:'',category_id:home.categories[0]?.id??'',price:'',promo:'',stock:'',image_url:'',visibility:'available',lead_time:'',option_groups:[]});
+    setProductForm(p?{id:p.id,name:p.name,description:p.description,category_id:commercialProductCategories.some(c=>c.id===p.category_id)?p.category_id:'',price:(p.price_cents/100).toFixed(2),promo:p.promo_price_cents?(p.promo_price_cents/100).toFixed(2):'',stock:p.stock==null?'':String(p.stock),image_url:p.image_url??'',visibility:p.visibility??(p.is_available?'available':'hidden'),lead_time:p.lead_time??'',option_groups:p.option_groups??[]}
+      :{id:'',name:'',description:'',category_id:commercialProductCategories[0]?.id??'',price:'',promo:'',stock:'',image_url:'',visibility:'available',lead_time:'',option_groups:[]});
     setEditingProduct(true);
   }
   async function saveProduct(e:React.FormEvent){
@@ -1774,7 +1776,8 @@ export default function Page(){
               <label>Foto do produto<div className="image-upload">{productForm.image_url?<img src={productForm.image_url} alt="Prévia do produto"/>:<ImagePlus size={29}/>}<span>Selecionar foto (até 10 MB)</span><input aria-label="Enviar foto do produto" type="file" accept="image/jpeg,image/png,image/webp" onChange={e=>{const f=e.target.files?.[0];e.target.value='';choosePhoto(f,'product');}}/></div></label>
               <label>Nome<input required minLength={2} maxLength={100} value={productForm.name} onChange={e=>setProductForm(s=>({...s,name:e.target.value}))}/></label>
               <label>Descrição<textarea rows={3} maxLength={600} value={productForm.description} onChange={e=>setProductForm(s=>({...s,description:e.target.value}))}/></label>
-              <label>Categoria<select required value={productForm.category_id} onChange={e=>setProductForm(s=>({...s,category_id:e.target.value}))}><option value="">Selecione</option>{home.categories.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></label>
+              <label>Categoria<select required value={productForm.category_id} onChange={e=>setProductForm(x=>({...x,category_id:e.target.value}))}><option value="">Selecione uma categoria comercial</option>{commercialProductCategories.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></label>
+              <p className="form-hint">Desapego é exclusivo para anúncios gratuitos entre moradores, publicados na área Desapego, não no catálogo de lojas.</p>
               <div className="field-grid"><label>Preço (R$)<input required type="number" min=".01" step=".01" value={productForm.price} onChange={e=>setProductForm(s=>({...s,price:e.target.value}))}/></label><label>Promocional (opcional)<input type="number" min=".01" step=".01" value={productForm.promo} onChange={e=>setProductForm(s=>({...s,promo:e.target.value}))}/></label></div>
               <div className="field-grid"><label>Estoque (opcional)<input type="number" min="0" step="1" value={productForm.stock} onChange={e=>setProductForm(s=>({...s,stock:e.target.value}))}/></label><label>Prazo de preparo<input maxLength={100} value={productForm.lead_time} onChange={e=>setProductForm(s=>({...s,lead_time:e.target.value}))} placeholder="Ex.: 1 dia"/></label></div>
               <section className="product-option-editor">

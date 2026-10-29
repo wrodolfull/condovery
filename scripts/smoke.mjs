@@ -198,6 +198,30 @@ const product=await request('products',{method:'POST',cookie:sellerCookie,body:{
   category_id:sellerHome.categories[0].id,lead_time:'Disponível hoje',is_available:true
 },expected:201});
 const productId=product.data.product.id;
+// Desapego remains a dedicated resident-to-resident flow, even when enabled
+// in the shared category catalogue.
+const summaryCategories=(await request('admin/summary',{cookie:adminCookie})).data.categories;
+const desapegoCategory=summaryCategories.find(category=>category.name==='Desapego');
+assert.ok(desapegoCategory,'The Desapego category should exist');
+await request('admin/categories/'+desapegoCategory.id,{method:'PATCH',cookie:adminCookie,body:{is_active:true}});
+const enabledCategoryHome=(await request('home',{cookie:sellerCookie})).data;
+assert.ok(enabledCategoryHome.categories.some(category=>category.id===desapegoCategory.id));
+const blockedCreate=await request('products',{method:'POST',cookie:sellerCookie,expected:400,body:{
+  name:'Produto comercial em Desapego',description:'Não é anúncio gratuito',price_cents:2500,
+  stock:4,category_id:desapegoCategory.id,lead_time:'Disponível hoje',visibility:'available'
+}});
+assert.match(blockedCreate.data.error,/Desapego/);
+const blockedEdit=await request('products/'+productId,{method:'PATCH',cookie:sellerCookie,expected:400,body:{
+  name:'Bolo de cenoura',description:'Com chocolate',price_cents:2500,
+  promo_price_cents:null,stock:4,image_url:null,category_id:desapegoCategory.id,
+  lead_time:'Disponível hoje',visibility:'available',option_groups:[]
+}});
+assert.match(blockedEdit.data.error,/Desapego/);
+const unchangedProduct=(await request('shops/mine',{cookie:sellerCookie})).data.products.find(item=>item.id===productId);
+assert.equal(unchangedProduct.category_id,sellerHome.categories[0].id);
+await request('giveaways',{cookie:buyerCookie});
+await request('admin/categories/'+desapegoCategory.id,{method:'PATCH',cookie:adminCookie,body:{is_active:false}});
+console.log('Desapego only allows resident listings; commercial create/update rejected PASS.');
 const visible=(await request('home',{cookie:buyerCookie})).data;
 assert.ok(visible.products.find(p=>p.id===productId));
 // Feira digital: admin creates, seller enrolls, admin moderates, resident buys via existing catalog.
