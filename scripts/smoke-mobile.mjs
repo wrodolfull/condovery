@@ -110,10 +110,12 @@ try {
   }
   const [buyer, seller] = users;
   await request("home", { token: buyer.token });
+  const emptyShop = await request("shops/mine", { token: buyer.token });
+  assert.equal(emptyShop.data.shop, null);
+  assert.deepEqual(emptyShop.data.products, []);
   for (const path of [
     "admin/summary",
     "platform/condominiums",
-    "shops/mine",
     "fairs/manage",
     "fairs/seller",
     "orders?scope=seller",
@@ -123,7 +125,8 @@ try {
     token: seller.token,
     method: "PATCH",
     body: { status: "confirmed" },
-    expected: 403,
+    // The mobile route is allowed; seller ownership is still enforced server-side.
+    expected: 404,
   });
   const asCookie = await request("me", {
     cookie: "condovery_session=" + buyer.token,
@@ -199,12 +202,12 @@ try {
     body: "Aviso de teste isolado.",
     client_key: crypto.randomUUID(),
   };
-  await request("shops/mine/push", {
+  const mobileNotice = (await request("shops/mine/push", {
     method: "POST",
     token: seller.token,
     body: notice,
-    expected: 403,
-  });
+    expected: 201,
+  })).data;
   const one = (
     await request("shops/mine/push", {
       method: "POST",
@@ -221,6 +224,7 @@ try {
       expected: 201,
     })
   ).data;
+  assert.equal(mobileNotice.id, one.id);
   assert.equal(one.id, two.id);
   assert.equal(one.recipients, 1);
   const inbox = (await request("push/inbox", { token: buyer.token })).data
