@@ -70,6 +70,7 @@ test("push validates tokens and bounds provider backoff", () => {
 test("mobile seller operations are allowlisted but privileged admin endpoints remain blocked", () => {
   for (const [route,method] of [
     ["shops/mine","GET"],["shops/mine","POST"],["shops/mine","PATCH"],
+    ["shops/mine/push","POST"],
     ["shops/mine/status","PATCH"],["shops/mine/reviews","GET"],
     ["shops/mine/reviews/"+id,"PATCH"],["products","POST"],
     ["products/"+id,"PATCH"],["products/"+id,"DELETE"],
@@ -77,6 +78,6 @@ test("mobile seller operations are allowlisted but privileged admin endpoints re
     ["fairs/seller","GET"],["fairs/"+id+"/applications","POST"],
     ["fairs/"+id+"/applications/"+id,"DELETE"],["media","POST"],
   ]) assert.equal(mobileRouteAllowed(route,method),true,route+" "+method);
-  for (const route of ["admin/summary","fairs/manage","media/ad","shops/mine/push"])
+  for (const route of ["admin/summary","fairs/manage","media/ad"])
     assert.equal(mobileRouteAllowed(route,"POST"),false,route);
 });
