@@ -5,7 +5,7 @@ import {NextRequest,NextResponse} from 'next/server';
 import {z} from 'zod';
 import {query,transaction} from '@/lib/db';
 import {bad} from '@/lib/api-error';
-import type {Viewer} from '@/lib/auth';
+import {sessionCredential,type Viewer} from '@/lib/auth';
 
 type Args={req:NextRequest;method:string;path:string;parts:string[];u:Viewer};
 const idPattern=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -42,8 +42,11 @@ async function validateCampaign(input:CampaignInput){
 }
 async function recordMetric(req:NextRequest,u:Viewer,id:string,kind:'impression'|'click'){
   if(u.status!=='approved')bad('Conta indisponível.',403);
-  const token=req.cookies.get('condovery_session')?.value;
-  if(!token)bad('Sessão inválida.',401);
+  // Web uses an HttpOnly cookie; the native app uses a scoped bearer session.
+  // Both credentials are authenticated by viewer(req) before reaching this handler.
+  const credential=sessionCredential(req);
+  if(!credential)bad('Sessão inválida.',401);
+  const token=credential.token;
   const day=new Date().toISOString().slice(0,10);
   // Hash a high-entropy cookie with day; no raw cookie or user identifier is stored.
   const viewerHash=createHash('sha256').update(day+':'+token).digest('hex');

@@ -16,6 +16,8 @@ test("mobile credentials can buy and use only resident capabilities", () => {
     ["giveaways/" + id, "PUT"],
     ["push/inbox/" + id, "GET"],
     ["me", "DELETE"],
+    ["ads/" + id + "/impression", "POST"],
+    ["ads/" + id + "/click", "POST"],
   ])
     assert.equal(mobileRouteAllowed(path, method), true, path);
   for (const [path, method] of [
