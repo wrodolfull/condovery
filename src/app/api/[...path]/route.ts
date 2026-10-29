@@ -1135,7 +1135,7 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
     const statuses=['awaiting_confirmation','confirmed','completed','cancelled'];
     if(status!==null&&!statuses.includes(status))bad('Filtro de pedido inválido.');
     const paging=parseOrderPaging(req.nextUrl.searchParams);
-    if(!paging)bad('Paginação de pedidos inválida.',400);
+    if(paging===null)throw new ApiError(400,'Paginação de pedidos inválida.');
     let shopId:string|undefined;
     if(seller){const sh=await shopOwned(u);shopId=sh.id;}
     // Strict tenant and owner scoping is applied BEFORE seeking the cursor.
@@ -1160,7 +1160,7 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
     );
     // Preserve all historical records and return an opaque cursor for the next page.
     // Buyers receive only their own orders; sellers only their own shop's orders.
-    return out(orderPage(r.rows,paging.limit));
+    return out(orderPage(r.rows as Array<{code:string|number}>,paging.limit));
   }
   if(parts[0]==='orders'&&parts[1]&&method==='PATCH'){
     if(!uuid(parts[1]))bad('Pedido inválido.');
