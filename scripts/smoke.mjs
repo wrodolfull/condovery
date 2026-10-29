@@ -715,8 +715,12 @@ await request('shops/mine/status',{method:'PATCH',cookie:lifecycleBuyer,expected
 await request('shops/mine/status',{method:'PATCH',cookie:lifecycleSeller,body:{is_open:false}});
 const paused=await request('shops/mine',{cookie:lifecycleSeller});
 assert.equal(paused.data.shop.is_open,false);
-await request('orders/quote',{method:'POST',cookie:lifecycleBuyer,expected:400,body:{
+await request('orders/quote',{method:'POST',cookie:lifecycleBuyer,expected:409,body:{
   shop_id:lifecycleShop.id,items:[{id:lifecycleProduct.id,quantity:1}],fulfillment:'pickup'
+}});
+await request('orders',{method:'POST',cookie:lifecycleBuyer,expected:409,body:{
+  shop_id:lifecycleShop.id,items:[{id:lifecycleProduct.id,quantity:1}],fulfillment:'pickup',
+  client_order_key:crypto.randomUUID()
 }});
 await request('shops/mine/status',{method:'PATCH',cookie:lifecycleSeller,body:{is_open:true}});
 const lifecycleUnfinished=(await request('orders',{method:'POST',cookie:lifecycleBuyer,expected:201,body:{
