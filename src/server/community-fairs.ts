@@ -2,6 +2,7 @@ import {NextRequest,NextResponse} from 'next/server';
 import {z} from 'zod';
 import {query} from '@/lib/db';
 import {bad} from '@/lib/api-error';
+import {buyerAvailableStockSQL} from '@/lib/pending-stock';
 import type {Viewer} from '@/lib/auth';
 
 const idPattern=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -133,7 +134,7 @@ export async function handleCommunityFairs(req:NextRequest,method:string,path:st
     if(!fair.rowCount)bad('Feira indisponível.',404);
     const products=await query(
       'SELECT p.id,p.shop_id,p.category_id,p.name,p.description,p.price_cents,p.promo_price_cents, '+
-      'p.image_url,p.stock,p.visibility,p.lead_time,p.is_featured,p.option_groups, '+
+      'p.image_url,'+buyerAvailableStockSQL+',p.visibility,p.lead_time,p.is_featured,p.option_groups, '+
       's.name AS shop_name,s.is_open FROM community_fair_products fp '+
       'JOIN products p ON p.id=fp.product_id AND p.condominium_id=fp.condominium_id '+
       'JOIN shops s ON s.id=p.shop_id AND s.condominium_id=p.condominium_id '+
