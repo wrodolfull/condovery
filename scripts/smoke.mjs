@@ -485,6 +485,51 @@ await request('shops/mine',{method:'PATCH',cookie:sellerCookie,
   body:{...shopSettings,delivery_fee_cents:0}});
 console.log('Checkout customizations PASS: repeated product variants, price confirmation, delivery fee and WhatsApp snapshots.');
 
+// Regression: simultaneous checkouts cannot both claim the final available
+// unit. The seller retains manual confirmation and stock is deducted only then.
+const finalUnit=(await request('products',{method:'POST',cookie:sellerCookie,expected:201,body:{
+  name:'Última unidade reservada',category_id:sellerHome.categories[0].id,
+  price_cents:2700,stock:1
+}})).data.product;
+const simultaneousPayload={shop_id:shopId,items:[{id:finalUnit.id,quantity:1}],fulfillment:'pickup',payment_method:'pix'};
+const competitors=await Promise.all([buyerCookie,sellerCookie].map(async (cookie)=>{
+  const key=crypto.randomUUID();
+  const response=await fetch(origin+'/api/orders',{
+    method:'POST',headers:{'Content-Type':'application/json',Cookie:cookie},
+    body:JSON.stringify({...simultaneousPayload,client_order_key:key})
+  });
+  return {status:response.status,data:await response.json(),cookie,key};
+}));
+assert.deepEqual(competitors.map(x=>x.status).sort((a,b)=>a-b),[201,409]);
+const winner=competitors.find(x=>x.status===201);
+const rejected=competitors.find(x=>x.status===409);
+assert.ok(winner?.data.order?.id);
+assert.match(rejected?.data.error??'',/pedidos aguardando confirmação/);
+const bookedId=winner.data.order.id;
+for(const route of ['home','catalog','shops/'+shopId]){
+  const resp=(await request(route,{cookie:buyerCookie})).data;
+  const productLine=resp.products.find(p=>p.id===finalUnit.id);
+  assert.equal(productLine.stock,0,'reserved item unavailable in '+route);
+}
+// Retried requests with the same key return the original order, never a
+// second allocation. New quotes correctly explain the temporary claim.
+const duplicate=await request('orders',{method:'POST',cookie:winner.cookie,body:{
+  ...simultaneousPayload,client_order_key:winner.key
+}});
+assert.equal(duplicate.data.order.id,bookedId);
+await request('orders/quote',{method:'POST',cookie:rejected.cookie,body:simultaneousPayload,expected:409});
+await request('orders/'+bookedId,{method:'PATCH',cookie:sellerCookie,body:{status:'cancelled'}});
+assert.equal((await request('shops/'+shopId,{cookie:buyerCookie})).data.products.find(p=>p.id===finalUnit.id).stock,1);
+const afterCancellation=(await request('orders',{method:'POST',cookie:buyerCookie,expected:201,body:{
+  ...simultaneousPayload,client_order_key:crypto.randomUUID()
+}})).data.order;
+await request('orders/'+afterCancellation.id,{method:'PATCH',cookie:sellerCookie,body:{status:'confirmed'}});
+assert.equal((await request('home',{cookie:buyerCookie})).data.products.find(p=>p.id===finalUnit.id).stock,0);
+await request('orders/'+afterCancellation.id,{method:'PATCH',cookie:sellerCookie,body:{status:'cancelled'}});
+assert.equal((await request('home',{cookie:buyerCookie})).data.products.find(p=>p.id===finalUnit.id).stock,1);
+console.log('Concurrent last-unit orders PASS: one accepted, one rejected; cancellation and confirmation release/move allocation.');
+
+
 
 
 
