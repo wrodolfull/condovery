@@ -118,9 +118,12 @@ try {
     "platform/condominiums",
     "fairs/manage",
     "fairs/seller",
-    "orders?scope=seller",
   ])
     await request(path, { token: buyer.token, expected: 403 });
+  // Non-owners must never see seller orders, even though the bearer scope is allowed.
+  await request("orders?scope=seller", { token: buyer.token, expected: 404 });
+  await request("orders?scope=admin", { token: buyer.token, expected: 403 });
+  await request("orders?scope=seller", { token: seller.token, expected: 404 });
   await request("orders/" + crypto.randomUUID(), {
     token: seller.token,
     method: "PATCH",
