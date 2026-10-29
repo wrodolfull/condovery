@@ -206,6 +206,8 @@ export default function Page(){
   const [ads,setAds]=useState<AdCampaign[]>([]);
   const [favoriteIds,setFavoriteIds]=useState<string[]>([]);
   const [favoriteProducts,setFavoriteProducts]=useState<Product[]>([]);
+  const [favoriteShopIds,setFavoriteShopIds]=useState<string[]>([]);
+  const [favoriteShops,setFavoriteShops]=useState<Shop[]>([]);
   const [query,setQuery]=useState('');
   const [category,setCategory]=useState('');
   const [catalogProducts,setCatalogProducts]=useState<Product[]>([]);
@@ -303,6 +305,10 @@ export default function Page(){
     const result=await api<{ids:string[];products:Product[]}>('favorites');
     setFavoriteIds(result.ids);setFavoriteProducts(result.products);
   },[]);
+  const loadShopFavorites=useCallback(async()=>{
+    const result=await api<{ids:string[];shops:Shop[]}>('favorite-shops');
+    setFavoriteShopIds(result.ids);setFavoriteShops(result.shops);
+  },[]);
   const loadMine=useCallback(async()=>{
     const data=await api<{shop:Shop|null;products:Product[]}>('shops/mine');
     setMyShop(data.shop);setMyProducts(data.products);
@@ -380,7 +386,7 @@ export default function Page(){
     setBusy(true);setError('');setTenantMenuOpen(false);
     try{
       await api('platform/condominiums/switch',{method:'POST',body:payload({condominium_id:id})});
-      setCart([]);setSelectedShop(null);setFavoriteIds([]);setFavoriteProducts([]);setOrders([]);setMyShop(null);
+      setCart([]);setSelectedShop(null);setFavoriteIds([]);setFavoriteProducts([]);setFavoriteShopIds([]);setFavoriteShops([]);setOrders([]);setMyShop(null);
       const data=await api<{viewer:Viewer}>('me');
       setViewer(data.viewer);await refresh(data.viewer);
       go('admin');notify('Condomínio ativo alterado para '+data.viewer.condominium_name+'.');
@@ -389,8 +395,8 @@ export default function Page(){
   // Orders are fetched by the orders-view effect when that screen opens.
   // Avoid fetching them at login (and again when entering the orders screen).
   const refresh=useCallback(async(u:Viewer)=>{
-    await Promise.all([loadHome(),loadMine(),loadFavorites()]);
-  },[loadHome,loadMine,loadFavorites]);
+    await Promise.all([loadHome(),loadMine(),loadFavorites(),loadShopFavorites()]);
+  },[loadHome,loadMine,loadFavorites,loadShopFavorites]);
 
   useEffect(()=>{
     const link=window.location.pathname.startsWith('/loja/')?decodeURIComponent(window.location.pathname.slice(6).split('/')[0]):new URLSearchParams(window.location.search).get('loja');
@@ -506,6 +512,17 @@ export default function Page(){
       await loadFavorites();
     }catch(e){await loadFavorites().catch(()=>{});fail(e);}
   }
+  async function toggleShopFavorite(id:string){
+    const saved=favoriteShopIds.includes(id);
+    setFavoriteShopIds(old=>saved?old.filter(x=>x!==id):[id,...old]);
+    try{
+      await api(saved?'favorite-shops/'+id:'favorite-shops',{
+        method:saved?'DELETE':'POST',
+        ...(!saved?{body:payload({shop_id:id})}:{})
+      });
+      await loadShopFavorites();
+    }catch(e){await loadShopFavorites().catch(()=>{});fail(e);}
+  }
   async function submitReset(e:React.FormEvent){
     e.preventDefault();setBusy(true);setError('');
     try{
@@ -575,7 +592,7 @@ export default function Page(){
   }
   async function logout(){
     try{await api('auth/logout',{method:'POST'});}catch{}
-    setViewer(null);setGoogleSignup(null);setHome(emptyHome);setFavoriteIds([]);setFavoriteProducts([]);setCart([]);setMyShop(null);setOrders([]);go('home');
+    setViewer(null);setGoogleSignup(null);setHome(emptyHome);setFavoriteIds([]);setFavoriteProducts([]);setFavoriteShopIds([]);setFavoriteShops([]);setCart([]);setMyShop(null);setOrders([]);go('home');
   }
   async function openShop(id:string){
     setBusy(true);
