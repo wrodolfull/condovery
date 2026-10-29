@@ -27,6 +27,7 @@ import {limitAuthentication,clearAuthenticationFailures} from '@/lib/auth-rate-l
 import {protectMutation} from '@/lib/request-protection';
 import {isValidPassword} from '@/lib/password-policy';
 import {mobileRouteAllowed} from '@/lib/mobile-policy';
+import {availableForNewOrders,buyerAvailableStockSQL} from '@/lib/pending-stock';
 import {handleMobileAuth,passwordMember} from '@/server/mobile-auth';
 import {handlePushApi,enqueueNewOrder,enqueueOrderStatus} from '@/server/push';
 
@@ -551,7 +552,7 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
   }
   if(path==='favorites'&&method==='GET'){
     const r=await query(
-      "SELECT p.id,p.shop_id,p.category_id,p.name,p.description,p.price_cents,p.promo_price_cents,p.image_url,p.stock,p.visibility,p.lead_time,p.is_featured,p.option_groups,s.name AS shop_name,s.is_open FROM favorites f JOIN products p ON p.id=f.product_id AND p.condominium_id=f.condominium_id JOIN categories c ON c.id=p.category_id AND c.condominium_id=p.condominium_id AND c.is_active=true JOIN shops s ON s.id=p.shop_id AND s.condominium_id=f.condominium_id WHERE f.condominium_id=$1 AND f.user_id=$2 AND p.visibility<>'hidden' AND p.deleted_at IS NULL AND s.status='approved' ORDER BY f.created_at DESC LIMIT 150",
+      "SELECT p.id,p.shop_id,p.category_id,p.name,p.description,p.price_cents,p.promo_price_cents,p.image_url,"+buyerAvailableStockSQL+",p.visibility,p.lead_time,p.is_featured,p.option_groups,s.name AS shop_name,s.is_open FROM favorites f JOIN products p ON p.id=f.product_id AND p.condominium_id=f.condominium_id JOIN categories c ON c.id=p.category_id AND c.condominium_id=p.condominium_id AND c.is_active=true JOIN shops s ON s.id=p.shop_id AND s.condominium_id=f.condominium_id WHERE f.condominium_id=$1 AND f.user_id=$2 AND p.visibility<>'hidden' AND p.deleted_at IS NULL AND s.status='approved' ORDER BY f.created_at DESC LIMIT 150",
       [u.condominium_id,u.id]
     );
     return out({ids:r.rows.map(row=>row.id),products:r.rows});
@@ -585,7 +586,7 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
     if(category&&!uuid(category))bad('Categoria inválida.');
     const escaped='%'+search.replace(/[%_\\]/g,'')+'%';
     const result=await query(
-      "SELECT p.id,p.shop_id,p.category_id,p.name,p.description,p.price_cents,p.promo_price_cents,p.image_url,p.stock,p.visibility,p.lead_time,p.is_featured,p.option_groups,s.name AS shop_name,s.is_open FROM products p JOIN categories c ON c.id=p.category_id AND c.condominium_id=p.condominium_id AND c.is_active=true JOIN shops s ON s.id=p.shop_id AND s.condominium_id=p.condominium_id WHERE p.condominium_id=$1 AND p.visibility<>'hidden' AND p.deleted_at IS NULL AND s.status='approved' AND ($2::uuid IS NULL OR p.category_id=$2::uuid) AND ($3::text='' OR p.name ILIKE $3 ESCAPE '\\' OR s.name ILIKE $3 ESCAPE '\\') ORDER BY p.created_at DESC,p.id DESC LIMIT $4 OFFSET $5",
+      "SELECT p.id,p.shop_id,p.category_id,p.name,p.description,p.price_cents,p.promo_price_cents,p.image_url,"+buyerAvailableStockSQL+",p.visibility,p.lead_time,p.is_featured,p.option_groups,s.name AS shop_name,s.is_open FROM products p JOIN categories c ON c.id=p.category_id AND c.condominium_id=p.condominium_id AND c.is_active=true JOIN shops s ON s.id=p.shop_id AND s.condominium_id=p.condominium_id WHERE p.condominium_id=$1 AND p.visibility<>'hidden' AND p.deleted_at IS NULL AND s.status='approved' AND ($2::uuid IS NULL OR p.category_id=$2::uuid) AND ($3::text='' OR p.name ILIKE $3 ESCAPE '\\' OR s.name ILIKE $3 ESCAPE '\\') ORDER BY p.created_at DESC,p.id DESC LIMIT $4 OFFSET $5",
       [u.condominium_id,category,search?escaped:'',limit+1,page*limit]
     );
     return out({products:result.rows.slice(0,limit),hasMore:result.rows.length>limit,page});
@@ -644,7 +645,7 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
     const [categories,shops,products]=await Promise.all([
       query('SELECT id,name,icon FROM categories WHERE condominium_id=$1 AND is_active=true ORDER BY sort_order,name',[u.condominium_id]),
       query("SELECT id,name,slug,description,cover_image,logo_image,is_open,delivery_enabled,pickup_enabled,delivery_fee_cents,payment_methods,lead_time FROM shops WHERE condominium_id=$1 AND status='approved' ORDER BY is_open DESC,created_at DESC LIMIT 100",[u.condominium_id]),
-      query("SELECT p.id,p.shop_id,p.category_id,p.name,p.description,p.price_cents,p.promo_price_cents,p.image_url,p.stock,p.visibility,p.lead_time,p.is_featured,p.option_groups,s.name AS shop_name,s.is_open FROM products p JOIN categories c ON c.id=p.category_id AND c.condominium_id=p.condominium_id AND c.is_active=true JOIN shops s ON s.id=p.shop_id WHERE p.condominium_id=$1 AND s.condominium_id=$1 AND p.visibility<>'hidden' AND p.deleted_at IS NULL AND s.status='approved' ORDER BY p.is_featured DESC,p.created_at DESC LIMIT 48",[u.condominium_id])
+      query("SELECT p.id,p.shop_id,p.category_id,p.name,p.description,p.price_cents,p.promo_price_cents,p.image_url,"+buyerAvailableStockSQL+",p.visibility,p.lead_time,p.is_featured,p.option_groups,s.name AS shop_name,s.is_open FROM products p JOIN categories c ON c.id=p.category_id AND c.condominium_id=p.condominium_id AND c.is_active=true JOIN shops s ON s.id=p.shop_id WHERE p.condominium_id=$1 AND s.condominium_id=$1 AND p.visibility<>'hidden' AND p.deleted_at IS NULL AND s.status='approved' ORDER BY p.is_featured DESC,p.created_at DESC LIMIT 48",[u.condominium_id])
     ]);
     return out({categories:categories.rows,shops:shops.rows,products:products.rows});
   }
@@ -836,7 +837,7 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
     if(!uuid(parts[1])&&!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(parts[1]))bad('Loja inválida.');
     const s=await query("SELECT id,name,slug,description,cover_image,logo_image,is_open,delivery_enabled,pickup_enabled,delivery_fee_cents,payment_methods,lead_time,pickup_instructions FROM shops WHERE (id::text=$1 OR slug=$1) AND condominium_id=$2 AND status='approved'",[parts[1],u.condominium_id]);
     if(!s.rowCount)bad('Loja não encontrada.',404);
-    const p=await query("SELECT id,shop_id,category_id,name,description,price_cents,promo_price_cents,image_url,stock,visibility,lead_time,option_groups FROM products p WHERE shop_id=$1 AND condominium_id=$2 AND visibility<>'hidden' AND deleted_at IS NULL AND EXISTS (SELECT 1 FROM categories c WHERE c.id=p.category_id AND c.condominium_id=p.condominium_id AND c.is_active=true) ORDER BY created_at DESC",[s.rows[0].id,u.condominium_id]);
+    const p=await query("SELECT p.id,p.shop_id,p.category_id,p.name,p.description,p.price_cents,p.promo_price_cents,p.image_url,"+buyerAvailableStockSQL+",p.visibility,p.lead_time,p.option_groups FROM products p WHERE shop_id=$1 AND condominium_id=$2 AND visibility<>'hidden' AND deleted_at IS NULL AND EXISTS (SELECT 1 FROM categories c WHERE c.id=p.category_id AND c.condominium_id=p.condominium_id AND c.is_active=true) ORDER BY created_at DESC",[s.rows[0].id,u.condominium_id]);
     return out({shop:s.rows[0],products:p.rows});
   }
   if((path==='media'||path==='media/profile'||path==='media/ad'||path==='media/giveaway'||path==='media/fair')&&method==='POST'){
@@ -1042,9 +1043,23 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
       const products=new Map(dbItems.rows.map(p=>[p.id,p]));
       const amounts=new Map<string,number>();
       for(const i of b.items)amounts.set(i.id,(amounts.get(i.id)??0)+i.quantity);
+      // A shop row FOR UPDATE serializes concurrent checkouts for the same shop.
+      // Pending orders allocate finite availability; confirmation still decrements
+      // products.stock as before. Count repeated customizations of the same product.
+      const pending=await tx.query(
+        "SELECT oi.product_id,COALESCE(SUM(oi.quantity),0)::int AS quantity "+
+        "FROM order_items oi JOIN orders o ON o.id=oi.order_id "+
+        "WHERE oi.product_id=ANY($1::uuid[]) AND o.condominium_id=$2 "+
+        "AND o.shop_id=$3 AND o.status='awaiting_confirmation' GROUP BY oi.product_id",
+        [ids,u.condominium_id,shop.id]
+      );
+      const pendingQuantities=new Map<string,number>(pending.rows.map(row=>[row.product_id,Number(row.quantity)]));
       for(const [id,amount] of amounts){
         const product=products.get(id)!;
         if(product.stock!==null&&product.stock<amount)bad('Estoque insuficiente para '+product.name+'.');
+        const available=availableForNewOrders(product.stock,pendingQuantities.get(id)??0);
+        if(available!==null&&available<amount)
+          bad('Estoque já comprometido por pedidos aguardando confirmação para '+product.name+'.',409);
       }
       let subtotal=0;
       const items=b.items.map(i=>{
