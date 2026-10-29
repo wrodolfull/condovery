@@ -905,6 +905,13 @@ try{
     [originalTenant,buyerLogin.data.viewer?.id??(await pagingDB.query('SELECT id FROM users WHERE email=$1',[buyerEmail])).rows[0].id,shopId]
   );
   pageFixtureIds=seeded.rows.map(x=>x.id);
+  // The last created row is not the only one a deep link can retrieve:
+  // an old order must resolve even when not in the first 20 listed.
+  const oldOrderId=pageFixtureIds[0];
+  const details=(await request('orders/'+oldOrderId,{cookie:newLogin.cookie})).data;
+  assert.equal(details.order.id,oldOrderId);
+  await request('orders/'+oldOrderId,{cookie:sellerCookie,expected:404});
+  await request('orders/not-a-uuid',{cookie:newLogin.cookie,expected:400});
   const seen=new Set();
   let cursor=null;
   let pages=0;
