@@ -35,17 +35,14 @@ O frontend não deve trocar autenticação por acesso direto ao Supabase Data AP
 | Evento | Destinatários | Entrada de publicação |
 | --- | --- | --- |
 | Aviso do condomínio | Moradores ativos do condomínio; push respeita preferência e permissão | Administração web → Configurações |
-| Aviso de loja | Moradores inscritos naquela loja do mesmo condomínio | Painel do vendedor web → Configurações |
 | Novo pedido | Proprietário da loja, se tiver o app autorizado | Evento transacional ao criar pedido |
 | Mudança de status | Comprador do pedido | Evento transacional ao confirmar, concluir ou cancelar |
 
-O vendedor recebe o aviso no app de morador e abre a gestão pelo navegador. Não foi incluído painel de vendas no aplicativo.
-
-Não há envio automático de publicidade para todos os moradores por um vendedor. A API seleciona assinantes da própria loja. Publicações exigem título, mensagem, chave de idempotência e confirmação na interface. Há limite de cinco publicações por remetente por hora. O retorno `recipients` conta avisos no histórico, não confirmações de entrega no aparelho.
+O vendedor recebe notificações automáticas sobre novos pedidos no aplicativo. **Não existe envio de avisos personalizados por lojas.** O envio institucional continua reservado à administração do condomínio na web, com idempotência e limite de cinco publicações por administrador por hora. O retorno `recipients` representa registros no histórico e não confirma entrega no aparelho.
 
 ## Fila e worker
 
-Os eventos de pedido são inseridos na mesma transação de banco que registra o pedido ou sua mudança de status. A combinação destinatário/evento é única. A repetição idempotente de um pedido ou aviso não cria novas entregas daquele evento.
+Os eventos de pedido são inseridos na mesma transação de banco que registra o pedido ou sua mudança de status. A combinação destinatário/evento é única. A repetição idempotente de um pedido ou aviso institucional não cria novas entregas daquele evento.
 
 O worker entrega lotes de até 100 mensagens ao Expo, consulta os recibos e desabilita tokens com `DeviceNotRegistered`. Retentativas têm espera exponencial e limite de tentativas. Falha de consulta de recibo preserva o ticket e não reenvia a mensagem. Trabalhadores concorrentes usam leases e `SKIP LOCKED` ao reivindicar envios.
 
@@ -57,9 +54,9 @@ Configure uma execução a cada minuto, com o diretório de trabalho correto e a
 
 Também é possível usar o agendador da hospedagem, executando o mesmo comando. Uma execução não deve ficar permanentemente em background dentro de uma API Route. Se o worker não estiver agendado, os avisos ficam no histórico, mas os pushes não serão processados.
 
-Antes do envio, o worker revalida conta, condomínio, expiração da sessão, preferência, inscrição na loja e vínculo do dispositivo. Uma entrega antiga não acompanha o token quando ele é associado a outra conta/sessão. Entregas antigas/inaptas são encerradas. O histórico tem retenção de 90 dias; a limpeza acontece nas execuções habilitadas do worker. Configure a limpeza de fluxos de autenticação expirados também pelo comando de manutenção abaixo se push permanecer desativado.
+Antes do envio, o worker revalida conta, condomínio, expiração da sessão, preferência e vínculo do dispositivo. Avisos de lojas em fila são marcados como não elegíveis e não são entregues. Uma entrega antiga não acompanha o token quando ele é associado a outra conta/sessão. Entregas antigas/inaptas são encerradas. O histórico tem retenção de 90 dias; a limpeza acontece nas execuções habilitadas do worker. Configure a limpeza de fluxos de autenticação expirados também pelo comando de manutenção abaixo se push permanecer desativado.
 
-Push/Expo/FCM/APNs não garantem entrega exatamente uma vez nem recibo de leitura. Uma falha de rede após aceite pelo provedor pode resultar em repetição. O histórico e a API são a fonte de verdade. Mensagens de pedidos usam texto genérico, sem nome, apartamento, telefone, itens ou valores na tela bloqueada. Avisos escritos pelo administrador/vendedor são conteúdo da publicação e devem evitar dados privados de moradores.
+Push/Expo/FCM/APNs não garantem entrega exatamente uma vez nem recibo de leitura. Uma falha de rede após aceite pelo provedor pode resultar em repetição. O histórico e a API são a fonte de verdade. Mensagens de pedidos usam texto genérico, sem nome, apartamento, telefone, itens ou valores na tela bloqueada. Avisos institucionais escritos pelo administrador são conteúdo da publicação e devem evitar dados privados de moradores.
 
 ## Contratos de push
 
@@ -68,11 +65,11 @@ Push/Expo/FCM/APNs não garantem entrega exatamente uma vez nem recibo de leitur
 | `POST /api/push/devices` | Sessão nativa; instalação, token Expo, plataforma e projeto esperado |
 | `DELETE /api/push/devices` | Remove dispositivos vinculados à sessão atual |
 | `GET/PATCH /api/push/preferences` | Preferências próprias do usuário |
-| `GET/PUT/DELETE /api/push/shops/:id` | Consulta/inscrição/remoção em loja ativa do mesmo condomínio |
+| `GET/PUT/DELETE /api/push/shops/:id` | Rota desativada: retorna 410 para clientes antigos |
 | `GET /api/push/inbox?page=0` | Histórico próprio, 30 avisos por página |
 | `GET/PATCH /api/push/inbox/:id` | Aviso próprio e marcação de leitura |
 | `POST /api/admin/push/announcements` | Administrador web, condomínio ativo da sessão |
-| `POST /api/shops/mine/push` | Proprietário web, loja ativa própria |
+| `POST /api/shops/mine/push` | Rota desativada: retorna 410 para clientes antigos |
 
 Dispositivos, tokens de provedor e listas privadas de destinatários não são devolvidos ao remetente nem ao aplicativo. O app só recebe o identificador do aviso no payload de navegação e consulta a API autenticada para abri-lo.
 
@@ -80,7 +77,7 @@ Dispositivos, tokens de provedor e listas privadas de destinatários não são d
 
 - `npm run typecheck`, `npm test`, `npm run build`.
 - CI mantém a integração web em PostgreSQL e executa `node --import tsx scripts/smoke-mobile.mjs` com o stub Supabase isolado.
-- O teste móvel verifica confirmação de e-mail, audiência da sessão, bloqueio de painéis, isolamento condominial, inscrição, publicação idempotente, pedidos idempotentes, eventos, concessão Google de uso único, logout e remoção de dispositivos.
+- O teste móvel verifica confirmação de e-mail, audiência da sessão, bloqueio de avisos de loja (web e mobile), supressão de avisos históricos em fila, publicação administrativa, pedidos idempotentes, eventos, concessão Google de uso único, logout e remoção de dispositivos.
 - O transporte de push é substituído por respostas locais nesse teste: fila, recibos, opt-out, vínculo de dispositivo e `DeviceNotRegistered` são exercitados sem enviar mensagens reais.
 - Validar Google real, e-mails, upload/Storage, navegação por alerta, APNs/FCM e recebimento em development builds físicas Android/iOS antes de liberar a versão.
 
