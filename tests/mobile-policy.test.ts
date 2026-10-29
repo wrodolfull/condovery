@@ -6,7 +6,7 @@ import { sessionCredential } from "../src/lib/auth";
 import { expoTokenValid } from "../src/server/push";
 import { retryDelay } from "../src/server/push-dispatch";
 const id = "22da294e-aab1-43ba-b9df-4807b87cf880";
-test("mobile credentials can buy and use only resident capabilities", () => {
+test("mobile credentials can buy and use owner-scoped seller capabilities", () => {
   for (const [path, method] of [
     ["home", "GET"],
     ["orders", "POST"],
@@ -23,12 +23,8 @@ test("mobile credentials can buy and use only resident capabilities", () => {
   for (const [path, method] of [
     ["admin/summary", "GET"],
     ["platform/condominiums", "GET"],
-    ["shops/mine", "GET"],
     ["shops/mine/push", "POST"],
-    ["products", "POST"],
-    ["orders/" + id, "PATCH"],
     ["fairs/manage", "GET"],
-    ["fairs/seller", "GET"],
     ["media/ad", "POST"],
     ["auth/login", "POST"],
   ])
@@ -69,4 +65,18 @@ test("push validates tokens and bounds provider backoff", () => {
   assert.equal(expoTokenValid("https://attacker.example/token"), false);
   assert.equal(retryDelay(1), 30);
   assert.equal(retryDelay(30), 1800);
+});
+
+test("mobile seller operations are allowlisted but privileged admin endpoints remain blocked", () => {
+  for (const [route,method] of [
+    ["shops/mine","GET"],["shops/mine","POST"],["shops/mine","PATCH"],
+    ["shops/mine/status","PATCH"],["shops/mine/reviews","GET"],
+    ["shops/mine/reviews/"+id,"PATCH"],["products","POST"],
+    ["products/"+id,"PATCH"],["products/"+id,"DELETE"],
+    ["orders/"+id,"PATCH"],["seller/insights","GET"],
+    ["fairs/seller","GET"],["fairs/"+id+"/applications","POST"],
+    ["fairs/"+id+"/applications/"+id,"DELETE"],["media","POST"],
+  ]) assert.equal(mobileRouteAllowed(route,method),true,route+" "+method);
+  for (const route of ["admin/summary","fairs/manage","media/ad","shops/mine/push"])
+    assert.equal(mobileRouteAllowed(route,"POST"),false,route);
 });
