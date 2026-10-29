@@ -127,7 +127,7 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
   const path=parts.join('/');
   const requestedTenant=await tenantForRequest(req);
   if(req.headers.has('authorization')){
-    if(!mobileRouteAllowed(path,method)||(path==='orders'&&req.nextUrl.searchParams.has('scope')))bad('Esta ação deve ser realizada pelo navegador.',403);
+    if(!mobileRouteAllowed(path,method)||(path==='orders'&&req.nextUrl.searchParams.has('scope')&&(method!=='GET'||req.nextUrl.searchParams.get('scope')!=='seller')))bad('Esta ação deve ser realizada pelo navegador.',403);
   }
   const mobile=await handleMobileAuth(req,method,path,requestedTenant?.id);
   if(mobile)return mobile;
