@@ -892,3 +892,56 @@ try{
   assert.match(raw.rows[0].subject_hash,/^[0-9a-f]{64}$/);
 }finally{await protectionDB.end();}
 console.log('Anti-CSRF checks, login throttling, legacy password purge and event RLS PASS.');
+
+// Historical orders must remain reachable beyond the previous 100-record cap.
+// Build fixtures in the isolated CI database so no real payments/pushes occur.
+const pagingDB=new pg.Client({connectionString:process.env.DATABASE_URL});
+await pagingDB.connect();
+let pageFixtureIds=[];
+try{
+  const seeded=await pagingDB.query(
+    "INSERT INTO orders(condominium_id,buyer_id,shop_id,status,fulfillment,total_cents) "+
+    "SELECT $1,$2,$3,'completed','pickup',1000 FROM generate_series(1,113) RETURNING id",
+    [originalTenant,buyerLogin.data.viewer?.id??(await pagingDB.query('SELECT id FROM users WHERE email=$1',[buyerEmail])).rows[0].id,shopId]
+  );
+  pageFixtureIds=seeded.rows.map(x=>x.id);
+  const seen=new Set();
+  let cursor=null;
+  let pages=0;
+  do{
+    const url='orders?limit=25'+(cursor?'&cursor='+encodeURIComponent(cursor):'');
+    const data=(await request(url,{cookie:buyerCookie})).data;
+    assert.ok(data.orders.length<=25,'page must be bounded');
+    for(const order of data.orders){
+      assert.ok(!seen.has(order.id),'no duplicate orders across pages');
+      seen.add(order.id);
+    }
+    if(data.hasMore){
+      assert.ok(data.nextCursor,'non-final page has a cursor');
+      assert.equal(String(data.orders.at(-1).code),data.nextCursor);
+    }else assert.equal(data.nextCursor,null);
+    cursor=data.nextCursor;
+    pages++;
+    assert.ok(pages<25,'cursor must progress');
+  }while(cursor);
+  for(const id of pageFixtureIds)assert.ok(seen.has(id),'every older order should remain reachable');
+  assert.ok(pages>=5);
+  const sellerPage=(await request('orders?scope=seller&limit=20',{cookie:sellerCookie})).data;
+  assert.equal(sellerPage.orders.length,20);
+  assert.ok(sellerPage.hasMore);
+  const buyerFiltered=(await request('orders?status=completed&limit=30',{cookie:buyerCookie})).data;
+  assert.equal(buyerFiltered.orders.length,30);
+  assert.ok(buyerFiltered.orders.every(x=>x.status==='completed'));
+  await request('orders?cursor=undefined',{cookie:buyerCookie,expected:400});
+  await request('orders?limit=51',{cookie:buyerCookie,expected:400});
+  await request('orders?limit=-1',{cookie:buyerCookie,expected:400});
+  await request('orders?scope=seller&cursor=not-a-number',{cookie:sellerCookie,expected:400});
+  // Another resident cannot see this buyer's historical IDs.
+  const notOwner=(await request('orders?limit=50',{cookie:sellerCookie})).data.orders;
+  assert.ok(notOwner.every(o=>!pageFixtureIds.includes(o.id)));
+  console.log('Order cursor history PASS: 113+ records, filters, access, no duplicates, invalid input.');
+}finally{
+  if(pageFixtureIds.length)await pagingDB.query('DELETE FROM orders WHERE id=ANY($1::uuid[])',[pageFixtureIds]);
+  await pagingDB.end();
+}
+
