@@ -17,6 +17,10 @@ export function mobileRouteAllowed(path: string, method: string): boolean {
   if (new RegExp("^shops/" + id + "/reviews$").test(path))
     return method === "GET";
   // Seller endpoints retain all server-side owner, tenant and status checks.
+  if (path === "seller/insights") return method === "GET";
+  if (path === "fairs/seller") return method === "GET";
+  if (new RegExp("^fairs/" + id + "/applications$").test(path)) return method === "POST";
+  if (new RegExp("^fairs/" + id + "/applications/" + id + "$").test(path)) return method === "DELETE";
   if (path === "shops/mine")
     return ["GET", "POST", "PATCH", "DELETE"].includes(method);
   if (path === "shops/mine/status") return method === "PATCH";
