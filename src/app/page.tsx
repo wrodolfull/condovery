@@ -606,18 +606,6 @@ export default function Page(){
   async function shareShop(id:string,name:string){
     const shop=home.shops.find(item=>item.id===id)??(selectedShop?.shop.id===id?selectedShop.shop:null)??(myShop?.id===id?myShop:null);
     const link=new URL(shop?.slug?shopSharePath(shop.slug):'/?loja='+encodeURIComponent(id),window.location.origin).toString();
-    // Native Android/iOS share sheet is available on HTTPS (secure context).
-    // Call share directly in the user's click, before any other awaited work.
-    if(window.isSecureContext&&typeof navigator.share==='function'){
-      try{
-        await navigator.share({title:name,text:'Conheça esta loja no Condovery!',url:link});
-        return;
-      }catch(e){
-        if(e instanceof DOMException&&e.name==='AbortError')return;
-      }
-    }
-    // HTTP LAN origins cannot invoke the OS share sheet. Provide useful alternatives
-    // instead of silently copying a link.
     setShareFallback({link,name});
   }
   async function copyShopLink(link:string){
@@ -1159,6 +1147,12 @@ export default function Page(){
         <div className="shop-head"><div><h1>{selectedShop.shop.name}</h1><p>{selectedShop.shop.description}</p></div>
           <div className="shop-actions">
             <Pill tone={selectedShop.shop.is_open?'green':'neutral'}>{selectedShop.shop.is_open?'Aceitando pedidos':'Fechada'}</Pill>
+            <button type="button" className={'shop-save-button'+(favoriteShopIds.includes(selectedShop.shop.id)?' is-saved':'')}
+              aria-pressed={favoriteShopIds.includes(selectedShop.shop.id)}
+              onClick={()=>toggleShopFavorite(selectedShop.shop.id)}>
+              <Heart size={17} fill={favoriteShopIds.includes(selectedShop.shop.id)?'currentColor':'none'}/>
+              {favoriteShopIds.includes(selectedShop.shop.id)?'Loja salva':'Salvar loja'}
+            </button>
             <button className="shop-share-button" onClick={()=>shareShop(selectedShop.shop.id,selectedShop.shop.name)}>
               <Share2 size={17}/> Compartilhar loja
             </button>
@@ -1172,6 +1166,16 @@ export default function Page(){
             <><RoundedStars value={0} size={22}/><span>Sem avaliação</span></>}
         </div>
         <div className="shop-benefits"><span><Truck size={17}/> {selectedShop.shop.delivery_enabled?'Entrega disponível':'Sem entrega'}</span>{selectedShop.shop.pickup_enabled&&<span><ShoppingBag size={17}/> Retirada</span>}{selectedShop.shop.lead_time&&<span><Clock3 size={17}/>{selectedShop.shop.lead_time}</span>}</div>
+        {selectedShop.products.some(p=>p.visibility==='available'&&p.promo_price_cents!=null&&p.promo_price_cents<p.price_cents&&p.stock!==0)&&<>
+          <SectionHeader title="Ofertas"/>
+          <div className="shop-offers-scroll" role="region" aria-label="Ofertas da loja" tabIndex={0}>
+            {selectedShop.products.filter(p=>p.visibility==='available'&&p.promo_price_cents!=null&&p.promo_price_cents<p.price_cents&&p.stock!==0).map(p=>
+              <div className="shop-offer-item" key={p.id}>
+                <ProductCard p={{...p,shop_name:selectedShop.shop.name}} onClick={()=>openProduct({...p,shop_name:selectedShop.shop.name})} favorite={favoriteIds.includes(p.id)} onFavorite={toggleFavorite}/>
+              </div>
+            )}
+          </div>
+        </>}
         <SectionHeader title="Produtos da loja"/>
         <div className="product-grid">{selectedShop.products.map(p=><ProductCard key={p.id} p={{...p,shop_name:selectedShop.shop.name}} onClick={()=>openProduct({...p,shop_name:selectedShop.shop.name})} favorite={favoriteIds.includes(p.id)} onFavorite={toggleFavorite}/>)}</div>
         {!selectedShop.products.length&&<Empty title="Loja sem produtos no momento" subtitle="Em breve, novidades por aqui."/>}
@@ -1285,10 +1289,16 @@ export default function Page(){
         <button className="outline-button" onClick={()=>{loadOrders();go('orders');}}>Acompanhar meus pedidos</button><small>Abrir o WhatsApp não significa que o vendedor recebeu ou confirmou o pedido.</small></div>}
 
       {view==='favorites'&&<>
-        <div className="page-title"><h1>Meus favoritos</h1><p>Seus produtos preferidos, sempre à mão.</p></div>
+        <div className="page-title"><h1>Meus favoritos</h1><p>Suas lojas e produtos preferidos, sempre à mão.</p></div>
+        {!!favoriteShops.length&&<>
+          <SectionHeader title="Lojas salvas"/>
+          <div className="saved-shop-list">{favoriteShops.map(shop=><button type="button" key={shop.id} className="saved-shop-card" onClick={()=>openShop(shop.id)}>
+            <ShopLogo src={shop.logo_image} name={shop.name}/><span><strong>{shop.name}</strong><small>{shop.description}</small></span><ChevronRight size={18}/>
+          </button>)}</div>
+        </>}
         {favoriteProducts.length?<div className="product-grid">{favoriteProducts.map(p=>
           <ProductCard key={p.id} p={p} onClick={()=>openProduct(p)} favorite={favoriteIds.includes(p.id)} onFavorite={toggleFavorite}/>
-        )}</div>:<Empty art="emptyFavorites" title="Nenhum favorito por enquanto" subtitle="Toque no coração de um produto para encontrá-lo facilmente depois." action="Explorar produtos" onAction={()=>go('categories')}/>}
+        )}</div>:!favoriteShops.length&&<Empty art="emptyFavorites" title="Nenhum favorito por enquanto" subtitle="Toque no coração de um produto para encontrá-lo facilmente depois." action="Explorar produtos" onAction={()=>go('categories')}/>}
       </>}
             {view==='orders'&&<>
         <div className="page-title"><h1>Meus pedidos</h1><p>Acompanhe seus pedidos com os vizinhos.</p></div>
