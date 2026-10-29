@@ -17,6 +17,7 @@ import {clientUUID} from '@/lib/client-uuid';
 import {parseMoneyInput} from '@/lib/money-input';
 import {mergeRefreshedOrders} from '@/lib/order-live-refresh';
 import {shopSharePath} from '@/lib/shop-slug';
+import {blankShopDraft,shopDraftKey,readShopDraft,type ShopDraft} from '@/lib/shop-draft';
 import {PAYMENT_METHODS,PAYMENT_LABELS,allowedPaymentMethods,type PaymentMethod} from '@/lib/payment-methods';
 import {supportsMessengerIntent,whatsappMessengerHref} from '@/lib/whatsapp-launch';
 import {towerLabels,currentTowerScheme,type TowerScheme} from '@/lib/towers';
@@ -283,7 +284,12 @@ export default function Page(){
   const [tenantForm,setTenantForm]=useState({name:'',slug:'',invite_code:'',tower_scheme:'letters',tower_count:30,custom_domain:''});
   const [tenantAdmin,setTenantAdmin]=useState({condominium_id:'',name:'',email:'',password:''});
   const [sellerTab,setSellerTab]=useState<'orders'|'products'|'reviews'|'settings'|'insights'|'fairs'>('orders');
-  const [shopForm,setShopForm]=useState({name:'',description:'',whatsapp:'',is_open:true,delivery_enabled:true,delivery_fee_cents:0,pickup_enabled:true,lead_time:'',pickup_instructions:'',cover_image:'',logo_image:'',payment_methods:['pix','credit_card','debit_card','cash'] as PaymentMethod[]});
+  const [shopForm,setShopForm]=useState<ShopDraft>(blankShopDraft);
+  const shopDraftScopeRef=useRef<string|null>(null);
+  const shopDraftDirtyRef=useRef(false);
+  const [shopDraftDirty,setShopDraftDirty]=useState(false);
+  const viewerRef=useRef<Viewer|null>(null);
+  viewerRef.current=viewer;
   const [productForm,setProductForm]=useState({id:'',name:'',description:'',category_id:'',price:'',promo:'',stock:'',image_url:'',visibility:'available' as Product['visibility'],lead_time:'',option_groups:[] as OptionGroup[]});
   const [editingProduct,setEditingProduct]=useState(false);
   const [deleteProductTarget,setDeleteProductTarget]=useState<Product|null>(null);
@@ -305,6 +311,27 @@ export default function Page(){
   const [towerScheme,setTowerScheme]=useState<TowerScheme>('letters');
   const [towerCount,setTowerCount]=useState(30);
 
+  const updateShopForm=(change:React.SetStateAction<ShopDraft>)=>{
+    if(viewer){
+      shopDraftScopeRef.current=shopDraftKey(viewer.id,viewer.condominium_id,myShop?.id??null);
+      shopDraftDirtyRef.current=true;
+      setShopDraftDirty(true);
+    }
+    setShopForm(change);
+  };
+  useEffect(()=>{
+    if(!viewer||!shopDraftDirty)return;
+    const scope=shopDraftKey(viewer.id,viewer.condominium_id,myShop?.id??null);
+    if(scope!==shopDraftScopeRef.current)return;
+    try{window.sessionStorage.setItem(scope,JSON.stringify(shopForm));}catch{}
+  },[shopForm,shopDraftDirty,viewer?.id,viewer?.condominium_id,myShop?.id]);
+  const discardShopDraft=()=>{
+    if(shopDraftScopeRef.current){
+      try{window.sessionStorage.removeItem(shopDraftScopeRef.current);}catch{}
+    }
+    shopDraftDirtyRef.current=false;setShopDraftDirty(false);
+    void loadMine().catch(fail);
+  };
   const notify=(msg:string)=>{setToast(msg);setError('');};
   const fail=(e:unknown)=>setError(e instanceof Error?e.message:'Não foi possível concluir.');
   const go=(next:View)=>{
@@ -330,14 +357,27 @@ export default function Page(){
     const result=await api<{ids:string[];shops:Shop[]}>('favorite-shops');
     setFavoriteShopIds(result.ids);setFavoriteShops(result.shops);
   },[]);
-  const loadMine=useCallback(async()=>{
+  const loadMine=useCallback(async(forViewer?:Viewer)=>{
     const data=await api<{shop:Shop|null;products:Product[]}>('shops/mine');
+    const u=forViewer??viewerRef.current;
     setMyShop(data.shop);setMyProducts(data.products);
-    if(data.shop)setShopForm({
+    if(!u)return;
+    const scope=shopDraftKey(u.id,u.condominium_id,data.shop?.id??null);
+    const server:ShopDraft=data.shop?{
       name:data.shop.name,description:data.shop.description,whatsapp:data.shop.whatsapp??'',
       is_open:data.shop.is_open,delivery_enabled:data.shop.delivery_enabled,delivery_fee_cents:data.shop.delivery_fee_cents??0,pickup_enabled:data.shop.pickup_enabled,
       lead_time:data.shop.lead_time??'',pickup_instructions:data.shop.pickup_instructions??'',cover_image:data.shop.cover_image??'',logo_image:data.shop.logo_image??'',payment_methods:allowedPaymentMethods(data.shop.payment_methods)
-    });
+    }:blankShopDraft();
+    if(scope!==shopDraftScopeRef.current){
+      let saved:ShopDraft|null=null;
+      try{saved=readShopDraft(window.sessionStorage.getItem(scope));}catch{}
+      shopDraftScopeRef.current=scope;
+      shopDraftDirtyRef.current=!!saved;
+      setShopDraftDirty(!!saved);
+      setShopForm(saved??server);
+    }else if(!shopDraftDirtyRef.current){
+      setShopForm(server);
+    }
   },[]);
   const loadOrders=useCallback(async(filter:OrderFilter='all',cursor?:string,mode:'replace'|'refresh'='replace')=>{
     const current=++buyerOrdersRequest.current;
@@ -447,7 +487,7 @@ export default function Page(){
   // Orders are fetched by the orders-view effect when that screen opens.
   // Avoid fetching them at login (and again when entering the orders screen).
   const refresh=useCallback(async(u:Viewer)=>{
-    await Promise.all([loadHome(),loadMine(),loadFavorites(),loadShopFavorites()]);
+    await Promise.all([loadHome(),loadMine(u),loadFavorites(),loadShopFavorites()]);
   },[loadHome,loadMine,loadFavorites,loadShopFavorites]);
 
   useEffect(()=>{
@@ -903,6 +943,12 @@ export default function Page(){
         await api('shops/mine',{method:'PATCH',body:payload({...shopForm,cover_image:shopForm.cover_image||null})});
         notify('Configurações salvas.');
       }
+      if(shopDraftScopeRef.current){
+        try{window.sessionStorage.removeItem(shopDraftScopeRef.current);}catch{}
+      }
+      shopDraftScopeRef.current=null;
+      shopDraftDirtyRef.current=false;
+      setShopDraftDirty(false);
       await loadMine();await loadHome();
     }catch(e){fail(e);}finally{setBusy(false);}
   }
@@ -930,7 +976,9 @@ export default function Page(){
       });
       setShowDeleteShop(false);setShopDeleteConfirmation('');
       setMyShop(null);setMyProducts([]);setSellerOrders([]);setSellerOrdersCursor(null);setSellerReviews([]);
-      setShopForm({name:'',description:'',whatsapp:'',is_open:true,delivery_enabled:true,delivery_fee_cents:0,pickup_enabled:true,lead_time:'',pickup_instructions:'',cover_image:'',logo_image:'',payment_methods:['pix','credit_card','debit_card','cash'] as PaymentMethod[]});
+      if(shopDraftScopeRef.current){try{window.sessionStorage.removeItem(shopDraftScopeRef.current);}catch{}}
+      shopDraftScopeRef.current=null;shopDraftDirtyRef.current=false;setShopDraftDirty(false);
+      setShopForm(blankShopDraft());
       setCart(items=>items.filter(item=>item.product.shop_id!==oldId));
       if(selectedShop?.shop.id===oldId)setSelectedShop(null);
       await loadHome();go('account');notify(result.message);
@@ -956,10 +1004,11 @@ export default function Page(){
         const result=await api<{viewer:Viewer}>('me');setViewer(result.viewer);
         setProfile(p=>({...p,avatar_image:res.url}));notify('Foto de perfil salva.');
       }else{
-        const next={...shopForm,[kind==='logo'?'logo_image':'cover_image']:res.url};
-        await api('shops/mine',{method:'PATCH',body:payload(next)});
-        setShopForm(next);
-        await loadMine();notify(kind==='logo'?'Foto da loja salva.':'Foto de capa salva.');
+        // A media upload is only staged. Persisting the entire form here used to
+        // publish unrelated, unsaved fields and could overwrite user edits.
+        updateShopForm(current=>({...current,[kind==='logo'?'logo_image':'cover_image']:res.url}));
+        setSellerTab('settings');
+        notify('Imagem pronta. Salve as configurações para publicá-la.');
       }
     }catch(e){fail(e);}finally{setBusy(false);}
   }
@@ -1619,9 +1668,10 @@ export default function Page(){
       {view==='seller'&&<><button className="back-link" onClick={()=>go('account')}><ArrowLeft size={18}/> Minha conta</button><div className="page-title"><h1>Painel do vendedor</h1><p>Seu negócio, a poucos passos de seus clientes.</p></div>
         {!myShop?<div className="seller-setup white-panel"><IllustrationSlot className="setup-illustration" src={artwork.sellerWelcome}
   alt="Ilustração para nova loja" fallback={<Store size={38}/>}/><h2>Vamos abrir sua lojinha?</h2><p>Abra sua loja agora. Informe os dados e siga as regras da comunidade.</p><form onSubmit={saveShop} className="form-stack">
-          <label>Nome da loja<input required minLength={3} value={shopForm.name} onChange={e=>setShopForm(s=>({...s,name:e.target.value}))} placeholder="Ex.: Bolos da Gabi"/></label>
-          <label>O que você vende?<textarea maxLength={500} value={shopForm.description} onChange={e=>setShopForm(s=>({...s,description:e.target.value}))} rows={3} placeholder="Conte um pouco sobre seus produtos"/></label>
-          <label>WhatsApp para pedidos<input required type="tel" value={shopForm.whatsapp} onChange={e=>setShopForm(s=>({...s,whatsapp:e.target.value}))} placeholder="(19) 99999-9999"/></label>
+          {shopDraftDirty&&<div role="status" className="shop-draft-message"><strong>Cadastro em rascunho</strong><span>Os campos preenchidos serão mantidos nesta sessão.</span></div>}
+          <label>Nome da loja<input required minLength={3} value={shopForm.name} onChange={e=>updateShopForm(s=>({...s,name:e.target.value}))} placeholder="Ex.: Bolos da Gabi"/></label>
+          <label>O que você vende?<textarea maxLength={500} value={shopForm.description} onChange={e=>updateShopForm(s=>({...s,description:e.target.value}))} rows={3} placeholder="Conte um pouco sobre seus produtos"/></label>
+          <label>WhatsApp para pedidos<input required type="tel" value={shopForm.whatsapp} onChange={e=>updateShopForm(s=>({...s,whatsapp:e.target.value}))} placeholder="(19) 99999-9999"/></label>
           <button type="button" className="outline-button" onClick={testShopWhatsApp}>
             <MessageCircle size={17}/> Testar WhatsApp</button>
           <p className="form-hint">Confira se a conversa abre no número correto. Não enviamos mensagens automaticamente.</p>
@@ -1796,30 +1846,31 @@ export default function Page(){
               </article>)}
             </div>:<Empty title="Seu catálogo está vazio" subtitle="Adicione o primeiro produto para começar a vender."/>}</>}
           {sellerTab==='settings'&&<form className="white-panel form-stack" onSubmit={saveShop}>
-            <label>Nome da loja<input required minLength={3} value={shopForm.name} onChange={e=>setShopForm(s=>({...s,name:e.target.value}))}/></label>
-            <label>Descrição<textarea rows={3} maxLength={500} value={shopForm.description} onChange={e=>setShopForm(s=>({...s,description:e.target.value}))}/></label>
-            <label>WhatsApp<input required value={shopForm.whatsapp} onChange={e=>setShopForm(s=>({...s,whatsapp:e.target.value}))}/></label>
+            {shopDraftDirty&&<div role="status" className="shop-draft-message"><strong>Alterações não salvas</strong><span>Os dados foram mantidos como rascunho nesta sessão. Clique em salvar para publicá-los.</span><button type="button" className="outline-button" disabled={busy} onClick={discardShopDraft}>Descartar alterações</button></div>}
+            <label>Nome da loja<input required minLength={3} value={shopForm.name} onChange={e=>updateShopForm(s=>({...s,name:e.target.value}))}/></label>
+            <label>Descrição<textarea rows={3} maxLength={500} value={shopForm.description} onChange={e=>updateShopForm(s=>({...s,description:e.target.value}))}/></label>
+            <label>WhatsApp<input required value={shopForm.whatsapp} onChange={e=>updateShopForm(s=>({...s,whatsapp:e.target.value}))}/></label>
             <button type="button" className="outline-button" onClick={testShopWhatsApp}><MessageCircle size={17}/> Testar número no WhatsApp</button>
             <label>Foto de perfil da loja<div className="image-upload">{shopForm.logo_image?<img src={shopForm.logo_image} alt="Perfil da loja"/>:<ImagePlus size={30}/>}<span>Adicionar foto da loja</span><input aria-label="Enviar foto do perfil da loja" type="file" accept="image/jpeg,image/png,image/webp" disabled={busy} onChange={e=>{const file=e.target.files?.[0];e.target.value='';choosePhoto(file,'logo');}}/></div></label>
             <label>Foto de capa<div className="image-upload">{shopForm.cover_image?<img src={shopForm.cover_image} alt="Capa"/>:<ImagePlus size={30}/>}<span>Enviar foto de capa</span><input aria-label="Enviar foto de capa" type="file" accept="image/jpeg,image/png,image/webp" onChange={e=>{const f=e.target.files?.[0];e.target.value='';choosePhoto(f,'cover');}}/></div></label>
-            <label>Prazo de preparo<input maxLength={100} value={shopForm.lead_time} onChange={e=>setShopForm(s=>({...s,lead_time:e.target.value}))} placeholder="Ex.: Até 2 horas"/></label>
-            <label>Orientações para retirada<textarea rows={2} maxLength={250} value={shopForm.pickup_instructions} onChange={e=>setShopForm(s=>({...s,pickup_instructions:e.target.value}))}/></label>
+            <label>Prazo de preparo<input maxLength={100} value={shopForm.lead_time} onChange={e=>updateShopForm(s=>({...s,lead_time:e.target.value}))} placeholder="Ex.: Até 2 horas"/></label>
+            <label>Orientações para retirada<textarea rows={2} maxLength={250} value={shopForm.pickup_instructions} onChange={e=>updateShopForm(s=>({...s,pickup_instructions:e.target.value}))}/></label>
             <p className="muted seller-pause-note">Para abrir ou fechar a loja imediatamente, use o botão {myShop.is_open?'Fechar loja':'Abrir loja'} no topo deste painel.</p>
-            <label className="check-label"><input type="checkbox" checked={shopForm.delivery_enabled} onChange={e=>setShopForm(s=>({...s,delivery_enabled:e.target.checked}))}/> Oferecer entrega</label>
+            <label className="check-label"><input type="checkbox" checked={shopForm.delivery_enabled} onChange={e=>updateShopForm(s=>({...s,delivery_enabled:e.target.checked}))}/> Oferecer entrega</label>
             {shopForm.delivery_enabled&&<label>Taxa de entrega (R$)
               <MoneyInput cents={shopForm.delivery_fee_cents}
-                onValue={cents=>setShopForm(x=>({...x,delivery_fee_cents:cents}))}/>
+                onValue={cents=>updateShopForm(x=>({...x,delivery_fee_cents:cents}))}/>
               <small className="muted">Digite o valor em reais, por exemplo 5,50. Para entrega grátis, use 0,00.</small>
             </label>}
             <div className="offline-payment-settings"><h3>Formas de pagamento aceitas</h3>
               <p className="muted">Selecione pelo menos uma opção. O pagamento ocorre diretamente com o comprador.</p>
               {PAYMENT_METHODS.map(method=><label key={method} className="check-label">
                 <input type="checkbox" checked={shopForm.payment_methods.includes(method)}
-                  onChange={event=>setShopForm(current=>({...current,payment_methods:event.target.checked?
+                  onChange={event=>updateShopForm(current=>({...current,payment_methods:event.target.checked?
                     [...current.payment_methods,method]:current.payment_methods.filter(item=>item!==method)}))}/>
                 {PAYMENT_LABELS[method]}</label>)}
             </div>
-            <label className="check-label"><input type="checkbox" checked={shopForm.pickup_enabled} onChange={e=>setShopForm(s=>({...s,pickup_enabled:e.target.checked}))}/> Oferecer retirada</label>
+            <label className="check-label"><input type="checkbox" checked={shopForm.pickup_enabled} onChange={e=>updateShopForm(s=>({...s,pickup_enabled:e.target.checked}))}/> Oferecer retirada</label>
             <button className="primary-button" disabled={busy} type="submit">Salvar configurações <Check size={18}/></button>
             <div className="shop-danger-zone"><h3>Encerrar loja</h3>
               <p>A exclusão remove sua loja da vitrine e seus produtos. Pedidos anteriores são preservados.
