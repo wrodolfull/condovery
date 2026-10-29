@@ -415,19 +415,19 @@ try {
   const legacyShopNotice=crypto.randomUUID();
   await db.query(
     "INSERT INTO push_notifications(id,user_id,condominium_id,kind,title,body,target_id,event_key) VALUES($1,$2,$3,'shop',$4,$5,$6,$7)",
-    [legacyShopNotice,buyer.me.id,buyer.me.condominium_id,
+    [legacyShopNotice,seller.me.id,seller.me.condominium_id,
       "Old shop message","Retired notice",owned.id,"retired-shop:"+tag]
   );
   const legacyDevice=(await db.query(
     "SELECT id,session_hash FROM push_devices WHERE user_id=$1 LIMIT 1",
-    [buyer.me.id]
+    [seller.me.id]
   )).rows[0];
   await db.query(
     "INSERT INTO push_deliveries(notification_id,device_id,session_hash) VALUES($1,$2,$3)",
     [legacyShopNotice,legacyDevice.id,legacyDevice.session_hash]
   );
-  assert.ok(!(await request("push/inbox",{token:buyer.token})).data.notifications.some(n=>n.id===legacyShopNotice));
-  await request("push/inbox/"+legacyShopNotice,{token:buyer.token,expected:404});
+  assert.ok(!(await request("push/inbox",{token:seller.token})).data.notifications.some(n=>n.id===legacyShopNotice));
+  await request("push/inbox/"+legacyShopNotice,{token:seller.token,expected:404});
   const staleNotice = crypto.randomUUID(),
     optoutNotice = crypto.randomUUID();
   for (const [id, kind, key] of [
