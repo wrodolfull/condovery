@@ -493,6 +493,7 @@ export default function Page(){
   useEffect(()=>{
     if(view!=='orders'||viewer?.status!=='approved')return;
     let active=true;
+    setOrders([]);setOrdersCursor(null);
     setOrdersLoading(true);
     loadOrders(orderFilter).catch(e=>{if(active)fail(e);})
       .finally(()=>{if(active)setOrdersLoading(false);});
@@ -787,7 +788,7 @@ export default function Page(){
   async function updateStatus(id:string,status:string){
     setBusy(true);try{
       await api('orders/'+id,{method:'PATCH',body:payload({status})});
-      await Promise.all([loadSellerOrders(),loadOrders(),loadHome(),loadMine()]);
+      await Promise.all([loadSellerOrders(),loadOrders(orderFilter),loadHome(),loadMine()]);
       notify('Pedido atualizado.');
     }catch(e){fail(e);}finally{setBusy(false);}
   }
