@@ -18,6 +18,9 @@ jobs:
       SUPABASE_ANON_KEY: ci-publishable-test-only
       SUPABASE_SERVICE_ROLE_KEY: ci-service-test-only
       APP_URL: http://127.0.0.1:3000
+      EXPO_PROJECT_ID: 11111111-1111-4111-8111-111111111111
+      MOBILE_AUTH_REDIRECT_URI: condovery://auth/callback
+      PUSH_ENABLED: 'false'
       AUTH_RATE_LIMIT_SECRET: ci-only-long-random-auth-throttle-secret-2026-not-production
     services:
       postgres:
@@ -70,6 +73,8 @@ jobs:
           exit 1
       - name: API integration test
         run: node scripts/smoke.mjs
+      - name: Native sessions and push integration
+        run: node --import tsx scripts/smoke-mobile.mjs
       - name: Install Chromium for responsive QA
         run: npx playwright install --with-deps chromium
       - name: Check mobile and desktop overflow

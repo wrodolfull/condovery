@@ -3,7 +3,7 @@ import { z, ZodError } from 'zod';
 import crypto from 'node:crypto';
 import sharp from 'sharp';
 import { query, transaction } from '@/lib/db';
-import { clearSession, inviteHash, issueSession, sessionViewer, tokenHash, type Viewer } from '@/lib/auth';
+import { clearSession, inviteHash, issueSession, sessionViewer, sessionCredential, tokenHash, type Viewer } from '@/lib/auth';
 import { normalizeWhatsApp, orderMessage, unitPrice, optionGroupsSchema, selectedOptions, extrasTotal, validArrivalInstructions, type OptionGroup, type Selection } from '@/lib/orders';
 import { passwordAuthClient,emailConfigured,recoveryConfigured,googleAuthClient,googleConfigured,storageAdmin,storageConfigured,STORAGE_BUCKET } from '@/lib/supabase';
 import { oauthCookie,randomToken,safeAppOrigin } from '@/lib/security';
@@ -26,6 +26,9 @@ import {handleCommunityFairs} from '@/server/community-fairs';
 import {limitAuthentication,clearAuthenticationFailures} from '@/lib/auth-rate-limit';
 import {protectMutation} from '@/lib/request-protection';
 import {isValidPassword} from '@/lib/password-policy';
+import {mobileRouteAllowed} from '@/lib/mobile-policy';
+import {handleMobileAuth,passwordMember} from '@/server/mobile-auth';
+import {handlePushApi,enqueueNewOrder,enqueueOrderStatus} from '@/server/push';
 
 export const runtime='nodejs';
 export const dynamic='force-dynamic';
@@ -123,6 +126,11 @@ function oauthRedirect(req:NextRequest,code?:string){
 async function processApi({req,method,parts}:Args):Promise<NextResponse> {
   const path=parts.join('/');
   const requestedTenant=await tenantForRequest(req);
+  if(req.headers.has('authorization')){
+    if(!mobileRouteAllowed(path,method)||(path==='orders'&&req.nextUrl.searchParams.has('scope')))bad('Esta ação deve ser realizada pelo navegador.',403);
+  }
+  const mobile=await handleMobileAuth(req,method,path,requestedTenant?.id);
+  if(mobile)return mobile;
   if(path==='public/condominium'&&method==='POST'){
     const input=z.object({invite:z.string().min(10).max(150)}).parse(await body(req));
     const invite=input.invite;
@@ -339,34 +347,12 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
     },201);
   }
   if(path==='auth/login'&&method==='POST'){
-    if(!emailConfigured())bad('Login por e-mail não configurado.',503);
-    const b=credentials.parse(await body(req));
-    await limitAuthentication(req,'login',b.email);
-    const {data,error}=await passwordAuthClient().auth.signInWithPassword({email:b.email,password:b.password});
-    if(error?.status===429)bad('Muitas tentativas. Tente novamente mais tarde.',429);
-    if(error||!data.user?.id||!data.user.email_confirmed_at)
-      bad('Credenciais inválidas ou e-mail ainda não confirmado.',401);
-    const verifiedUser=data.user!;
-    const member=await query(
-      'SELECT id,status,supabase_auth_user_id FROM users WHERE supabase_auth_user_id=$1 OR email=$2 LIMIT 1',
-      [verifiedUser.id,b.email]
-    );
-    if(!member.rowCount)bad('Conta sem vínculo com um condomínio. Solicite um convite.',403);
-    if(member.rows[0].supabase_auth_user_id&&member.rows[0].supabase_auth_user_id!==verifiedUser.id){
-      bad('Esta conta está vinculada a outra identidade. Entre em contato com a administração.',403);
-    }
-    if(member.rows[0].status==='suspended')bad('Conta suspensa.',403);
-    if(requestedTenant){const access=await query('SELECT condominium_id FROM users WHERE id=$1',[member.rows[0].id]);if(access.rows[0]?.condominium_id!==requestedTenant.id)bad('Esta conta pertence a outro condomínio.',403);}
-    if(!member.rows[0].supabase_auth_user_id){
-      await query('UPDATE users SET supabase_auth_user_id=$1 WHERE id=$2 AND supabase_auth_user_id IS NULL',
-        [verifiedUser.id,member.rows[0].id]);
-    }
-    await clearAuthenticationFailures('login',b.email);
-    return (await issueAppLogin(member.rows[0].id)).response;
+    const member=await passwordMember(req,await body(req),requestedTenant?.id);
+    return (await issueAppLogin(member.id)).response;
   }
   if(path==='auth/logout'&&method==='POST'){
-    const token=req.cookies.get('condovery_session')?.value;
-    if(token)await query('DELETE FROM sessions WHERE token_hash=$1',[tokenHash(token)]);
+    const token=sessionCredential(req)?.token;
+    if(token)await query('DELETE FROM sessions WHERE token_hash=$1 AND client_kind=$2',[tokenHash(token),sessionCredential(req)!.kind]);
     const response=out({ok:true});clearSession(response);return response;
   }
   if(path==='me'&&method==='GET'){
@@ -385,6 +371,8 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
   const u=await viewer(req);
   if(u.status!=='approved')bad('Conta indisponível.',403);
   if(path.startsWith('platform/')&&requestedTenant)bad('A gestão global deve ser acessada pelo domínio principal.',403);
+  const push=await handlePushApi(req,method,path,parts,u);
+  if(push)return push;
   // Only the server-owned platform_admins table can authorize these routes.
   // Sessions of ordinary condo administrators can never choose another tenant.
   const adsResponse=await handleAdsApi({req,method,path,parts,u});
@@ -435,7 +423,7 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
       const verified=await passwordAuthClient().auth.signInWithPassword({email,password:currentPassword});
       if(verified.error||verified.data.user?.id!==authId)bad('Senha incorreta. Conta não excluída.',401);
     }else{
-      const cookie=req.cookies.get('condovery_session')?.value;
+      const cookie=sessionCredential(req)?.token;
       const fresh=cookie?await query(
         "SELECT 1 FROM sessions WHERE token_hash=$1 AND user_id=$2 AND created_at>now()-interval '15 minutes'",
         [tokenHash(cookie),u.id]
@@ -472,6 +460,9 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
         'INSERT INTO account_deletion_jobs(user_id,auth_user_id,email_hash,storage_keys) VALUES($1,$2,$3,$4::jsonb) RETURNING id',
         [u.id,authId,crypto.createHash('sha256').update(email).digest('hex'),JSON.stringify(keys)]
       );
+      await tx.query('DELETE FROM push_notifications WHERE user_id=$1',[u.id]);
+      await tx.query('DELETE FROM push_preferences WHERE user_id=$1',[u.id]);
+      await tx.query('DELETE FROM shop_push_subscriptions WHERE user_id=$1',[u.id]);
       // Review texts, favorites, reports and image objects are no longer needed.
       await tx.query('DELETE FROM shop_reviews WHERE buyer_id=$1 OR shop_id=ANY($2::uuid[])',
         [u.id,shopIds]);
@@ -890,7 +881,7 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
     }else return bad('Imagem indisponível.',404);
     return new NextResponse(new Blob([Buffer.from(bytes)]),{headers:{
       'Content-Type':r.rows[0].mime,'Cache-Control':'private,max-age=3600',
-      'X-Content-Type-Options':'nosniff','Vary':'Cookie'
+      'X-Content-Type-Options':'nosniff','Vary':'Cookie, Authorization'
     }});
   }
   if(path==='products'&&method==='POST'){
@@ -1058,6 +1049,7 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
           [created.rows[0].id,item.product_id,item.name,item.quantity,item.unit_price_cents,item.note,JSON.stringify(item.options)]
         );
       }
+      await enqueueNewOrder(tx,created.rows[0]);
       const message=orderMessage({code:created.rows[0].code,shop:shop.name,buyer:u.name,tower:u.tower,
         apartment:u.apartment,items:items.map(i=>({name:i.name,quantity:i.quantity,unit_price_cents:i.unit_price_cents,
           note:i.note,options:i.options})),total_cents:total,subtotal_cents:subtotal,delivery_fee_cents:fee,
@@ -1109,6 +1101,7 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
         for(const item of items.rows)await tx.query('UPDATE products SET stock=CASE WHEN stock IS NULL THEN NULL ELSE stock+$1 END WHERE id=$2 AND condominium_id=$3',[item.quantity,item.product_id,u.condominium_id]);
       }
       const next=await tx.query('UPDATE orders SET status=$1,updated_at=now() WHERE id=$2 RETURNING *',[b.status,order.id]);
+      await enqueueOrderStatus(tx,next.rows[0]);
       return next.rows[0];
     });
     return out({order:updated});
