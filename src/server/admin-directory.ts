@@ -51,7 +51,7 @@ export async function handleAdminDirectory(req:NextRequest,method:string,path:st
     const columns=kind==='users'?['id','name','email','phone','tower','apartment','status','created_at']:['id','name','owner_name','status','is_open','created_at'];
     return new NextResponse(toSafeCSV(columns,result.rows),{headers:{
       'Content-Type':'text/csv; charset=utf-8',
-      'Content-Disposition':'attachment; filename="condovery-'+kind+'.csv"',
+      'Content-Disposition':'attachment; filename="elevadoor-'+kind+'.csv"',
       'Cache-Control':'private, no-store','X-Content-Type-Options':'nosniff'
     }});
   }
