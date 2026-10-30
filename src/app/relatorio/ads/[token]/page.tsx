@@ -2,8 +2,8 @@ import type {Metadata} from 'next';
 import {AdvertiserReportView} from '@/components/AdvertiserReportView';
 
 export const metadata:Metadata={
-  title:'Relatório de publicidade | Condovery ADS',
-  description:'Resultados de campanha publicitária no Condovery.',
+  title:'Relatório de publicidade | Elevadoor ADS',
+  description:'Resultados de campanha publicitária no Elevadoor.',
   robots:{index:false,follow:false,noarchive:true,nosnippet:true},
   other:{referrer:'no-referrer'}
 };
