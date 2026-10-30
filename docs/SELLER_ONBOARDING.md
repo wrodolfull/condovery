@@ -1,4 +1,4 @@
-# Condovery — Abertura de loja, perfil, produtos e WhatsApp
+# Elevadoor — Abertura de loja, perfil, produtos e WhatsApp
 
 ## Um único login
 
