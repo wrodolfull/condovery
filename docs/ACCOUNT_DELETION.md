@@ -1,4 +1,4 @@
-# Exclusão de conta (Condovery)
+# Exclusão de conta (Elevadoor)
 
 ## Morador
 Em **Minha conta → Excluir minha conta**, a pessoa digita `EXCLUIR`.
