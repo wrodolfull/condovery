@@ -8,34 +8,34 @@ import {
 import styles from './landing.module.css';
 
 export const metadata: Metadata = {
-  title: 'Condovery — Tudo de bom mora aqui',
+  title: 'Elevadoor — Tudo de bom mora aqui',
   description:
     'O marketplace exclusivo do seu condomínio. Descubra ofertas, compre dos vizinhos e divulgue sua loja em uma comunidade mais conectada.',
   openGraph: {
-    title: 'Condovery — Tudo de bom mora aqui',
+    title: 'Elevadoor — Tudo de bom mora aqui',
     description: 'Compre, venda e descubra o que tem pertinho. O marketplace exclusivo do seu condomínio.',
     type: 'website',
   },
 };
 
 // Configure uma destas variáveis no ambiente de produção para habilitar contato comercial.
-const whatsappNumber = (process.env.NEXT_PUBLIC_CONDOVERY_SALES_WHATSAPP ?? '').replace(/\D/g, '');
-const contactEmail = (process.env.NEXT_PUBLIC_CONDOVERY_SALES_EMAIL ?? '').trim();
+const whatsappNumber = ((process.env.NEXT_PUBLIC_ELEVADOOR_SALES_WHATSAPP ?? process.env.NEXT_PUBLIC_CONDOVERY_SALES_WHATSAPP) ?? '').replace(/\D/g, '');
+const contactEmail = ((process.env.NEXT_PUBLIC_ELEVADOOR_SALES_EMAIL ?? process.env.NEXT_PUBLIC_CONDOVERY_SALES_EMAIL) ?? '').trim();
 const salesHref = whatsappNumber
-  ? `https://wa.me/${whatsappNumber}?text=${encodeURIComponent('Olá! Gostaria de levar o Condovery para o meu condomínio.')}`
+  ? `https://wa.me/${whatsappNumber}?text=${encodeURIComponent('Olá! Gostaria de levar o Elevadoor para o meu condomínio.')}`
   : contactEmail
-    ? `mailto:${contactEmail}?subject=${encodeURIComponent('Condovery no meu condomínio')}`
+    ? `mailto:${contactEmail}?subject=${encodeURIComponent('Elevadoor no meu condomínio')}`
     : '/';
 
 function Logo() {
   return (
-    <Link href="/landing" aria-label="Condovery - início da apresentação" className={styles.logo}>
+    <Link href="/landing" aria-label="Elevadoor - início da apresentação" className={styles.logo}>
       <svg viewBox="0 0 38 42" aria-hidden="true" className={styles.logoMark}>
         <path d="M2 16.2 18.9 3 36 16v20.5h-8V20.7l-9-7.1-9 7V37H2Z" fill="#FFCF25" />
         <path d="M10 20.7 19 13.6 28 20.7V37h-9V25.5l-9 6.7Z" fill="#FF7857" />
         <path d="M19 25.5 28 20.7V37h-9Z" fill="#FFB36B" />
       </svg>
-      <span>Condovery</span>
+      <span>Elevadoor</span>
     </Link>
   );
 }
@@ -94,11 +94,11 @@ export default function LandingPage() {
             </div>
           </div>
           <div className={styles.heroVisual}>
-            <img src="/landing/hero-phones.svg" alt="Prévia ilustrativa do Condovery com lojas, ofertas e tela de pedido pelo WhatsApp" width="390" height="384" fetchPriority="high" />
+            <img src="/landing/hero-phones.svg" alt="Prévia ilustrativa do Elevadoor com lojas, ofertas e tela de pedido pelo WhatsApp" width="390" height="384" fetchPriority="high" />
           </div>
         </section>
 
-        <section id="moradores" className={styles.benefits} aria-label="Benefícios do Condovery">
+        <section id="moradores" className={styles.benefits} aria-label="Benefícios do Elevadoor">
           {benefits.map(({ title, description, icon: Icon, tone }) => (
             <article className={styles.benefitCard} key={title}>
               <span className={`${styles.iconCircle} ${styles[tone]}`}><Icon size={29} strokeWidth={2} aria-hidden="true" /></span>
@@ -118,7 +118,7 @@ export default function LandingPage() {
           </div>
           <div className={styles.steps}>
             <article className={styles.step}>
-              <div className={styles.stepImage}><span className={styles.stepNumber}>1</span><img src="/landing/step-explore.svg" alt="Exemplo da vitrine do Condovery" loading="lazy" width="163" height="170" /></div>
+              <div className={styles.stepImage}><span className={styles.stepNumber}>1</span><img src="/landing/step-explore.svg" alt="Exemplo da vitrine do Elevadoor" loading="lazy" width="163" height="170" /></div>
               <div className={styles.stepCopy}><h3>Explore lojas e ofertas</h3><p>Navegue pelos produtos, serviços e promoções dos seus vizinhos.</p></div>
             </article>
             <article className={styles.step}>
@@ -136,7 +136,7 @@ export default function LandingPage() {
           <div className={styles.featureCopy}>
             <p className={`${styles.eyebrow} ${styles.coralText}`}>PARA VENDEDORES</p>
             <h2 id="seller-title">Seu talento merece vitrine.</h2>
-            <p>Se você empreende no seu condomínio, o Condovery é o seu espaço para divulgar seus produtos e serviços para quem está ao seu redor.</p>
+            <p>Se você empreende no seu condomínio, o Elevadoor é o seu espaço para divulgar seus produtos e serviços para quem está ao seu redor.</p>
             <Link href="/" className={`${styles.btn} ${styles.btnCoral}`}>Quero criar minha loja <ArrowRight size={18} aria-hidden="true" /></Link>
           </div>
           <div className={styles.featurePhoto}>
@@ -154,7 +154,7 @@ export default function LandingPage() {
           <div className={styles.featureCopy}>
             <p className={`${styles.eyebrow} ${styles.green}`}>PARA CONDOMÍNIOS E ADMINISTRADORAS</p>
             <h2 id="admin-title">Mais conveniência para o condomínio.</h2>
-            <p>O Condovery gera valor para toda a comunidade, incentiva o empreendedorismo local e traz praticidade para o dia a dia dos moradores.</p>
+            <p>O Elevadoor gera valor para toda a comunidade, incentiva o empreendedorismo local e traz praticidade para o dia a dia dos moradores.</p>
             <a href="#contato" className={`${styles.btn} ${styles.btnGreen}`}>Quero no meu condomínio <ArrowRight size={18} aria-hidden="true" /></a>
           </div>
           <div className={styles.featurePhoto}>
@@ -170,15 +170,15 @@ export default function LandingPage() {
 
         <section id="contato" className={styles.finalCta} aria-labelledby="final-title">
           <div className={styles.finalCopy}>
-            <h2 id="final-title">Leve o Condovery para o seu condomínio.</h2>
+            <h2 id="final-title">Leve o Elevadoor para o seu condomínio.</h2>
             <p>Mais do que um marketplace, é uma comunidade mais forte, conectada e cheia de boas oportunidades.</p>
           </div>
           <div className={styles.buildingArt} aria-hidden="true"><Building2 size={140} strokeWidth={1.2} /><span /></div>
           <div className={styles.finalAction}>
             <a href={salesHref} className={`${styles.btn} ${styles.btnWhite}`}>
-              {salesHref === '/' ? 'Conhecer o Condovery' : 'Falar com a equipe'} <ArrowRight size={18} aria-hidden="true" />
+              {salesHref === '/' ? 'Conhecer o Elevadoor' : 'Falar com a equipe'} <ArrowRight size={18} aria-hidden="true" />
             </a>
-            <p>{salesHref === '/' ? 'Acesse o marketplace e descubra a experiência Condovery.' : 'Vamos conversar e mostrar como o Condovery pode fazer a diferença no seu condomínio.'}</p>
+            <p>{salesHref === '/' ? 'Acesse o marketplace e descubra a experiência Elevadoor.' : 'Vamos conversar e mostrar como o Elevadoor pode fazer a diferença no seu condomínio.'}</p>
           </div>
         </section>
       </main>
@@ -188,7 +188,7 @@ export default function LandingPage() {
           <div className={styles.footerBrand}><Logo /><span>Tudo de bom mora aqui.</span></div>
           <nav aria-label="Navegação do rodapé"><a href="#como-funciona">Como funciona</a><a href="#moradores">Para moradores</a><a href="#vendedores">Para vendedores</a><a href="#contato">Contato</a></nav>
         </div>
-        <div className={styles.footerBottom}><span>© {new Date().getFullYear()} Condovery. Todos os direitos reservados.</span><span>Um marketplace para a sua comunidade.</span></div>
+        <div className={styles.footerBottom}><span>© {new Date().getFullYear()} Elevadoor. Todos os direitos reservados.</span><span>Um marketplace para a sua comunidade.</span></div>
       </footer>
     </div>
   );
