@@ -912,10 +912,18 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
   if(parts[0]==='media'&&parts[1]&&method==='GET'){
     if(!uuid(parts[1]))bad('Arquivo inválido.');
     let r=await query('SELECT mime,bytes,storage_key,user_id FROM media_assets WHERE condominium_id=$1 AND id=$2',[u.condominium_id,parts[1]]);
-    // Superadmin may preview institutional ADS uploaded for another condominium.
-    // Never allow this cross-tenant fallback for shop or personal media.
+    // A global administrator may preview ONLY a cross-tenant ad image.
+    // Fair, giveaway, draft, seller and personal images stay tenant-scoped,
+    // even when their media_assets row has no shop_id or user_id.
     if(!r.rowCount&&u.is_superadmin){
-      r=await query('SELECT mime,bytes,storage_key,user_id FROM media_assets WHERE id=$1 AND shop_id IS NULL AND user_id IS NULL',[parts[1]]);
+      r=await query(
+        "SELECT m.mime,m.bytes,m.storage_key,m.user_id FROM media_assets m "+
+        "WHERE m.id=$1 AND m.shop_id IS NULL AND m.user_id IS NULL "+
+        "AND (m.storage_key LIKE (m.condominium_id::text || '/ads/%') "+
+        "OR EXISTS(SELECT 1 FROM advertising_campaigns a WHERE a.condominium_id=m.condominium_id "+
+        "AND a.image_url='/api/media/' || m.id::text))",
+        [parts[1]]
+      );
     }
     if(!r.rowCount)bad('Imagem não encontrada.',404);
     if(r.rows[0].user_id&&r.rows[0].user_id!==u.id)bad('Foto pessoal indisponível.',403);
