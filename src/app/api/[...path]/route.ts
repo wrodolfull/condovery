@@ -1083,7 +1083,7 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
           "WHERE o.condominium_id=$1 AND o.buyer_id=$2 AND o.client_order_key=$3",
           [u.condominium_id,u.id,b.client_order_key]
         );
-        if(previous.rowCount)return {order:previous.rows[0],whatsapp_url:await savedWhatsApp(previous.rows[0] as SavedOrder,u)};
+        if(previous.rowCount)return {order:previous.rows[0],whatsapp_url:await savedWhatsApp(previous.rows[0] as SavedOrder,u),reused:true};
       }
       const sr=await tx.query(
         "SELECT * FROM shops WHERE id=$1 AND condominium_id=$2 AND status='approved' FOR UPDATE",
@@ -1166,7 +1166,11 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
       return {order:created.rows[0],
         whatsapp_url:'https://wa.me/'+normalizeWhatsApp(shop.whatsapp)+'?text='+encodeURIComponent(message)};
     });
-    return out(result,path==='orders'?201:200);
+    // A concurrent retry can find the original inside the transaction.
+    // Distinguish it from a new order, just as the fast pre-check does.
+    if(path==='orders'&&'order' in result)
+      return out({order:result.order,whatsapp_url:result.whatsapp_url},'reused' in result?200:201);
+    return out(result,200);
   }
   if(path==='orders'&&method==='GET'){
     const scope=req.nextUrl.searchParams.get('scope');
