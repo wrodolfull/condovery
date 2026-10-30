@@ -82,11 +82,11 @@ export function AdsAdmin({tenants}:{tenants:Tenant[]}){
   }
   const filtered=campaigns;
   return <section className="admin-section white-panel management-ads">
-    <h2>Condovery Ads</h2>
+    <h2>Elevadoor Ads</h2>
     <p className="muted">Ative a publicidade para substituir “Achadinhos da vizinhança” somente quando existirem anúncios habilitados e dentro do período de publicação.</p>
     <label style={{display:'flex',gap:9,alignItems:'center',margin:'15px 0'}}>
       <input type="checkbox" checked={enabled} disabled={busy} onChange={e=>perform(()=>request('platform/ads/settings',{method:'PATCH',body:JSON.stringify({enabled:e.target.checked})}))}/>
-      <strong>Habilitar Condovery Ads</strong>
+      <strong>Habilitar Elevadoor Ads</strong>
     </label>
     {error&&<p role="alert" style={{color:'#b91c1c'}}>{error}</p>}
     {message&&<p role="status">{message}</p>}
