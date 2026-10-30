@@ -332,7 +332,7 @@ const otherToken=(await request('mobile/auth/login',{
 assert.ok(otherCookie&&otherToken);
 const tenantAssets=new pg.Client({connectionString:process.env.DATABASE_URL});
 await tenantAssets.connect();
-let localMedia,foreignMedia;
+let localMedia,foreignMedia,ownedMedia;
 try{
   const bytes=Buffer.from('testing private tenant scoped media');
   localMedia=(await tenantAssets.query(
@@ -341,6 +341,34 @@ try{
   foreignMedia=(await tenantAssets.query(
     "INSERT INTO media_assets(condominium_id,mime,bytes) VALUES($1,'image/webp',$2) RETURNING id",
     [newTenant.id,bytes])).rows[0].id;
+  ownedMedia=(await tenantAssets.query(
+    "INSERT INTO media_assets(condominium_id,shop_id,mime,bytes) VALUES($1,$2,'image/webp',$3) RETURNING id",
+    [originalTenant,shopId,bytes])).rows[0].id;
+  const imageProduct={
+    name:'Item com fotografia',category_id:sellerHome.categories[0].id,
+    description:'Teste de propriedade da imagem',price_cents:2000,
+    stock:0,lead_time:'',visibility:'available',option_groups:[]
+  };
+  // Neither another condo's image nor an institutional image from this
+  // condominium can be attached to a seller's product.
+  for(const imageId of [foreignMedia,localMedia]){
+    await request('products',{cookie:sellerCookie,method:'POST',expected:403,
+      body:{...imageProduct,image_url:'/api/media/'+imageId}});
+  }
+  const validImageProduct=(await request('products',{cookie:sellerCookie,method:'POST',expected:201,
+    body:{...imageProduct,image_url:'/api/media/'+ownedMedia}})).data.product;
+  assert.equal(validImageProduct.image_url,'/api/media/'+ownedMedia);
+  await request('products/'+validImageProduct.id,{cookie:sellerCookie,method:'DELETE',
+    body:{confirmation:'EXCLUIR PRODUTO'}});
+  const currentShop=(await request('shops/mine',{cookie:sellerCookie})).data.shop;
+  await request('shops/mine',{cookie:sellerCookie,method:'PATCH',expected:403,body:{
+    name:currentShop.name,description:currentShop.description||'',
+    whatsapp:currentShop.whatsapp,logo_image:'/api/media/'+foreignMedia,
+    cover_image:null,is_open:currentShop.is_open,delivery_enabled:currentShop.delivery_enabled,
+    pickup_enabled:currentShop.pickup_enabled,delivery_fee_cents:currentShop.delivery_fee_cents,
+    lead_time:currentShop.lead_time||'',pickup_instructions:currentShop.pickup_instructions||'',
+    payment_methods:currentShop.payment_methods
+  }});
   for(const credential of [{cookie:otherCookie},{token:otherToken}]){
     assert.equal((await request('me',credential)).data.viewer.condominium_id,newTenant.id);
     assert.equal((await request('favorites',credential)).data.products.length,0);
@@ -386,9 +414,9 @@ try{
   await request('platform/condominiums/switch',{method:'POST',cookie:adminCookie,body:{
     condominium_id:originalTenant
   }});
-  if(localMedia||foreignMedia)await tenantAssets.query(
+  if(localMedia||foreignMedia||ownedMedia)await tenantAssets.query(
     'DELETE FROM media_assets WHERE id=ANY($1::uuid[])',
-    [[localMedia,foreignMedia].filter(Boolean)]
+    [[localMedia,foreignMedia,ownedMedia].filter(Boolean)]
   );
   await tenantAssets.end();
 }
