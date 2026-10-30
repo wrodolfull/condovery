@@ -224,6 +224,9 @@ await request('admin/categories/'+desapegoCategory.id,{method:'PATCH',cookie:adm
 console.log('Desapego only allows resident listings; commercial create/update rejected PASS.');
 const visible=(await request('home',{cookie:buyerCookie})).data;
 assert.ok(visible.products.find(p=>p.id===productId));
+assert.ok(visible.recentProducts.some(p=>p.id===productId),'newly published item appears in the 72-hour rail');
+assert.ok(visible.recentProducts.every(p=>p.visibility==='available'&&p.is_open===true&&(p.stock===null||p.stock>0)));
+assert.ok(visible.recentProducts.length<=12,'new arrivals have a strict response limit');
 // Feira digital: admin creates, seller enrolls, admin moderates, resident buys via existing catalog.
 const fairPayload={
   title:'Feira de Bolos',description:'Vitrine da comunidade',
@@ -374,7 +377,9 @@ try{
     assert.equal((await request('favorites',credential)).data.products.length,0);
     assert.deepEqual((await request('favorite-shops',credential)).data.ids,[]);
     assert.equal((await request('orders',credential)).data.orders.length,0);
-    assert.ok((await request('home',credential)).data.products.every(p=>p.shop_id!==shopId));
+    const tenantHome=(await request('home',credential)).data;
+    assert.ok(tenantHome.products.every(p=>p.shop_id!==shopId));
+    assert.ok(tenantHome.recentProducts.every(p=>p.shop_id!==shopId),'other tenants must not see new arrivals');
     await request('shops/'+shopId,{...credential,expected:404});
     await request('orders/'+orderId,{...credential,expected:404});
     await request('orders/'+orderId+'/whatsapp',{...credential,expected:404});
@@ -520,6 +525,7 @@ await request(visibilityUrl,{method:'PATCH',cookie:buyerCookie,body:{visibility:
 await request(visibilityUrl,{method:'PATCH',cookie:sellerCookie,body:{visibility:'unavailable'}});
 const homeUnavailable=(await request('home',{cookie:buyerCookie})).data;
 assert.equal(homeUnavailable.products.find(p=>p.id===productId).visibility,'unavailable');
+assert.equal(homeUnavailable.recentProducts.some(p=>p.id===productId),false);
 const catalogUnavailable=(await request('catalog?search=bolo',{cookie:buyerCookie})).data;
 assert.equal(catalogUnavailable.products.find(p=>p.id===productId).visibility,'unavailable');
 const shopUnavailable=(await request('shops/'+shopId,{cookie:buyerCookie})).data;
@@ -530,12 +536,15 @@ await request('orders',{method:'POST',cookie:buyerCookie,body:{
 await request(visibilityUrl,{method:'PATCH',cookie:sellerCookie,body:{visibility:'hidden'}});
 const hiddenHome=(await request('home',{cookie:buyerCookie})).data;
 assert.equal(hiddenHome.products.find(p=>p.id===productId),undefined);
+assert.equal(hiddenHome.recentProducts.some(p=>p.id===productId),false);
 const hiddenShop=(await request('shops/'+shopId,{cookie:buyerCookie})).data;
 assert.equal(hiddenShop.products.find(p=>p.id===productId),undefined);
 const hiddenOwner=(await request('shops/mine',{cookie:sellerCookie})).data;
 assert.equal(hiddenOwner.products.find(p=>p.id===productId).visibility,'hidden');
 await request(visibilityUrl,{method:'PATCH',cookie:sellerCookie,body:{visibility:'available'}});
-assert.equal((await request('home',{cookie:buyerCookie})).data.products.find(p=>p.id===productId).visibility,'available');
+const restoredHome=(await request('home',{cookie:buyerCookie})).data;
+assert.equal(restoredHome.products.find(p=>p.id===productId).visibility,'available');
+assert.ok(restoredHome.recentProducts.some(p=>p.id===productId));
 await request(visibilityUrl,{method:'PATCH',cookie:sellerCookie,body:{visibility:'unknown'},expected:400});
 const dbCheck=new pg.Client({connectionString:process.env.DATABASE_URL});
 await dbCheck.connect();
@@ -544,6 +553,16 @@ try {
     "SELECT table_name,column_name FROM information_schema.columns WHERE table_schema='public' AND (table_name='shops' AND column_name='logo_image' OR table_name='users' AND column_name='avatar_image')"
   );
   assert.equal(cols.rowCount,2);
+  // Aging a fixture must remove it from Novidades, without hiding it from the normal catalog.
+  const created=(await dbCheck.query('SELECT created_at FROM products WHERE id=$1',[productId])).rows[0].created_at;
+  try{
+    await dbCheck.query("UPDATE products SET created_at=now()-interval '4 days' WHERE id=$1",[productId]);
+    const agedHome=(await request('home',{cookie:buyerCookie})).data;
+    assert.equal(agedHome.recentProducts.some(p=>p.id===productId),false);
+    assert.ok(agedHome.products.some(p=>p.id===productId));
+  }finally{
+    await dbCheck.query('UPDATE products SET created_at=$2 WHERE id=$1',[productId,created]);
+  }
 }finally{await dbCheck.end();}
 console.log('Shop activation, product states and idempotent WhatsApp ordering PASS.');
 
