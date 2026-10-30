@@ -356,7 +356,7 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
       throw e;
     }
     return out({
-      message:'Conta criada! Confirme seu e-mail para entrar no Condovery.',
+      message:'Conta criada! Confirme seu e-mail para entrar no Elevadoor.',
       verificationRequired:!authUser!.email_confirmed_at
     },201);
   }
