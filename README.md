@@ -1,4 +1,4 @@
-# Condovery
+# Elevadoor
 
 Marketplace **mobile-first** privado para moradores de condomínios. Vitrine
 híbrida (produtos, ofertas e lojas), busca, favoritos, carrinho por loja,
@@ -13,7 +13,7 @@ entrega/retirada e conclusão da conversa pelo WhatsApp.
   Consultas SQL parametrizadas, índices e paginação no servidor.
 - **Identidade:** Supabase Auth para cadastro com e-mail/senha,
   **confirmação de e-mail**, login, recuperação de senha e Google OAuth PKCE.
-  Nenhum login usa bcrypt para verificar senhas no banco Condovery.
+  Nenhum login usa bcrypt para verificar senhas no banco Elevadoor.
 - **Imagens:** Supabase Storage privado. Upload pelo backend; redução para
   WebP (até 960px) e remoção de metadados de imagens.
 - **Residência:** código do condomínio, torre/apartamento e Supabase Auth; acesso direto, sem aprovação manual.
@@ -30,7 +30,7 @@ entrega/retirada e conclusão da conversa pelo WhatsApp.
 5. Execute npm run db:migrate para aplicar o SQL base e as migrações.
 6. Defina BOOTSTRAP_* no .env.local e execute npm run db:bootstrap.
    O administrador é criado ou identificado no Supabase Auth sem gravação
-   da sua senha no PostgreSQL do Condovery.
+   da sua senha no PostgreSQL do Elevadoor.
 7. Execute npm run dev.
 
 Os nomes das 23 torres são apenas dados padrão do piloto. Ajuste as torres
@@ -80,7 +80,7 @@ com contas reais sem plano de migração, backup e testes de reversão.
 ## Visual
 
 A navegação mobile-first se inspira na organização de aplicativos de
-delivery, com componentes e identidade própria do Condovery.
+delivery, com componentes e identidade própria do Elevadoor.
 
 
 ## Lojas compartilháveis e avaliações
@@ -96,7 +96,7 @@ Um único login permite comprar e vender. A loja exige WhatsApp válido e aceita
 
 ## Compartilhamento, exclusão de produtos e torres
 
-O botão **Compartilhar loja** abre o compartilhamento nativo em navegadores compatíveis quando a página está em HTTPS (ou localhost no próprio dispositivo). Em acesso por IP da rede local sem HTTPS, o navegador não permite abrir o painel do sistema operacional; nesse caso o Condovery oferece um painel alternativo com WhatsApp e cópia do link. Links locais só funcionam dentro da mesma rede: configure um domínio HTTPS para compartilhar com outros moradores.
+O botão **Compartilhar loja** abre o compartilhamento nativo em navegadores compatíveis quando a página está em HTTPS (ou localhost no próprio dispositivo). Em acesso por IP da rede local sem HTTPS, o navegador não permite abrir o painel do sistema operacional; nesse caso o Elevadoor oferece um painel alternativo com WhatsApp e cópia do link. Links locais só funcionam dentro da mesma rede: configure um domínio HTTPS para compartilhar com outros moradores.
 
 O dono da loja pode **Excluir produto** pelo editor ou pela lista, com confirmação. A exclusão é lógica: o produto some do catálogo e dos controles do vendedor, não poderá ser comprado novamente e as referências e valores dos pedidos antigos são preservados.
 
@@ -111,3 +111,11 @@ Não há aprovação prévia para moradores ou lojas. Com código do condomínio
 ## Exclusão da conta
 
 Moradores podem usar **Minha conta → Excluir minha conta** para encerrar o perfil e loja sem perder a integridade do histórico anonimizado de pedidos. Consulte [docs/ACCOUNT_DELETION.md](docs/ACCOUNT_DELETION.md) para operação e limpeza do Supabase Auth.
+
+
+## Mudança de marca
+O nome exibido ao público é **Elevadoor**. Para não invalidar sessões, dados e aplicativos
+já instalados, alguns identificadores internos legados continuam usando `condovery`:
+cookies, chaves persistidas, bucket privado `condovery-media`, identificadores de aplicativo
+e o callback `condovery://auth/callback`. Não renomeie esses identificadores
+sem migração e atualização das configurações do Supabase/Expo.
