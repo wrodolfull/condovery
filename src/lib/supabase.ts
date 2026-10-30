@@ -3,7 +3,7 @@ import { createClient } from '@supabase/supabase-js';
 /**
  * No Supabase Auth tokens or database access credentials are exposed to the UI.
  * Only server routes invoke these clients. The browser authenticates with the
- * Condovery HttpOnly session cookie after Supabase Auth validates the identity.
+ * Elevadoor HttpOnly session cookie after Supabase Auth validates the identity.
  */
 function environment() {
   const url=process.env.SUPABASE_URL;
