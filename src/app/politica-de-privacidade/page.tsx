@@ -4,8 +4,8 @@ import {LegalPage,ControllerIdentity} from '@/components/LegalPage';
 
 export const dynamic='force-dynamic';
 export const metadata:Metadata={
-  title:'Política de Privacidade | Condovery',
-  description:'Saiba quais dados o Condovery utiliza, para quais finalidades, com quem compartilha e como exercer seus direitos previstos na LGPD.'
+  title:'Política de Privacidade | Elevadoor',
+  description:'Saiba quais dados o Elevadoor utiliza, para quais finalidades, com quem compartilha e como exercer seus direitos previstos na LGPD.'
 };
 
 export default function PrivacyPolicy(){
@@ -13,8 +13,8 @@ export default function PrivacyPolicy(){
     description="Entenda como seus dados são usados para viabilizar o marketplace do condomínio, conectar moradores e vendedores e proteger a comunidade.">
     <section>
       <h2>1. Abrangência e responsável pelo tratamento</h2>
-      <p>Esta Política se aplica ao site institucional, ao marketplace Condovery, ao acesso pelo navegador ou PWA, às contas de moradores, vendedores e administradores e às funcionalidades de anúncios, avaliações, feiras, desapegos e contato comercial.</p>
-      <p>O responsável pela operação do Condovery decide sobre os tratamentos necessários à plataforma. Administradores de condomínios e vendedores podem tratar informações para finalidades próprias no exercício de suas atividades, conforme as responsabilidades que efetivamente assumirem. Essa distinção deve ser avaliada em cada relação contratual.</p>
+      <p>Esta Política se aplica ao site institucional, ao marketplace Elevadoor, ao acesso pelo navegador ou PWA, às contas de moradores, vendedores e administradores e às funcionalidades de anúncios, avaliações, feiras, desapegos e contato comercial.</p>
+      <p>O responsável pela operação do Elevadoor decide sobre os tratamentos necessários à plataforma. Administradores de condomínios e vendedores podem tratar informações para finalidades próprias no exercício de suas atividades, conforme as responsabilidades que efetivamente assumirem. Essa distinção deve ser avaliada em cada relação contratual.</p>
       <ControllerIdentity/>
     </section>
     <section>
@@ -22,7 +22,7 @@ export default function PrivacyPolicy(){
       <p>Conforme a funcionalidade utilizada, podemos tratar:</p>
       <ul>
         <li><strong>Cadastro e residência:</strong> nome, e-mail, número de WhatsApp/telefone, condomínio, torre, apartamento, identificadores de conta, foto de perfil e situação do cadastro. O código de convite é utilizado para vincular a conta ao condomínio, mas não constitui comprovação independente de residência.</li>
-        <li><strong>Autenticação e proteção:</strong> identificadores do Supabase Auth, confirmação de e-mail, métodos de login (incluindo Google, quando escolhido), tokens e cookies de sessão, registros técnicos de tentativas, hashes e eventos antifraude. O Condovery não precisa armazenar senhas legíveis para autenticar usuários.</li>
+        <li><strong>Autenticação e proteção:</strong> identificadores do Supabase Auth, confirmação de e-mail, métodos de login (incluindo Google, quando escolhido), tokens e cookies de sessão, registros técnicos de tentativas, hashes e eventos antifraude. O Elevadoor não precisa armazenar senhas legíveis para autenticar usuários.</li>
         <li><strong>Lojas e ofertas:</strong> nome e descrição da loja, contato comercial/WhatsApp, imagens, produtos, preços, disponibilidade, categorias, preferências de entrega/retirada e publicações em feiras digitais.</li>
         <li><strong>Pedidos:</strong> identificação do comprador e da loja, produtos, quantidades, valores, preferências de data e entrega, instruções, observações, status e histórico do pedido. Observações livres podem conter dados adicionais que o próprio usuário informar.</li>
         <li><strong>Conteúdo comunitário:</strong> anúncios de desapego, imagens, avaliações e comentários, denúncias e seus motivos, registros de moderação e interações associadas a feiras.</li>
@@ -41,7 +41,7 @@ export default function PrivacyPolicy(){
     <section>
       <h2>4. Visibilidade, compartilhamento e WhatsApp</h2>
       <p>Dados são acessíveis de acordo com o papel e o condomínio associado à conta. Vendedores recebem os dados necessários para atender pedidos, organizar entrega/retirada e entrar em contato com o comprador. Moradores veem anúncios, informações comerciais, produtos e avaliações disponibilizados dentro da comunidade. Administradores podem acessar dados e denúncias necessários para gestão, segurança e moderação, dentro das permissões previstas na plataforma.</p>
-      <p>Ao escolher <strong>Enviar pedido</strong> ou abrir um contato no WhatsApp, você pode ser direcionado a um aplicativo de terceiros. Os dados incluídos na conversa ou na mensagem compartilhada passarão também a estar sujeitos às práticas de privacidade do WhatsApp e do destinatário. O Condovery não controla mensagens trocadas fora da plataforma.</p>
+      <p>Ao escolher <strong>Enviar pedido</strong> ou abrir um contato no WhatsApp, você pode ser direcionado a um aplicativo de terceiros. Os dados incluídos na conversa ou na mensagem compartilhada passarão também a estar sujeitos às práticas de privacidade do WhatsApp e do destinatário. O Elevadoor não controla mensagens trocadas fora da plataforma.</p>
       <p>Podemos compartilhar dados necessários com prestadores de hospedagem, banco de dados, autenticação, armazenamento de imagens, entrega de e-mails e infraestrutura técnica, incluindo o <strong>Supabase</strong> e, quando utilizado pelo usuário, o <strong>Google</strong>. Esses fornecedores processam informações na medida dos serviços empregados e conforme suas próprias condições e instrumentos aplicáveis.</p>
       <p>Dados podem ser compartilhados quando exigido por lei, ordem válida de autoridade ou para proteção de direitos. <strong>Não comercializamos cadastros de moradores como listas de contatos para anunciantes.</strong> Anunciantes e vendedores não recebem identificação individual de quem apenas visualizou um anúncio.</p>
     </section>
@@ -53,7 +53,7 @@ export default function PrivacyPolicy(){
     </section>
     <section>
       <h2>6. Armazenamento, segurança e transferências</h2>
-      <p>O Condovery utiliza conexões autenticadas, controles de acesso, sessões protegidas, validação de operações e restrições por condomínio. Imagens podem ser armazenadas em bucket privado do serviço de armazenamento. Nenhuma tecnologia elimina integralmente o risco de incidentes.</p>
+      <p>O Elevadoor utiliza conexões autenticadas, controles de acesso, sessões protegidas, validação de operações e restrições por condomínio. Imagens podem ser armazenadas em bucket privado do serviço de armazenamento. Nenhuma tecnologia elimina integralmente o risco de incidentes.</p>
       <p>Alguns dados cadastrais e transacionais necessários à operação podem permanecer em colunas comuns do banco de dados. Proteção de transporte, acesso e infraestrutura <strong>não deve ser confundida com criptografia de ponta a ponta de todos os campos pessoais</strong>.</p>
       <p>Conforme a localização e a configuração dos serviços contratados, dados podem ser armazenados ou processados fora do Brasil. Quando houver transferência internacional de dados pessoais, devem ser observados os requisitos e mecanismos previstos na LGPD e na regulamentação aplicável.</p>
     </section>
@@ -71,7 +71,7 @@ export default function PrivacyPolicy(){
     </section>
     <section>
       <h2>9. Crianças e adolescentes</h2>
-      <p>O Condovery não foi concebido como ambiente direcionado a crianças. O tratamento de dados de crianças e adolescentes, caso ocorra, deve observar seu melhor interesse, as regras de capacidade e representação aplicáveis e as exigências da legislação. Responsáveis devem acompanhar o uso da plataforma por menores.</p>
+      <p>O Elevadoor não foi concebido como ambiente direcionado a crianças. O tratamento de dados de crianças e adolescentes, caso ocorra, deve observar seu melhor interesse, as regras de capacidade e representação aplicáveis e as exigências da legislação. Responsáveis devem acompanhar o uso da plataforma por menores.</p>
     </section>
     <section>
       <h2>10. Alterações e comunicação</h2>

@@ -1210,16 +1210,16 @@ export default function Page(){
   }
   const bottomNav:[View,React.ElementType,string][]=[['home',Home,'Início'],['categories',LayoutGrid,'Explorar'],['favorites',Heart,'Salvos'],['orders',Receipt,'Pedidos'],['account',UserRound,'Conta']];
 
-  if(loading)return <main className="loading-page"><div className="spinner"/><strong>condovery.</strong><span>Preparando sua vizinhança</span></main>;
+  if(loading)return <main className="loading-page"><div className="spinner"/><strong>elevadoor.</strong><span>Preparando sua vizinhança</span></main>;
   if(!viewer&&(authMode==='recover'||authMode==='reset'))return <main className="auth-layout">
-    <div className="auth-aside"><div className="auth-logo">condovery<span>.</span></div><IllustrationSlot className="auth-art" src={artwork.recoverPassword} alt="Ilustração de recuperação de acesso" eager fallback={<img src="/hero.png" alt=""/>}/><h1>Seu condomínio mais perto de você!</h1><p>Produtos, comida e serviços dos seus vizinhos, com tudo organizado em um só lugar.</p></div>
+    <div className="auth-aside"><div className="auth-logo">elevadoor<span>.</span></div><IllustrationSlot className="auth-art" src={artwork.recoverPassword} alt="Ilustração de recuperação de acesso" eager fallback={<img src="/hero.png" alt=""/>}/><h1>Seu condomínio mais perto de você!</h1><p>Produtos, comida e serviços dos seus vizinhos, com tudo organizado em um só lugar.</p></div>
     <section className="auth-card">
-      <div className="auth-mobile-logo">condovery<span>.</span></div>
+      <div className="auth-mobile-logo">elevadoor<span>.</span></div>
       <IllustrationSlot className="auth-state-art" src={authMode==='recover'?artwork.recoverPassword:artwork.resetPassword}
   alt={authMode==='recover'?'Recuperar senha':'Criar uma nova senha'}
   fallback={<ShieldCheck size={34}/>}/>
       <h2>{authMode==='recover'?'Recuperar senha':'Criar nova senha'}</h2>
-      <p>{authMode==='recover'?'Informe seu e-mail para receber o link de recuperação.':'Escolha uma nova senha para continuar no Condovery.'}</p>
+      <p>{authMode==='recover'?'Informe seu e-mail para receber o link de recuperação.':'Escolha uma nova senha para continuar no Elevadoor.'}</p>
       {error&&<div className="alert" role="alert">{error}</div>}
       {toast&&<div className="success-banner" role="status">{toast}</div>}
       <form className="form-stack" onSubmit={submitReset}>
@@ -1234,12 +1234,12 @@ export default function Page(){
     </section>
   </main>;
   if(!viewer&&sharedShopId&&sharedShopWelcome&&!sharedShopChoice&&authMode==='login')return <main className="auth-layout">
-    <div className="auth-aside"><div className="auth-logo">condovery<span>.</span></div>
-      <IllustrationSlot className="auth-art" src={artwork.login} alt="Boas-vindas ao Condovery" eager fallback={<img src="/hero.png" alt=""/>}/>
+    <div className="auth-aside"><div className="auth-logo">elevadoor<span>.</span></div>
+      <IllustrationSlot className="auth-art" src={artwork.login} alt="Boas-vindas ao Elevadoor" eager fallback={<img src="/hero.png" alt=""/>}/>
       <h1>Seu condomínio mais perto de você!</h1><p>Compre dos seus vizinhos. Apoie comércios locais. Receba no seu condomínio.</p>
     </div>
     <section className="auth-card">
-      <div className="auth-mobile-logo">condovery<span>.</span></div>
+      <div className="auth-mobile-logo">elevadoor<span>.</span></div>
       <div className="welcome-emoji"><ShoppingBag size={28}/></div>
       <h2>Você recebeu um convite!</h2>
       <p><strong>{sharedShopWelcome.shop}</strong> faz parte do <strong>{sharedShopWelcome.condominium}</strong>.</p>
@@ -1252,11 +1252,11 @@ export default function Page(){
     </section>
   </main>;
   if(!viewer)return <main className="auth-layout">
-    <div className="auth-aside"><div className="auth-logo">condovery<span>.</span></div><IllustrationSlot className="auth-art" src={artwork.login} alt="Ilustração de boas-vindas do Condovery" eager fallback={<img src="/hero.png" alt=""/>}/><h1>Seu condomínio mais perto de você!</h1><p>Compre dos seus vizinhos. Apoie comércios locais. Receba no seu condomínio.</p></div>
+    <div className="auth-aside"><div className="auth-logo">elevadoor<span>.</span></div><IllustrationSlot className="auth-art" src={artwork.login} alt="Ilustração de boas-vindas do Elevadoor" eager fallback={<img src="/hero.png" alt=""/>}/><h1>Seu condomínio mais perto de você!</h1><p>Compre dos seus vizinhos. Apoie comércios locais. Receba no seu condomínio.</p></div>
     <section className="auth-card">
-      <div className="auth-mobile-logo">condovery<span>.</span></div>
+      <div className="auth-mobile-logo">elevadoor<span>.</span></div>
       <div className="auth-mobile-intro" aria-label="O seu condomínio em um só lugar">
-        <div className="auth-intro-copy"><span>CONDOVERY · TUDO DE BOM MORA AQUI</span>
+        <div className="auth-intro-copy"><span>ELEVADOOR · TUDO DE BOM MORA AQUI</span>
           <strong>Seu condomínio mais perto de você!</strong>
           <small>Compre dos seus vizinhos, apoie comércios locais e receba no condomínio.</small>
         </div>
@@ -1296,14 +1296,14 @@ export default function Page(){
     </section>
   </main>;
 
-  if(viewer.status!=='approved')return <main className="pending-screen"><div className="brand">condovery<span>.</span></div>
+  if(viewer.status!=='approved')return <main className="pending-screen"><div className="brand">elevadoor<span>.</span></div>
     <div className="pending-art"><ShieldCheck size={42}/></div>
     <h1>Conta suspensa</h1><p>Procure a administração do condomínio para mais informações.</p>
     <button className="text-button" onClick={logout}>Sair da conta</button></main>;
 
   return <div className="app-shell">
     <header className="app-header"><div className="header-inner">
-      <button className="brand" onClick={()=>go('home')} aria-label="Início Condovery">condovery<span>.</span></button>
+      <button className="brand" onClick={()=>go('home')} aria-label="Início Elevadoor">elevadoor<span>.</span></button>
       <div style={{position:'relative',minWidth:0}}>
         <button className="location" onClick={()=>viewer.is_superadmin?showTenantMenu():go('account')}
           title={viewer.is_superadmin?'Selecionar condomínio':'Seu endereço'}
@@ -1551,7 +1551,7 @@ export default function Page(){
                 onChange={e=>setInstructions(s=>toggleArrivalInstruction(s,t,e.target.checked))}/>{t}</label>)}
               </div></>}
             <div className="offline-payment-options"><h3>Como prefere pagar?</h3>
-              <p className="helper-note">O pagamento será combinado diretamente com o vendedor, fora do Condovery.</p>
+              <p className="helper-note">O pagamento será combinado diretamente com o vendedor, fora do Elevadoor.</p>
               <div className="choice-row">{acceptedPaymentMethods.map(method=><button type="button" key={method}
                 className={paymentMethod===method?'selected':''} aria-pressed={paymentMethod===method}
                 onClick={()=>setPaymentMethod(method)}>{PAYMENT_LABELS[method]}</button>)}</div>
@@ -1585,7 +1585,7 @@ export default function Page(){
 
       {view==='success'&&lastOrder&&<div className="success-page"><IllustrationSlot className="success-art" src={artwork.orderSuccess} alt="Pedido registrado com sucesso"
   fallback={<Check size={44}/>}/><Pill tone="green">Pedido registrado</Pill><h1>Seu pedido foi registrado!</h1><p>Seu pedido <strong>#{lastOrder.code}</strong> foi criado. Envie a mensagem para o vendedor pelo WhatsApp para combinar disponibilidade, entrega e pagamento.</p>
-        <div className="whatsapp-reminder"><MessageCircle size={18}/> <strong>Importante: toque em Enviar dentro do WhatsApp.</strong> O Condovery não envia a mensagem sozinho.</div>
+        <div className="whatsapp-reminder"><MessageCircle size={18}/> <strong>Importante: toque em Enviar dentro do WhatsApp.</strong> O Elevadoor não envia a mensagem sozinho.</div>
         <a className="primary-button" href={orderWhatsAppLink(lastOrder.whatsapp_url)}
            target={preferWhatsAppMessenger()?undefined:'_blank'} rel="noopener noreferrer">
            Enviar pedido <ArrowRight size={18}/></a>
@@ -1690,7 +1690,7 @@ export default function Page(){
         <div className="account-shortcuts"><button onClick={()=>go('fairs')}><Gift size={23}/><span><strong>Feiras do condomínio</strong><small>Descubra ofertas temáticas dos vizinhos</small></span><ChevronRight/></button><button onClick={()=>{loadMine();go('seller');}}><Store size={23}/><span><strong>{myShop?'Minha loja':'Quero vender'}</strong><small>{myShop?'Gerencie produtos e pedidos':'Crie sua loja e comece a vender'}</small></span><ChevronRight/></button>
         <button onClick={()=>{loadOrders();go('orders');}}><Receipt size={23}/><span><strong>Meus pedidos</strong><small>Acompanhe suas compras</small></span><ChevronRight/></button>
         {viewer.role==='admin'&&<button onClick={()=>{loadAdmin();go('admin');}}><ShieldCheck size={23}/><span><strong>Administração</strong><small>Segurança e configurações</small></span><ChevronRight/></button>}
-        {viewer.is_superadmin&&<><button onClick={()=>{loadTenants();go('ads-admin');}}><Megaphone size={23}/><span><strong>Condovery ADS</strong><small>Campanhas e publicidade</small></span><ChevronRight/></button><button onClick={()=>{loadTenants();go('platform');}}><Building2 size={23}/><span><strong>Painel Superadmin</strong><small>Todos os condomínios</small></span><ChevronRight/></button></>}
+        {viewer.is_superadmin&&<><button onClick={()=>{loadTenants();go('ads-admin');}}><Megaphone size={23}/><span><strong>Elevadoor ADS</strong><small>Campanhas e publicidade</small></span><ChevronRight/></button><button onClick={()=>{loadTenants();go('platform');}}><Building2 size={23}/><span><strong>Painel Superadmin</strong><small>Todos os condomínios</small></span><ChevronRight/></button></>}
         <button onClick={()=>window.location.assign('/ajuda')}><CircleHelp size={23}/><span><strong>Central de Ajuda</strong><small>Tire dúvidas sobre compras, lojas e feiras</small></span><ChevronRight/></button>
         <button onClick={logout}><LogOut size={23}/><span><strong>Sair</strong><small>Encerrar sessão neste dispositivo</small></span><ChevronRight/></button>
         {viewer.role==='resident'&&<button className="delete-account-entry"
@@ -1700,7 +1700,7 @@ export default function Page(){
         </button>}</div></div>
         <section className="account-legal-links" aria-labelledby="account-legal-title">
           <h2 id="account-legal-title">Privacidade e termos</h2>
-          <p>Consulte como seus dados são tratados e as regras de uso do Condovery.</p>
+          <p>Consulte como seus dados são tratados e as regras de uso do Elevadoor.</p>
           <div>
             <a href="/politica-de-privacidade"><ShieldCheck size={19}/><span>Política de Privacidade</span><ChevronRight size={18}/></a>
             <a href="/termos-de-uso"><FileText size={19}/><span>Termos de Uso</span><ChevronRight size={18}/></a>
@@ -2006,12 +2006,12 @@ export default function Page(){
       {view==='giveaways'&&<><button className="back-link" onClick={()=>go('home')}><ArrowLeft size={18}/> Início</button><Giveaways viewerId={viewer.id}/></>}
       {view==='ads-admin'&&viewer.is_superadmin&&<>
         <button className="back-link" onClick={()=>go('account')}><ArrowLeft size={18}/> Minha conta</button>
-        <div className="page-title"><h1>Condovery ADS</h1><p>Gerencie os anúncios dos condomínios.</p></div>
+        <div className="page-title"><h1>Elevadoor ADS</h1><p>Gerencie os anúncios dos condomínios.</p></div>
         <AdsAdmin tenants={tenants}/>
       </>}
       {view==='platform'&&viewer.is_superadmin&&<>
         <button className="back-link" onClick={()=>go('account')}><ArrowLeft size={18}/> Minha conta</button>
-        <div className="page-title"><h1>Superadmin Condovery</h1><p>Gerencie os condomínios e alterne o ambiente administrado.</p></div>
+        <div className="page-title"><h1>Superadmin Elevadoor</h1><p>Gerencie os condomínios e alterne o ambiente administrado.</p></div>
         <nav className="management-tabs" aria-label="Seções do Superadmin">{([['condominiums','Condomínios'],['administrators','Administradores']] as const).map(([key,label])=><button type="button" key={key} className={platformTab===key?'selected':''} onClick={()=>setPlatformTab(key)}>{label}</button>)}</nav>
         {platformTab==='condominiums'&&<section className="admin-section white-panel"><h2>Criar condomínio</h2>
           <form className="form-stack" onSubmit={createTenant}>
@@ -2162,7 +2162,7 @@ export default function Page(){
         <section className="share-fallback-dialog" role="dialog" aria-modal="true"
           aria-label="Abrir conversa do pedido" onClick={event=>event.stopPropagation()}>
           <div className="share-fallback-heading"><div><h2>Abrir conversa do pedido</h2>
-            <p>Seu pedido continua registrado no Condovery.</p></div>
+            <p>Seu pedido continua registrado no Elevadoor.</p></div>
             <button type="button" aria-label="Fechar opções do WhatsApp" onClick={()=>setReopenWhatsAppUrl(null)}><X size={19}/></button>
           </div>
           <div className="share-fallback-actions">
@@ -2184,9 +2184,9 @@ export default function Page(){
           </div>
           <div className="share-social-grid">
             {[
-              {label:'WhatsApp',key:'whatsapp',href:'https://wa.me/?text='+encodeURIComponent('Conheça esta loja no Condovery! '+shareFallback.link)},
+              {label:'WhatsApp',key:'whatsapp',href:'https://wa.me/?text='+encodeURIComponent('Conheça esta loja no Elevadoor! '+shareFallback.link)},
               {label:'Facebook',key:'facebook',href:'https://www.facebook.com/sharer/sharer.php?u='+encodeURIComponent(shareFallback.link)},
-              {label:'X',key:'x',href:'https://twitter.com/intent/tweet?text='+encodeURIComponent('Conheça esta loja no Condovery!')+'&url='+encodeURIComponent(shareFallback.link)},
+              {label:'X',key:'x',href:'https://twitter.com/intent/tweet?text='+encodeURIComponent('Conheça esta loja no Elevadoor!')+'&url='+encodeURIComponent(shareFallback.link)},
               {label:'Telegram',key:'telegram',href:'https://t.me/share/url?url='+encodeURIComponent(shareFallback.link)+'&text='+encodeURIComponent('Conheça esta loja!')},
               {label:'SMS',key:'sms',href:'sms:?body='+encodeURIComponent('Conheça esta loja! '+shareFallback.link)},
               {label:'E-mail',key:'email',href:'mailto:?subject='+encodeURIComponent('Conheça '+shareFallback.name)+'&body='+encodeURIComponent(shareFallback.link)},

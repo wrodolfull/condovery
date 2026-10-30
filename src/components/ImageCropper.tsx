@@ -80,7 +80,7 @@ export function ImageCropper({file,kind,onCancel,onApply}:{
         result=>result?resolve(result):reject(new Error('Não foi possível salvar o enquadramento.')),
         'image/webp',0.85
       ));
-      onApply(new File([blob],'condovery-'+kind+'.webp',{type:'image/webp'}));
+      onApply(new File([blob],'elevadoor-'+kind+'.webp',{type:'image/webp'}));
     }catch(caught){setError(caught instanceof Error?caught.message:'Falha ao preparar a imagem.');}
     finally{setSaving(false);}
   }

@@ -88,7 +88,7 @@ export async function enqueueOrderStatus(
     condominiumId: order.condominium_id,
     kind: "order",
     title: "Seu pedido foi " + (labels[order.status] ?? "atualizado"),
-    body: "Abra o Condovery para conferir os detalhes.",
+    body: "Abra o Elevadoor para conferir os detalhes.",
     targetId: order.id,
     eventKey: "order-status:" + order.id + ":" + order.status,
   });

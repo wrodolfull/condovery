@@ -87,6 +87,6 @@ try{
       [condoId,name,icon,sort]);
   }
   await db.query('COMMIT');
-  console.log('Condovery bootstrap finished for '+slug+' (administrator managed by Supabase Auth).');
+  console.log('Elevadoor bootstrap finished for '+slug+' (administrator managed by Supabase Auth).');
 }catch(e){await db.query('ROLLBACK').catch(()=>{});throw e;}
 finally{await db.end();}

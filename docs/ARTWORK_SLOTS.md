@@ -1,4 +1,4 @@
-# Condovery — Slots de imagens e tipografia (MVP)
+# Elevadoor — Slots de imagens e tipografia (MVP)
 
 **Para adicionar suas imagens depois, não é necessário editar as telas.** Edite somente
 \`src/lib/artwork.ts\` e coloque os arquivos em \`public/illustrations/\`.

@@ -359,7 +359,7 @@ button:focus-visible,a:focus-visible{outline:3px solid #be9e1b;outline-offset:3p
 .admin-category-form .outline-button{min-height:43px;white-space:nowrap}
 
 
-/* Condovery 2026 — mobile-first visual refinement.
+/* Elevadoor 2026 — mobile-first visual refinement.
    Inspired by the supplied food-delivery layouts; independent visual identity. */
 :root {
   --ink:#251f18;
@@ -471,7 +471,7 @@ body {background:var(--bg);letter-spacing:-.08px}
 .forgot-button:hover{text-decoration:underline}
 
 
-/* Condovery visual storyboard — mobile-first alignment
+/* Elevadoor visual storyboard — mobile-first alignment
    Keep visuals based on implemented data and order states. */
 .auth-mobile-intro {
   min-height: 174px;

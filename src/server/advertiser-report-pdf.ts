@@ -18,14 +18,14 @@ export function buildAdvertiserPdf(report:AdvertiserReport):Buffer{
   function header(page:number){
     let s=rect(0,0,595,842,'1 1 1');
     s+=rect(0,818,595,24,'0.988 0.404 0.255');
-    s+=text(42,782,'condovery.',23,true,'0.14 0.14 0.14');
+    s+=text(42,782,'elevadoor.',23,true,'0.14 0.14 0.14');
     s+=text(42,759,'RELATORIO DE PUBLICIDADE',11,true,'0.63 0.28 0.16');
     s+=text(42,733,report.campaign.merchant_name.slice(0,55),19,true);
     s+=text(42,710,report.campaign.headline.slice(0,75),11);
     s+=text(42,687,'Condominio: '+report.campaign.condominium_name.slice(0,60),10);
     s+=text(42,670,'Periodo: '+shortDate(report.period.from)+' a '+shortDate(report.period.to),10);
     s+=line(42,652,553,652);
-    s+=text(42,40,'Condovery ADS  |  Dados agregados e deduplicados por sessao/dia (UTC)',8,false,'0.46 0.46 0.46');
+    s+=text(42,40,'Elevadoor ADS  |  Dados agregados e deduplicados por sessao/dia (UTC)',8,false,'0.46 0.46 0.46');
     s+=text(492,40,'Pagina '+page,8);
     return s;
   }

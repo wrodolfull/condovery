@@ -89,7 +89,7 @@ export async function handleAdsApi({req,method,path,parts,u}:Args):Promise<NextR
       const bytes=new Uint8Array(buildAdvertiserPdf(report));
       return new NextResponse(bytes,{headers:{
         'Content-Type':'application/pdf',
-        'Content-Disposition':'attachment; filename="condovery-ads-'+campaignId.slice(0,8)+'.pdf"',
+        'Content-Disposition':'attachment; filename="elevadoor-ads-'+campaignId.slice(0,8)+'.pdf"',
         'Cache-Control':'private, no-store',
         'X-Content-Type-Options':'nosniff'
       }});

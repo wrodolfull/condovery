@@ -1,6 +1,6 @@
 # Limpeza segura de imagens órfãs
 
-O Condovery armazena a imagem privada no bucket `condovery-media` do Supabase e registra o arquivo em `media_assets`. Uploads abandonados deixam metadados sem referência a nenhum conteúdo publicado.
+O Elevadoor armazena a imagem privada no bucket `condovery-media` do Supabase e registra o arquivo em `media_assets`. Uploads abandonados deixam metadados sem referência a nenhum conteúdo publicado.
 
 ## Proteções
 

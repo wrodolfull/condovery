@@ -2,7 +2,7 @@
 
 ## Migração de segurança
 A migração 032 habilita RLS e revoga acesso a todas as tabelas de negócio do
-Condovery em public para PUBLIC, anon, authenticated e service_role.
+Elevadoor em public para PUBLIC, anon, authenticated e service_role.
 O backend utiliza a conexão PostgreSQL com o papel proprietário das tabelas
 (normalmente postgres). Supabase Auth e Storage operam em outros schemas.
 **Faça backup e teste em homologação antes de aplicar em produção.**

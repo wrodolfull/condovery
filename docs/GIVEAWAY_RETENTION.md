@@ -7,7 +7,7 @@ o registro e a imagem enviada são removidos pelo job de limpeza.
 
 Execute uma vez a migração: `npm run db:migrate`.
 
-No usuário do sistema que executa o Condovery, configure `crontab -e`:
+No usuário do sistema que executa o Elevadoor, configure `crontab -e`:
 
 ```cron
 0 * * * * cd /var/www/condovery && /usr/bin/npm run cleanup:giveaways >> /var/log/condovery-giveaways-cleanup.log 2>&1

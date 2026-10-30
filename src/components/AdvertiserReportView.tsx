@@ -26,7 +26,7 @@ export function AdvertiserReportView({campaignId,token}:Props){
   const chart=report?.daily.slice(-30)??[];
   const max=Math.max(1,...chart.map(row=>row.impressions));
   return <section className={'adreport'+(!campaignId?' adreport-public':'')} aria-label="Relatório da campanha">
-    {!campaignId&&<div className="adreport-public-brand">condovery<span>.</span> <small>ADS · Relatório de campanha</small></div>}
+    {!campaignId&&<div className="adreport-public-brand">elevadoor<span>.</span> <small>ADS · Relatório de campanha</small></div>}
     <div className="adreport-header">
       <div><span className="adreport-eyebrow">DESEMPENHO DA CAMPANHA</span>
         <h2>{report?.campaign.merchant_name||'Relatório de publicidade'}</h2>
@@ -73,6 +73,6 @@ export function AdvertiserReportView({campaignId,token}:Props){
       </div>
       <p className="adreport-disclaimer">{report.disclaimer} Cliques não significam compras realizadas.</p>
     </>}
-    {!campaignId&&<p className="adreport-footnote">Relatório compartilhado pelo responsável pela publicidade no Condovery. Este link pode expirar ou ser revogado.</p>}
+    {!campaignId&&<p className="adreport-footnote">Relatório compartilhado pelo responsável pela publicidade no Elevadoor. Este link pode expirar ou ser revogado.</p>}
   </section>;
 }

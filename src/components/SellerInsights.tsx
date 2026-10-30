@@ -33,7 +33,7 @@ export function SellerInsights({condominiumId}:{condominiumId:string}){
         <button type="button" className="outline-button" aria-label="Atualizar indicadores" onClick={()=>setRevision(x=>x+1)}><RefreshCw size={16}/></button>
       </div>
     </div>
-    <p className="muted">Resultados derivados dos pedidos registrados no Condovery. Valores de pedidos concluídos não comprovam recebimento do pagamento.</p>
+    <p className="muted">Resultados derivados dos pedidos registrados no Elevadoor. Valores de pedidos concluídos não comprovam recebimento do pagamento.</p>
     {loading&&<p className="muted">Carregando resultados...</p>}
     {error&&<p role="alert" style={{color:'#b91c1c'}}>{error}</p>}
     {data&&<><div className="admin-stats" style={{marginTop:16}}>

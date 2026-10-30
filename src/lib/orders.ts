@@ -79,7 +79,7 @@ export function orderMessage(order: {
   instructions?:string[];note?:string;payment_method?:'pix'|'credit_card'|'debit_card'|'cash'|null
 }): string {
   const lines=[
-    'Olá! Fiz um pedido pelo Condovery.','','Pedido #'+order.code+' — '+order.shop,
+    'Olá! Fiz um pedido pelo Elevadoor.','','Pedido #'+order.code+' — '+order.shop,
     'Morador: '+order.buyer,'Itens:',
     ...order.items.flatMap(i=>[
       '• '+i.quantity+'x '+i.name+' — '+BRL(i.unit_price_cents*i.quantity),

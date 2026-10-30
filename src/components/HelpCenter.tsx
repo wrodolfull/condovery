@@ -57,22 +57,22 @@ export function HelpCenter(){
 
   return <div className="help-page">
     <header className="help-header"><div className="help-header-inner">
-      <a href="/" className="help-brand" aria-label="Voltar ao Condovery">condovery<span>.</span></a>
-      <a href="/" className="help-return"><ArrowLeft size={16}/> Voltar ao Condovery</a>
+      <a href="/" className="help-brand" aria-label="Voltar ao Elevadoor">elevadoor<span>.</span></a>
+      <a href="/" className="help-return"><ArrowLeft size={16}/> Voltar ao Elevadoor</a>
     </div></header>
     <main className="help-main">
       <div className="help-intro">
         <span className="help-eyebrow"><BookOpen size={15}/> CENTRAL DE AJUDA</span>
         <h1>Como podemos ajudar?</h1>
-        <p>Encontre respostas objetivas para aproveitar o Condovery. Escolha um assunto e siga o passo a passo.</p>
+        <p>Encontre respostas objetivas para aproveitar o Elevadoor. Escolha um assunto e siga o passo a passo.</p>
         {access!=='guest'&&access!=='unavailable'&&<label className="help-search"><Search size={20} aria-hidden="true"/>
           <input type="search" aria-label="Buscar dúvidas" placeholder="Busque por pedido, produto, feira..." value={search} onChange={event=>setSearch(event.target.value)}/>
           {search&&<button type="button" aria-label="Limpar busca" onClick={()=>setSearch('')}><X size={17}/></button>}
         </label>}
       </div>
       {access==='loading'?<div className="help-state" role="status">Carregando sua central de ajuda...</div>:
-       access==='guest'?<div className="help-state"><CircleHelp size={30}/><h2>Entre para consultar a ajuda</h2><p>A central acompanha seu perfil de morador ou administrador.</p><a className="help-main-action" href="/">Entrar no Condovery</a></div>:
-       access==='unavailable'?<div className="help-state" role="alert"><h2>Não foi possível confirmar seu acesso</h2><p>Entre na sua conta e tente novamente.</p><a className="help-main-action" href="/">Voltar ao Condovery</a></div>:
+       access==='guest'?<div className="help-state"><CircleHelp size={30}/><h2>Entre para consultar a ajuda</h2><p>A central acompanha seu perfil de morador ou administrador.</p><a className="help-main-action" href="/">Entrar no Elevadoor</a></div>:
+       access==='unavailable'?<div className="help-state" role="alert"><h2>Não foi possível confirmar seu acesso</h2><p>Entre na sua conta e tente novamente.</p><a className="help-main-action" href="/">Voltar ao Elevadoor</a></div>:
        <>
          {!searching&&<section className="help-areas" aria-label="Áreas de ajuda">
            {allowed.map(item=>{const Icon=item.icon;return <button type="button" key={item.id}
