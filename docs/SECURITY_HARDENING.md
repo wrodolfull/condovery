@@ -1,4 +1,4 @@
-# Condovery — autenticação e proteção de dados
+# Elevadoor — autenticação e proteção de dados
 
 ## O que já era seguro
 - A identidade/senha de novos cadastros pertence a Supabase Auth. A aplicação
@@ -56,7 +56,7 @@
   até que ele decida redefinir sua senha.
 - **Configuração externa:** o Supabase Auth também possui política própria.
   Ajuste o mínimo do Supabase para 8 ou outro valor compatível e verifique
-  que o provedor aceita a regra. O backend do Condovery impede novas senhas
+  que o provedor aceita a regra. O backend do Elevadoor impede novas senhas
   que não cumpram as quatro condições, independentemente do frontend.
 
 ## Criptografia de dados pessoais: NÃO ativa nesta PR
