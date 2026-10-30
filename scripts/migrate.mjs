@@ -81,7 +81,7 @@ try {
   await client.query(ordersPagination);
   const shopsPagination=await readFile(new URL('../db/042_shops_pagination.sql',import.meta.url),'utf8');
   await client.query(shopsPagination);
-  console.log('Condovery database schema applied successfully.');
+  console.log('Elevadoor database schema applied successfully.');
 } finally {
   await client.end();
 }
