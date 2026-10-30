@@ -4,8 +4,8 @@ import {LegalPage,ControllerIdentity} from '@/components/LegalPage';
 
 export const dynamic='force-dynamic';
 export const metadata:Metadata={
-  title:'Termos de Uso | Condovery',
-  description:'Conheça as regras de acesso, compra, venda, anúncios e convivência no marketplace Condovery.'
+  title:'Termos de Uso | Elevadoor',
+  description:'Conheça as regras de acesso, compra, venda, anúncios e convivência no marketplace Elevadoor.'
 };
 
 export default function TermsOfUse(){
@@ -13,14 +13,14 @@ export default function TermsOfUse(){
     description="As condições para participar do marketplace, comprar ou vender dentro do condomínio e utilizar as ferramentas da comunidade.">
     <section>
       <h2>1. Quem oferece o serviço e aceitação</h2>
-      <p>O Condovery é uma plataforma digital que facilita a divulgação de produtos e serviços, pedidos, avaliações, ofertas, desapegos e oportunidades comerciais entre pessoas vinculadas a condomínios participantes.</p>
+      <p>O Elevadoor é uma plataforma digital que facilita a divulgação de produtos e serviços, pedidos, avaliações, ofertas, desapegos e oportunidades comerciais entre pessoas vinculadas a condomínios participantes.</p>
       <p>O uso do serviço está sujeito a estes Termos e à <Link href="/politica-de-privacidade">Política de Privacidade</Link>. Ao criar e utilizar uma conta, o usuário deve conhecer e observar estas regras. Se não concordar, deve deixar de utilizar a plataforma e poderá solicitar encerramento de sua conta conforme as opções disponíveis.</p>
       <ControllerIdentity/>
     </section>
     <section>
       <h2>2. Natureza da plataforma</h2>
-      <p>O Condovery funciona como um <strong>marketplace de aproximação entre moradores, vendedores e prestadores de serviços</strong>. Em regra, não é o fabricante, vendedor, entregador ou prestador dos itens anunciados por terceiros.</p>
-      <p>Os pedidos são registrados no sistema, mas a confirmação, o pagamento e os detalhes de entrega ou retirada são combinados diretamente entre as partes, normalmente por WhatsApp. O Condovery <strong>não processa automaticamente pagamentos dos pedidos entre moradores</strong> e não deve ser apresentado como comprovante de transferência ou recebimento financeiro.</p>
+      <p>O Elevadoor funciona como um <strong>marketplace de aproximação entre moradores, vendedores e prestadores de serviços</strong>. Em regra, não é o fabricante, vendedor, entregador ou prestador dos itens anunciados por terceiros.</p>
+      <p>Os pedidos são registrados no sistema, mas a confirmação, o pagamento e os detalhes de entrega ou retirada são combinados diretamente entre as partes, normalmente por WhatsApp. O Elevadoor <strong>não processa automaticamente pagamentos dos pedidos entre moradores</strong> e não deve ser apresentado como comprovante de transferência ou recebimento financeiro.</p>
       <p>Esta distribuição de responsabilidades não afasta direitos previstos na legislação brasileira, inclusive no Código de Defesa do Consumidor, quando aplicável, nem exclui responsabilidades legais próprias da plataforma.</p>
     </section>
     <section>
@@ -33,7 +33,7 @@ export default function TermsOfUse(){
       <h2>4. Regras para vendedores e prestadores</h2>
       <p>Quem anuncia é responsável pela legitimidade da oferta, veracidade das descrições, preços, disponibilidade, estoque, informações de preparo, condições de entrega/retirada, tributos e licenças eventualmente exigidos para a atividade. Não é permitido oferecer produtos ou serviços ilícitos, falsificados, perigosos ou que violem direitos de terceiros.</p>
       <p>O vendedor deve atender pedidos de boa-fé, confirmar ou recusar solicitações com clareza e solucionar diretamente questões relacionadas ao item fornecido. Ao anunciar alimentos, medicamentos, serviços profissionais ou outros itens regulados, deve observar as regras sanitárias, fiscais e profissionais aplicáveis.</p>
-      <p>O status de pedido concluído no Condovery é um registro operacional, não uma certificação independente de entrega, qualidade ou pagamento recebido.</p>
+      <p>O status de pedido concluído no Elevadoor é um registro operacional, não uma certificação independente de entrega, qualidade ou pagamento recebido.</p>
     </section>
     <section>
       <h2>5. Pedidos, pagamentos, entregas e cancelamentos</h2>
@@ -49,7 +49,7 @@ export default function TermsOfUse(){
     </section>
     <section>
       <h2>7. Publicidade e conteúdo patrocinado</h2>
-      <p>O Condovery pode apresentar anúncios de lojas, campanhas e ofertas patrocinadas identificadas como publicidade, conforme as funcionalidades disponibilizadas. Informações publicitárias fornecidas por anunciantes devem ser verdadeiras e não enganosas.</p>
+      <p>O Elevadoor pode apresentar anúncios de lojas, campanhas e ofertas patrocinadas identificadas como publicidade, conforme as funcionalidades disponibilizadas. Informações publicitárias fornecidas por anunciantes devem ser verdadeiras e não enganosas.</p>
       <p>A exibição de anúncios ou produtos na plataforma não constitui garantia de qualidade, disponibilidade, entrega ou aprovação técnica do anunciante. Indicadores de visualização e cliques podem ser aproximados e não representam vendas comprovadas.</p>
     </section>
     <section>
@@ -59,7 +59,7 @@ export default function TermsOfUse(){
     </section>
     <section>
       <h2>9. Propriedade intelectual e materiais enviados</h2>
-      <p>Marcas, interface, software, design e demais elementos próprios do Condovery são protegidos pela legislação aplicável. O usuário mantém os direitos que possuir sobre seus textos, imagens e anúncios, declarando ter autorização para publicá-los.</p>
+      <p>Marcas, interface, software, design e demais elementos próprios do Elevadoor são protegidos pela legislação aplicável. O usuário mantém os direitos que possuir sobre seus textos, imagens e anúncios, declarando ter autorização para publicá-los.</p>
       <p>Ao enviar conteúdo, o usuário concede autorização não exclusiva, limitada ao necessário para hospedá-lo, reproduzi-lo, ajustá-lo tecnicamente, exibi-lo aos usuários permitidos e viabilizar os recursos contratados enquanto o conteúdo permanecer autorizado na plataforma, ressalvados prazos de retenção legalmente necessários.</p>
     </section>
     <section>
