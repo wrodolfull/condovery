@@ -53,7 +53,7 @@ export default function ConhecaPage(){
     <div className="lp-visual" aria-label="Ilustração conceitual de ofertas, lojas e oportunidades da comunidade" role="img">
      <div className="lp-orbit lp-orbit-one"/><div className="lp-orbit lp-orbit-two"/>
      <div className="lp-float lp-float-top"><span className="lp-float-icon">✦</span><div><strong>Feito por vizinhos</strong><small>Mais perto de você</small></div></div>
-     <div className="lp-phone"><div className="lp-phone-top"><span className="lp-phone-brand">elevadoor<span>.</span></span><span className="lp-avatar">CV</span></div>
+     <div className="lp-phone"><div className="lp-phone-top"><span className="lp-phone-brand">elevadoor<span>.</span></span><span className="lp-avatar">EL</span></div>
       <div className="lp-phone-greeting">Bom dia, vizinho! <span>✳</span></div><div className="lp-phone-title">Tudo de bom mora aqui.</div><div className="lp-phone-search">⌕ &nbsp; O que você procura hoje?</div>
       <div className="lp-phone-banner"><span>OFERTAS DA SEMANA</span><strong>Tem coisa boa pertinho!</strong><small>Descubra as novidades</small></div>
       <div className="lp-phone-section">Destaques da vizinhança <span>Ver tudo →</span></div>
@@ -67,7 +67,7 @@ export default function ConhecaPage(){
    <section id="possibilidades" className="lp-section lp-features"><div className="lp-shell"><div className="lp-section-heading"><div><span className="lp-eyebrow">TUDO EM UM SÓ LUGAR</span><h2>Um condomínio cheio <span>de possibilidades.</span></h2></div><p>A vida acontece entre um apartamento e outro. O Elevadoor coloca essas descobertas ao alcance de todos.</p></div><div className="lp-feature-grid">{benefits.map((b,i)=><article className="lp-feature" key={b.title}><div className={'lp-feature-icon lp-feature-icon-'+i}><b.icon size={27} strokeWidth={1.8}/></div><h3>{b.title}</h3><p>{b.text}</p></article>)}</div><p className="lp-disclaimer">Algumas categorias podem depender de ativação pela administração do condomínio.</p></div></section>
    <section id="como-funciona" className="lp-section lp-story">
     <div className="lp-shell lp-story-layout">
-     <div className="lp-story-heading"><span className="lp-eyebrow">UM DIA COM O CONDOVERY</span>
+     <div className="lp-story-heading"><span className="lp-eyebrow">UM DIA COM O ELEVADOOR</span>
       <h2>O melhor do condomínio não está só <span>nas áreas comuns.</span></h2>
       <p>Está nas pessoas. Na receita que virou negócio, na indicação que resolveu um problema e naquela oportunidade que você nem sabia que existia.</p>
       <a className="lp-story-link" href="#contato">Quero isso no meu condomínio <ArrowUpRight size={18}/></a>
