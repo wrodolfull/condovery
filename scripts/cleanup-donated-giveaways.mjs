@@ -1,4 +1,4 @@
-// Run hourly from cron/PM2 on the Condovery server.
+// Run hourly from cron/PM2 on the Elevadoor server.
 // Removes donated giveaways after 48 hours, including their media stored in Supabase.
 import pg from 'pg';
 import {createClient} from '@supabase/supabase-js';
