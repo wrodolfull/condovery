@@ -59,6 +59,8 @@ try {
   const condo = (
     await request("public/condominium", { method: "POST", body: { invite } })
   ).data;
+  assert.equal((await request("mobile/config")).data.google, true,
+    "Supabase-enabled backend must expose native Google login");
   const users = [];
   for (const name of ["Buyer", "Seller"]) {
     const email = name.toLowerCase() + "-" + tag + "@example.com";
@@ -400,6 +402,58 @@ try {
     body: { code: grant, verifier, state },
     expected: 401,
   });
+
+  // Google first-time registration must not create an account before
+  // checking a condominium invitation, and the short-lived grant is one use.
+  const newGrant = crypto.randomBytes(32).toString("hex");
+  const signupVerifier = crypto.randomBytes(32).toString("hex");
+  const signupState = crypto.randomBytes(32).toString("hex");
+  const signupEmail = "google-new-" + tag + "@example.com";
+  const verifiedGoogleId = crypto.randomUUID();
+  await db.query(
+    "INSERT INTO mobile_auth_grants(token_hash,challenge,client_state,auth_user_id,email,name) VALUES($1,$2,$3,$4,$5,$6)",
+    [
+      hash(newGrant),
+      crypto.createHash("sha256").update(signupVerifier).digest("base64url"),
+      signupState, verifiedGoogleId, signupEmail, "Moradora Google",
+    ],
+  );
+  const newIdentity = (await request("mobile/auth/google/exchange", {
+    method: "POST",
+    body: { code: newGrant, verifier: signupVerifier, state: signupState },
+  })).data;
+  assert.equal(newIdentity.registration_required, true);
+  assert.equal(newIdentity.email, signupEmail);
+  assert.equal(newIdentity.name, "Moradora Google");
+  assert.match(newIdentity.signup_token, /^[a-f0-9]{64}$/);
+  await request("mobile/auth/google/exchange", {
+    method: "POST",
+    body: { code: newGrant, verifier: signupVerifier, state: signupState },
+    expected: 401,
+  });
+  const googleRegistration = {
+    signup_token: newIdentity.signup_token,
+    name: "Moradora Google", phone: "11999990000",
+    invite, tower: condo.towers[0], apartment: "1202",
+  };
+  await request("mobile/auth/register-google", {
+    method: "POST", body: { ...googleRegistration, invite: "InvalidOtherInvite123" },
+    expected: 400,
+  });
+  assert.equal((await db.query("SELECT count(*)::int AS total FROM users WHERE email=$1",
+    [signupEmail])).rows[0].total, 0, "Google grant without a valid condominium invite must not create an account");
+  const signedUp = (await request("mobile/auth/register-google", {
+    method: "POST", body: googleRegistration,
+  })).data;
+  assert.match(signedUp.access_token, /^[a-f0-9]{64}$/);
+  const googleMember = (await request("me", { token: signedUp.access_token })).data.viewer;
+  assert.equal(googleMember.email, signupEmail);
+  assert.equal(googleMember.condominium_id, fixture.id);
+  await request("mobile/auth/register-google", {
+    method: "POST", body: googleRegistration, expected: 401,
+  });
+  await request("auth/logout", { token: signedUp.access_token, method: "POST" });
+  console.log("Google registration: verified identity, invite, session and one-time grants PASS.");
   await request("auth/logout", { token: exchanged, method: "POST" });
   await request("auth/logout", { method: "POST", token: buyer.token });
   assert.equal((await request("me", { token: buyer.token })).data.viewer, null);
