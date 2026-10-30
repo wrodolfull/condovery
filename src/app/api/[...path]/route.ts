@@ -1072,19 +1072,24 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
       if(old.rowCount)return out({order:old.rows[0],whatsapp_url:await savedWhatsApp(old.rows[0] as SavedOrder,u)});
     }
     const result=await transaction(async tx=>{
-      const sr=await tx.query(
-        "SELECT * FROM shops WHERE id=$1 AND condominium_id=$2 AND status='approved' FOR UPDATE",
-        [b.shop_id,u.condominium_id]
-      );
-      const shop=sr.rows[0];
-      if(b.client_order_key&&shop&&path==='orders'){
+      if(path==='orders'&&b.client_order_key){
+        // Serializes the same buyer/idempotency key *before* any shop lock.
+        // Otherwise two HTTP requests may both miss the initial lookup and
+        // insert separate orders. Cross-shop concurrent retries are covered.
+        await tx.query("SELECT pg_advisory_xact_lock(hashtextextended($1,0))",
+          [u.id+':'+b.client_order_key]);
         const previous=await tx.query(
           "SELECT o.*,s.name AS shop_name,s.whatsapp FROM orders o JOIN shops s ON s.id=o.shop_id "+
           "WHERE o.condominium_id=$1 AND o.buyer_id=$2 AND o.client_order_key=$3",
           [u.condominium_id,u.id,b.client_order_key]
         );
-        if(previous.rowCount)return {order:previous.rows[0],whatsapp_url:await savedWhatsApp(previous.rows[0] as SavedOrder,u)};
+        if(previous.rowCount)return {order:previous.rows[0],whatsapp_url:await savedWhatsApp(previous.rows[0] as SavedOrder,u),reused:true};
       }
+      const sr=await tx.query(
+        "SELECT * FROM shops WHERE id=$1 AND condominium_id=$2 AND status='approved' FOR UPDATE",
+        [b.shop_id,u.condominium_id]
+      );
+      const shop=sr.rows[0];
       if(!shop||!shop.is_open)bad('Loja fechada. Não é possível registrar pedidos no momento.',409);
        if(!Array.isArray(shop.payment_methods)||!shop.payment_methods.includes(b.payment_method))bad('Este meio de pagamento não é aceito pela loja.',409);
       if((b.fulfillment==='delivery'&&!shop.delivery_enabled)||
@@ -1161,7 +1166,11 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
       return {order:created.rows[0],
         whatsapp_url:'https://wa.me/'+normalizeWhatsApp(shop.whatsapp)+'?text='+encodeURIComponent(message)};
     });
-    return out(result,path==='orders'?201:200);
+    // A concurrent retry can find the original inside the transaction.
+    // Distinguish it from a new order, just as the fast pre-check does.
+    if(path==='orders'&&'order' in result)
+      return out({order:result.order,whatsapp_url:result.whatsapp_url},'reused' in result?200:201);
+    return out(result,200);
   }
   if(path==='orders'&&method==='GET'){
     const scope=req.nextUrl.searchParams.get('scope');
