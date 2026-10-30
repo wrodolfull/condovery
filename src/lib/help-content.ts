@@ -11,14 +11,14 @@ export type HelpArticle={
 export const helpArticles:HelpArticle[]=[
   // Moradores: conta e acesso
   {id:'criar-conta',area:'resident',topic:'Conta e acesso',title:'Como criar minha conta?',steps:[
-    'Na tela inicial do Condovery, toque em Cadastre-se ou Criar minha conta.',
+    'Na tela inicial do Elevadoor, toque em Cadastre-se ou Criar minha conta.',
     'Preencha seu nome, WhatsApp, e-mail e crie uma senha segura.',
     'Informe o código de convite fornecido pelo condomínio e selecione sua torre e apartamento.',
     'Toque em Criar minha conta e confirme o e-mail, se solicitado.',
     'Depois, entre com seu e-mail e senha.'
   ],note:'O acesso ao marketplace é exclusivo para moradores cadastrados.'},
-  {id:'entrar',area:'resident',topic:'Conta e acesso',title:'Como entrar no Condovery?',steps:[
-    'Abra o Condovery e escolha Entrar com e-mail.',
+  {id:'entrar',area:'resident',topic:'Conta e acesso',title:'Como entrar no Elevadoor?',steps:[
+    'Abra o Elevadoor e escolha Entrar com e-mail.',
     'Digite o e-mail cadastrado e a senha.',
     'Toque em Entrar com e-mail. Se a opção estiver disponível, você também pode usar Continuar com Google.'
   ]},
@@ -66,7 +66,7 @@ export const helpArticles:HelpArticle[]=[
     'Preencha data, horário e instruções, se precisar, e selecione a forma de pagamento.',
     'Prossiga para registrar o pedido e abra o WhatsApp.',
     'No WhatsApp, toque em Enviar para encaminhar a mensagem ao vendedor.'
-  ],note:'O pedido fica registrado no Condovery. A loja é responsável por confirmar disponibilidade, entrega e pagamento.'},
+  ],note:'O pedido fica registrado no Elevadoor. A loja é responsável por confirmar disponibilidade, entrega e pagamento.'},
   {id:'entrega-ou-retirada',area:'resident',topic:'Compras e pedidos',title:'Como escolher entrega ou retirada?',steps:[
     'No carrinho, selecione Entrega ou Retirada, quando essas opções estiverem disponíveis.',
     'Em Entrega, confira sua torre e apartamento cadastrados.',
@@ -168,7 +168,7 @@ export const helpArticles:HelpArticle[]=[
     'Confira a forma de pagamento escolhida pelo comprador nos detalhes do pedido.',
     'Converse com o cliente pelo WhatsApp para combinar o pagamento e a entrega.',
     'Registre a conclusão do pedido no Painel do vendedor depois de atender o cliente.'
-  ],note:'O Condovery registra o pedido, mas não processa o pagamento entre morador e vendedor.'},
+  ],note:'O Elevadoor registra o pedido, mas não processa o pagamento entre morador e vendedor.'},
   {id:'moderar-avaliacao',area:'seller',topic:'Pedidos e avaliações',title:'Como aprovar uma avaliação da minha loja?',steps:[
     'Acesse Painel do vendedor → Avaliações.',
     'Encontre uma avaliação aguardando moderação.',
