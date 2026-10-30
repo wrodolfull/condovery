@@ -10,13 +10,13 @@ process.on('uncaughtExceptionMonitor',()=>{
 import pg from 'pg';
 
 const origin=process.env.SMOKE_URL||'http://127.0.0.1:3000';
-async function request(path, {method='GET', body, cookie, expected=200}={}) {
+async function request(path, {method='GET', body, cookie, token, expected=200}={}) {
   // Existing checkout scenarios use Pix unless they explicitly test another method.
   if(body&&method==='POST'&&(path==='orders'||path==='orders/quote'))body={payment_method:'pix',...body};
   if(body&&method==='PATCH'&&path==='shops/mine')body={payment_methods:['pix','credit_card','debit_card','cash'],...body};
   const response=await fetch(origin+'/api/'+path,{
     method,
-    headers:{...(body?{'Content-Type':'application/json'}:{}),...(cookie?{'Cookie':cookie}:{})},
+    headers:{...(body?{'Content-Type':'application/json'}:{}),...(cookie?{'Cookie':cookie}:{}),...(token?{'Authorization':'Bearer '+token}:{})},
     ...(body?{body:JSON.stringify(body)}:{})
   });
   const data=await response.json().catch(()=>null);
@@ -308,6 +308,91 @@ assert.ok(sellerInsights.topProducts.some(p=>p.product_id===productId&&p.units>=
 await request('seller/insights?days=15',{cookie:sellerCookie,expected:400});
 await request('seller/insights?days=30',{cookie:adminCookie,expected:403});
 console.log('Seller insights scoped to owner, status and confirmed order snapshots PASS.');
+ 
+// Cross-tenant attack simulation with a real resident, web cookie and mobile
+// bearer session, plus media records in two separate condominiums.
+const otherInvite='AnotherPrivateInvite5678';
+const otherEmail='neighbor-other-condo-smoke@example.com';
+const otherCondo=(await request('public/condominium',{
+  method:'POST',body:{invite:otherInvite}
+})).data;
+assert.equal(otherCondo.name,newTenant.name);
+await request('auth/register',{method:'POST',expected:201,body:{
+  name:'Morador de Outro Condomínio',email:otherEmail,phone:'11999998888',
+  password:pass,invite:otherInvite,tower:otherCondo.towers[0],apartment:'42'
+}});
+const confirmOther=await fetch('http://127.0.0.1:3333/__test/confirm?email='+encodeURIComponent(otherEmail));
+assert.equal(confirmOther.status,200);
+const otherCookie=(await request('auth/login',{
+  method:'POST',body:{email:otherEmail,password:pass}
+})).cookie;
+const otherToken=(await request('mobile/auth/login',{
+  method:'POST',body:{email:otherEmail,password:pass}
+})).data.access_token;
+assert.ok(otherCookie&&otherToken);
+const tenantAssets=new pg.Client({connectionString:process.env.DATABASE_URL});
+await tenantAssets.connect();
+let localMedia,foreignMedia;
+try{
+  const bytes=Buffer.from('testing private tenant scoped media');
+  localMedia=(await tenantAssets.query(
+    "INSERT INTO media_assets(condominium_id,mime,bytes) VALUES($1,'image/webp',$2) RETURNING id",
+    [originalTenant,bytes])).rows[0].id;
+  foreignMedia=(await tenantAssets.query(
+    "INSERT INTO media_assets(condominium_id,mime,bytes) VALUES($1,'image/webp',$2) RETURNING id",
+    [newTenant.id,bytes])).rows[0].id;
+  for(const credential of [{cookie:otherCookie},{token:otherToken}]){
+    assert.equal((await request('me',credential)).data.viewer.condominium_id,newTenant.id);
+    assert.equal((await request('favorites',credential)).data.products.length,0);
+    assert.deepEqual((await request('favorite-shops',credential)).data.ids,[]);
+    assert.equal((await request('orders',credential)).data.orders.length,0);
+    assert.ok((await request('home',credential)).data.products.every(p=>p.shop_id!==shopId));
+    await request('shops/'+shopId,{...credential,expected:404});
+    await request('orders/'+orderId,{...credential,expected:404});
+    await request('orders/'+orderId+'/whatsapp',{...credential,expected:404});
+    await request('favorites',{...credential,method:'POST',expected:404,body:{product_id:productId}});
+    await request('favorite-shops',{...credential,method:'POST',expected:404,body:{shop_id:shopId}});
+    await request('fairs/'+fairId,{...credential,expected:404});
+    await request('orders/quote',{...credential,method:'POST',expected:409,body:{
+      shop_id:shopId,items:[{id:productId,quantity:1}],
+      payment_method:'pix',fulfillment:'pickup'
+    }});
+    await request('seller/insights',{...credential,expected:403});
+    await request('admin/summary',{...credential,expected:403});
+    await request('admin/reports',{...credential,expected:403});
+    await request('platform/ads/reports',{...credential,expected:403});
+    // A resident of B can see B, but not an institutional A image.
+    await request('media/'+foreignMedia,{...credential});
+    await request('media/'+localMedia,{...credential,expected:404});
+  }
+  await request('media/'+foreignMedia,{cookie:buyerCookie,expected:404});
+  await request('media/'+localMedia,{cookie:buyerCookie});
+  // The global administrator must not bypass tenant checks for B's fair,
+  // giveaway or otherwise-unclassified institutional media.
+  await request('media/'+foreignMedia,{cookie:adminCookie,expected:404});
+  await request('platform/condominiums/switch',{method:'POST',cookie:adminCookie,body:{
+    condominium_id:newTenant.id
+  }});
+  assert.equal((await request('admin/summary',{cookie:adminCookie})).data.stats.orders,0);
+  assert.equal((await request('admin/reports',{cookie:adminCookie})).data.total,0);
+  await request('media/'+foreignMedia,{cookie:adminCookie});
+  await request('media/'+localMedia,{cookie:adminCookie,expected:404});
+  await request('platform/condominiums/switch',{method:'POST',cookie:adminCookie,body:{
+    condominium_id:originalTenant
+  }});
+  assert.equal((await request('me',{cookie:adminCookie})).data.viewer.condominium_id,originalTenant);
+  console.log('Two-condominium isolation PASS: web/mobile sessions, orders, favorites, media, shop, fairs and reporting.');
+}finally{
+  await request('platform/condominiums/switch',{method:'POST',cookie:adminCookie,body:{
+    condominium_id:originalTenant
+  }});
+  if(localMedia||foreignMedia)await tenantAssets.query(
+    'DELETE FROM media_assets WHERE id=ANY($1::uuid[])',
+    [[localMedia,foreignMedia].filter(Boolean)]
+  );
+  await tenantAssets.end();
+}
+
 
 assert.equal(final.total_cents,5000);
 assert.equal(final.can_review,true,'A different resident who completed an order can rate it.');
