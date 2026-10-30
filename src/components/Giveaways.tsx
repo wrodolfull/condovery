@@ -139,7 +139,7 @@ export function Giveaways({viewerId}:{viewerId:string}){
           style={{padding:'12px',borderRadius:12,border:'1px solid #fecaca',color:'#b91c1c',background:'#fff',fontWeight:700}}>Excluir anúncio</button>
       </div>}
       {current.user_id!==viewerId&&current.status==='available'&&current.contact_whatsapp?
-        <a target="_blank" rel="noopener noreferrer" href={'https://wa.me/'+current.contact_whatsapp.replace(/\D/g,'')+'?text='+encodeURIComponent('Olá! Vi seu desapego "'+current.title+'" no Condovery. Ainda está disponível?')}
+        <a target="_blank" rel="noopener noreferrer" href={'https://wa.me/'+current.contact_whatsapp.replace(/\D/g,'')+'?text='+encodeURIComponent('Olá! Vi seu desapego "'+current.title+'" no Elevadoor. Ainda está disponível?')}
           style={{display:'flex',gap:8,alignItems:'center',justifyContent:'center',padding:14,borderRadius:13,background:'#111',color:'#fff',textDecoration:'none',fontWeight:700}}><MessageCircle size={19}/>Tenho interesse</a>:
         <p style={{fontSize:13,color:'#666'}}>{current.user_id===viewerId?'Este é seu anúncio.':current.status!=='available'?'Este item não está disponível.':'O morador não informou contato para este item.'}</p>}
     </article>}
