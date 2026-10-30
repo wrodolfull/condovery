@@ -14,6 +14,7 @@ import {ImageCropper,type ImageKind} from '@/components/ImageCropper';
 import {PasswordFeedback} from '@/components/PasswordFeedback';
 import {isValidPassword} from '@/lib/password-policy';
 import {clientUUID} from '@/lib/client-uuid';
+import {checkoutAttemptStorageKey,parseCheckoutAttempt,type CheckoutAttempt} from '@/lib/checkout-recovery';
 import {advanceSessionGeneration,currentSessionGeneration,sessionWasRevoked,SESSION_EXPIRED_EVENT} from '@/lib/session-expiry';
 import {parseMoneyInput} from '@/lib/money-input';
 import {mergeRefreshedOrders} from '@/lib/order-live-refresh';
@@ -118,6 +119,9 @@ async function prepareImageForUpload(file:File):Promise<File>{
   }finally{bitmap.close();}
 }
 
+class ApiRequestError extends Error {
+  constructor(message:string,readonly status:number){super(message);}
+}
 async function api<T>(url:string,opts:RequestInit={}):Promise<T>{
   const generation=currentSessionGeneration();
   const method=(opts.method??'GET').toUpperCase();
@@ -126,7 +130,7 @@ async function api<T>(url:string,opts:RequestInit={}):Promise<T>{
   if(!res.ok){
     if(sessionWasRevoked(res.status,url.split('?')[0],method,generation))
       window.dispatchEvent(new Event(SESSION_EXPIRED_EVENT));
-    throw new Error(data.error||'Não foi possível concluir.');
+    throw new ApiRequestError(data.error||'Não foi possível concluir.',res.status);
   }
   return data as T;
 }
@@ -257,6 +261,8 @@ export default function Page(){
   const [lastOrder,setLastOrder]=useState<{code:number;whatsapp_url:string}|null>(null);
   const [reopenWhatsAppUrl,setReopenWhatsAppUrl]=useState<string|null>(null);
   const [checkoutKey,setCheckoutKey]=useState<string|null>(null);
+  const [pendingAttempt,setPendingAttempt]=useState<CheckoutAttempt|null>(null);
+  const checkoutInFlight=useRef(false);
   const [revisedQuote,setRevisedQuote]=useState<CheckoutQuote|null>(null);
   const [orders,setOrders]=useState<Order[]>([]);
   const [orderFilter,setOrderFilter]=useState<OrderFilter>('all');
@@ -310,7 +316,7 @@ export default function Page(){
       setHome(emptyHome);setAds([]);setOrders([]);setOrdersCursor(null);
       setSellerOrders([]);setSellerOrdersCursor(null);
       setFavoriteIds([]);setFavoriteProducts([]);setFavoriteShopIds([]);setFavoriteShops([]);
-      setCart([]);setCheckoutKey(null);setLastOrder(null);
+      setCart([]);setCheckoutKey(null);setPendingAttempt(null);setLastOrder(null);
       setShowDeleteAccount(false);setShowDeleteShop(false);
       setError('Sua sessão expirou. Entre novamente.');
       try{window.localStorage.removeItem('condovery_cart');}catch{}
@@ -524,7 +530,7 @@ export default function Page(){
     setBusy(true);setError('');setTenantMenuOpen(false);
     try{
       await api('platform/condominiums/switch',{method:'POST',body:payload({condominium_id:id})});
-      setCart([]);setSelectedShop(null);setFavoriteIds([]);setFavoriteProducts([]);setFavoriteShopIds([]);setFavoriteShops([]);setOrders([]);setOrdersCursor(null);setSellerOrdersCursor(null);setMyShop(null);
+      setCart([]);setPendingAttempt(null);setSelectedShop(null);setFavoriteIds([]);setFavoriteProducts([]);setFavoriteShopIds([]);setFavoriteShops([]);setOrders([]);setOrdersCursor(null);setSellerOrdersCursor(null);setMyShop(null);
       const data=await api<{viewer:Viewer}>('me');
       setViewer(data.viewer);await refresh(data.viewer);
       go('admin');notify('Condomínio ativo alterado para '+data.viewer.condominium_name+'.');
@@ -600,6 +606,13 @@ export default function Page(){
   useEffect(()=>{
     setCheckoutKey(null);setRevisedQuote(null);
   },[cart,fulfillment,deliveryDay,deliveryWindow,instructions,checkoutNote,paymentMethod]);
+  useEffect(()=>{
+    if(!viewer?.id||!viewer.condominium_id){setPendingAttempt(null);return;}
+    const key=checkoutAttemptStorageKey(viewer.id,viewer.condominium_id);
+    let saved:CheckoutAttempt|null=null;
+    try{saved=parseCheckoutAttempt(window.localStorage.getItem(key));}catch{}
+    setPendingAttempt(saved);
+  },[viewer?.id,viewer?.condominium_id]);
   useEffect(()=>{if(!toast)return;const timer=setTimeout(()=>setToast(''),4000);return()=>clearTimeout(timer);},[toast]);
   // Admin data is private and tenant-scoped: fetch when the panel is opened,
   // not on every login or page reload.
@@ -936,45 +949,77 @@ export default function Page(){
     };
   }
   async function checkout(confirmed=false){
-    if(!cartShop){setError("Não foi possível carregar a loja deste carrinho. Tente novamente.");return;}
-    if(!cart.length||busy)return;
-    if(cartShop?.is_open===false){setError('Loja fechada. Não é possível fazer pedidos agora.');return;}
-    if(!paymentMethod||!acceptedPaymentMethods.includes(paymentMethod)){setError('Selecione um meio de pagamento aceito pela loja.');return;}
-    setBusy(true);setError('');
-    const key=checkoutKey??clientUUID();
-    if(!checkoutKey)setCheckoutKey(key);
-    try{
-      const payloadData=checkoutPayload(key);
-      const latest=await api<{quote:CheckoutQuote}>('orders/quote',{method:'POST',body:payload(payloadData)});
-      const quote=latest.quote;
-      const changed=quote.total_cents!==cartTotal||
-        quote.lines.some((line,i)=>line.unit_price_cents!==cartUnitPrice(cart[i]));
-      const newerConfirmation=confirmed&&revisedQuote&&(
-        quote.total_cents!==revisedQuote.total_cents||
-        quote.lines.some((line,i)=>line.unit_price_cents!==revisedQuote.lines[i]?.unit_price_cents)
-      );
-      if((changed&&!confirmed)||newerConfirmation){
-        setRevisedQuote(quote);
-        notify('Confira o valor atualizado antes de registrar o pedido.');
-        return;
+    if(!cart.length||busy||checkoutInFlight.current)return;
+    if(!viewer){setError('Faça login para concluir o pedido.');return;}
+    const storageKey=checkoutAttemptStorageKey(viewer.id,viewer.condominium_id);
+    // Never create another key if a previous POST may have committed.
+    let recovering=pendingAttempt;
+    if(!recovering)try{recovering=parseCheckoutAttempt(window.localStorage.getItem(storageKey));}catch{}
+    if(!recovering){
+      if(!cartShop){setError('Não foi possível carregar a loja deste carrinho. Tente novamente.');return;}
+      if(cartShop.is_open===false){setError('Loja fechada. Não é possível fazer pedidos agora.');return;}
+      if(!paymentMethod||!acceptedPaymentMethods.includes(paymentMethod)){
+        setError('Selecione um meio de pagamento aceito pela loja.');return;
       }
-      const result=await api<{order:{code:number};whatsapp_url:string}>('orders',{method:'POST',body:payload({
-        ...payloadData,expected_total_cents:quote.total_cents
-      })});
+    }
+    checkoutInFlight.current=true;
+    setBusy(true);setError('');
+    try{
+      let body:Record<string,unknown>;
+      if(recovering){
+        body=recovering.body;
+      }else{
+        const key=checkoutKey??clientUUID();
+        if(!checkoutKey)setCheckoutKey(key);
+        const draft=checkoutPayload(key);
+        const latest=await api<{quote:CheckoutQuote}>('orders/quote',{method:'POST',body:payload(draft)});
+        const quote=latest.quote;
+        const changed=quote.total_cents!==cartTotal||
+          quote.lines.some((line,i)=>line.unit_price_cents!==cartUnitPrice(cart[i]));
+        const newerConfirmation=confirmed&&revisedQuote&&(
+          quote.total_cents!==revisedQuote.total_cents||
+          quote.lines.some((line,i)=>line.unit_price_cents!==revisedQuote.lines[i]?.unit_price_cents)
+        );
+        if((changed&&!confirmed)||newerConfirmation){
+          setRevisedQuote(quote);
+          notify('Confira o valor atualizado antes de registrar o pedido.');
+          return;
+        }
+        body={...draft,expected_total_cents:quote.total_cents};
+        const attempt:CheckoutAttempt={key,body};
+        // Persist synchronously before POST: if the response is lost or the
+        // page is reloaded, retrying uses the original payload and key.
+        try{window.localStorage.setItem(storageKey,JSON.stringify(attempt));}
+        catch{throw new Error('Não foi possível salvar a tentativa de pedido neste navegador. Libere espaço e tente novamente.');}
+        recovering=attempt;
+        setPendingAttempt(attempt);
+      }
+      const result=await api<{order:{code:number};whatsapp_url:string}>('orders',{
+        method:'POST',body:payload(body)
+      });
+      try{window.localStorage.removeItem(storageKey);}catch{}
+      setPendingAttempt(null);setCheckoutKey(null);setRevisedQuote(null);
       setLastOrder({code:result.order.code,whatsapp_url:result.whatsapp_url});
-      setCheckoutKey(null);setRevisedQuote(null);setCart([]);go('success');
+      setCart([]);go('success');
       void Promise.allSettled([loadOrders(),loadHome()]);
       if(preferWhatsAppMessenger()){
-        // Saving the order requires API requests; direct Android app launch
-        // must instead happen from the explicit link on the success page.
         notify('Pedido registrado. Toque em Enviar pedido para continuar.');
       }else{
         window.location.assign(result.whatsapp_url);
       }
     }catch(e){
+      if(recovering&&e instanceof ApiRequestError&&e.status>=400&&e.status<500&&e.status!==401){
+        // A definitive server refusal (e.g. stock/price change) means no
+        // order was created by that attempt. Connectivity errors do not.
+        try{window.localStorage.removeItem(storageKey);}catch{}
+        setPendingAttempt(null);setCheckoutKey(null);
+      }
       setRevisedQuote(null);
       fail(e);
-    }finally{setBusy(false);}
+    }finally{
+      checkoutInFlight.current=false;
+      setBusy(false);
+    }
   }
   async function updateStatus(id:string,status:string){
     setBusy(true);try{
