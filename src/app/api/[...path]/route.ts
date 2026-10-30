@@ -667,12 +667,15 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
     return out({shops:page.shops.map(({cursor_created_at,...shop})=>shop),hasMore:page.hasMore,nextCursor:page.nextCursor});
   }
   if(path==='home'&&method==='GET'){
-    const [categories,shops,products]=await Promise.all([
+    const [categories,shops,products,recentProducts]=await Promise.all([
       query('SELECT id,name,icon FROM categories WHERE condominium_id=$1 AND is_active=true ORDER BY sort_order,name',[u.condominium_id]),
       query("SELECT id,name,slug,description,cover_image,logo_image,is_open,delivery_enabled,pickup_enabled,delivery_fee_cents,payment_methods,lead_time FROM shops WHERE condominium_id=$1 AND status='approved' ORDER BY is_open DESC,created_at DESC LIMIT 100",[u.condominium_id]),
-      query("SELECT p.id,p.shop_id,p.category_id,p.name,p.description,p.price_cents,p.promo_price_cents,p.image_url,"+buyerAvailableStockSQL+",p.visibility,p.lead_time,p.is_featured,p.option_groups,s.name AS shop_name,s.is_open FROM products p JOIN categories c ON c.id=p.category_id AND c.condominium_id=p.condominium_id AND c.is_active=true JOIN shops s ON s.id=p.shop_id WHERE p.condominium_id=$1 AND s.condominium_id=$1 AND p.visibility<>'hidden' AND p.deleted_at IS NULL AND s.status='approved' ORDER BY p.is_featured DESC,p.created_at DESC LIMIT 48",[u.condominium_id])
+      query("SELECT p.id,p.shop_id,p.category_id,p.name,p.description,p.price_cents,p.promo_price_cents,p.image_url,"+buyerAvailableStockSQL+",p.visibility,p.lead_time,p.is_featured,p.option_groups,s.name AS shop_name,s.is_open FROM products p JOIN categories c ON c.id=p.category_id AND c.condominium_id=p.condominium_id AND c.is_active=true JOIN shops s ON s.id=p.shop_id WHERE p.condominium_id=$1 AND s.condominium_id=$1 AND p.visibility<>'hidden' AND p.deleted_at IS NULL AND s.status='approved' ORDER BY p.is_featured DESC,p.created_at DESC LIMIT 48",[u.condominium_id]),
+      // Only truly new, orderable products; the current tenant and moderated state are checked server-side.
+      query("SELECT p.id,p.shop_id,p.category_id,p.name,p.description,p.price_cents,p.promo_price_cents,p.image_url,"+buyerAvailableStockSQL+",p.visibility,p.lead_time,p.is_featured,p.option_groups,s.name AS shop_name,s.is_open FROM products p JOIN categories c ON c.id=p.category_id AND c.condominium_id=p.condominium_id AND c.is_active=true JOIN shops s ON s.id=p.shop_id WHERE p.condominium_id=$1 AND s.condominium_id=$1 AND p.visibility='available' AND p.is_available=true AND p.deleted_at IS NULL AND s.status='approved' AND s.is_open=true AND (p.stock IS NULL OR p.stock>0) AND p.created_at > now() - interval '72 hours' AND p.created_at <= now() ORDER BY p.created_at DESC,p.id DESC LIMIT 30",[u.condominium_id])
     ]);
-    return out({categories:categories.rows,shops:shops.rows,products:products.rows});
+    return out({categories:categories.rows,shops:shops.rows,products:products.rows,
+      recentProducts:recentProducts.rows.filter(p=>p.stock===null||Number(p.stock)>0).slice(0,12)});
   }
   if(path==='shops/mine/reviews'&&method==='GET'){
     const shop=await shopOwned(u,true);

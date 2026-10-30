@@ -70,14 +70,14 @@ function MoneyInput({cents,onValue}:{cents:number;onValue:(value:number)=>void})
       onValue(parsed);
     }} onBlur={()=>setFocused(false)}/>;
 }
-type HomeData={categories:Category[];shops:Shop[];products:Product[]};
+type HomeData={categories:Category[];shops:Shop[];products:Product[];recentProducts:Product[]};
 type AdminData={towers:string[];stats:{residents:number;shops:number;orders:number};categories:Category[]};
 type View='fairs'|'ads-admin'|'home'|'categories'|'favorites'|'orders'|'account'|'shop'|'product'|'cart'|'success'|'seller'|'admin'|'platform'|'giveaways';
 type Tenant={id:string;name:string;slug:string;subdomain:string;custom_domain:string|null;is_active:boolean;residents:number;shops:number};
 const money=(n:number)=>new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(n/100);
 const price=(p:Product)=>p.promo_price_cents??p.price_cents;
 const statusLabel:Record<string,string>={awaiting_confirmation:'Aguardando confirmação',confirmed:'Confirmado',completed:'Concluído',cancelled:'Cancelado',pending:'Em análise',approved:'Ativo',suspended:'Suspenso',deleted:'Excluído'};
-const emptyHome:HomeData={categories:[],shops:[],products:[]};
+const emptyHome:HomeData={categories:[],shops:[],products:[],recentProducts:[]};
 const cartShopSafe=(cart:CartItem[],shops:Shop[],selected:{shop:Shop}|null,loaded:Shop|null)=>{
   return shops.find(s=>s.id===cart[0]?.product.shop_id)||
     (selected&&cart.length>0&&selected.shop.id===cart[0].product.shop_id?selected.shop:undefined)||
@@ -220,6 +220,7 @@ export default function Page(){
   const [toast,setToast]=useState('');
   const [view,setView]=useState<View>('home');
   const [home,setHome]=useState<HomeData>(emptyHome);
+  const recentProductsTrackRef=useRef<HTMLDivElement|null>(null);
   const [ads,setAds]=useState<AdCampaign[]>([]);
   const [favoriteIds,setFavoriteIds]=useState<string[]>([]);
   const [favoriteProducts,setFavoriteProducts]=useState<Product[]>([]);
@@ -1375,6 +1376,20 @@ export default function Page(){
             <IllustrationSlot className="weekly-offer-art" src={artwork.weeklyOffers}
               alt="Arte promocional das ofertas da semana"
               fallback={<Tag size={54} strokeWidth={1.2}/>}/>
+          </section>}
+          {home.recentProducts.length>0&&<section className="new-arrivals-section" aria-label="Novidades por aqui">
+            <div className="new-arrivals-head">
+              <div><h2>Novidades por aqui</h2><p>Produtos adicionados nos últimos 3 dias</p></div>
+              {home.recentProducts.length>3&&<div className="new-arrivals-nav">
+                <button type="button" aria-label="Ver novidades anteriores" onClick={()=>recentProductsTrackRef.current?.scrollBy({left:-Math.max(180,recentProductsTrackRef.current.clientWidth*.8),behavior:'smooth'})}><ArrowLeft size={18}/></button>
+                <button type="button" aria-label="Ver próximas novidades" onClick={()=>recentProductsTrackRef.current?.scrollBy({left:Math.max(180,recentProductsTrackRef.current.clientWidth*.8),behavior:'smooth'})}><ArrowRight size={18}/></button>
+              </div>}
+            </div>
+            <div className="product-track recent-products-track" ref={recentProductsTrackRef} role="region"
+              aria-label="Produtos novos dos últimos 3 dias" tabIndex={0}>
+              {home.recentProducts.map(p=><ProductCard key={p.id} p={p} onClick={()=>openProduct(p)}
+                favorite={favoriteIds.includes(p.id)} onFavorite={toggleFavorite}/>)}
+            </div>
           </section>}
           {featured.length>0&&<><SectionHeader title="Produtos em destaque" action="Explorar" onAction={()=>go('categories')}/>
             <div className="product-track">{featured.map(p=><ProductCard key={p.id} p={p} onClick={()=>openProduct(p)} favorite={favoriteIds.includes(p.id)} onFavorite={toggleFavorite}/>)}</div></>}
