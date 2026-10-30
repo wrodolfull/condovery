@@ -264,6 +264,26 @@ const created=await request('orders',{method:'POST',cookie:buyerCookie,body:chec
 const retry=await request('orders',{method:'POST',cookie:buyerCookie,body:checkoutBody,expected:200});
 assert.equal(retry.data.order.id,created.data.order.id);
 assert.equal(retry.data.whatsapp_url,created.data.whatsapp_url);
+ // A slow/lost HTTP response may arrive after the buyer's order committed.
+ // Retrying that exact payload must succeed even if the seller closed since.
+ await request('shops/mine/status',{method:'PATCH',cookie:sellerCookie,body:{is_open:false}});
+ const afterClose=await request('orders',{method:'POST',cookie:buyerCookie,body:checkoutBody,expected:200});
+ assert.equal(afterClose.data.order.id,created.data.order.id);
+ await request('shops/mine/status',{method:'PATCH',cookie:sellerCookie,body:{is_open:true}});
+ // Two simultaneous taps with the same client_order_key must create one row.
+ const parallelKey=crypto.randomUUID();
+ const parallelBody={...checkoutBody,client_order_key:parallelKey,items:[{id:productId,quantity:1}],payment_method:'pix'};
+ const attempts=await Promise.all([1,2].map(async()=>{
+   const response=await fetch(origin+'/api/orders',{
+     method:'POST',headers:{'Content-Type':'application/json','Cookie':buyerCookie},
+     body:JSON.stringify(parallelBody)
+   });
+   return {status:response.status,data:await response.json()};
+ }));
+ assert.deepEqual(attempts.map(v=>v.status).sort(),[200,201]);
+ assert.equal(attempts[0].data.order.id,attempts[1].data.order.id);
+ await request('orders/'+attempts[0].data.order.id,{method:'PATCH',cookie:sellerCookie,body:{status:'cancelled'}});
+ console.log('Checkout recovery: delayed response, store closed after POST and concurrent same-key replay PASS.');
 assert.equal(created.data.order.payment_method,'pix');
 assert.ok(decodeURIComponent(created.data.whatsapp_url).includes('Forma de pagamento: Pix'));
 const contact=(await request('orders/'+created.data.order.id+'/whatsapp',{cookie:buyerCookie})).data;
