@@ -829,7 +829,7 @@ await request('shops/mine',{method:'PATCH',cookie:sellerCookie,body:{
 }});
 assert.ok((await request('home',{cookie:buyerCookie})).data.products.some(p=>p.id===productId));
 
-// The Supabase Auth service creates/validates a recovery OTP, never Condovery.
+// The Supabase Auth service creates/validates a recovery OTP, never Elevadoor.
 const resetRequested=await request('auth/password/request',{
   method:'POST',body:{email:buyerEmail}
 });
