@@ -1,4 +1,4 @@
-# Condovery: compartilhamento e avaliações de lojas
+# Elevadoor: compartilhamento e avaliações de lojas
 
 ## Compartilhar loja
 
@@ -18,7 +18,7 @@ Esta primeira versão não oferece uma página de loja indexável sem login.
 
 1. Morador faz o pedido normalmente, combinando envio e pagamento diretamente
    com o vendedor pelo WhatsApp.
-2. A loja confirma e depois **marca como concluído** no Condovery.
+2. A loja confirma e depois **marca como concluído** no Elevadoor.
 3. Somente o **comprador desse pedido** pode enviar a avaliação: nota inteira
    de 1 a 5 estrelas arredondadas e comentário obrigatório até 200 caracteres.
 4. A avaliação fica \`pending\`, não pública; o comprador acompanha seu status
@@ -51,7 +51,7 @@ as avaliações aprovadas.
   \`PATCH /api/shops/mine/reviews/:id\`: somente o titular de uma loja
   aprovada. Apenas moderação de \`pending\` para \`approved\` ou \`rejected\`.
 - \`GET /api/orders\` também devolve \`review_status\` do pedido, quando houver.
-- Pagamento não é processado nem verificado no Condovery: “compra verificada”
+- Pagamento não é processado nem verificado no Elevadoor: “compra verificada”
   significa **pedido concluído no sistema**, marcado pelo vendedor, não uma
   transação financeira auditada.
 - A moderação pertence ao vendedor por decisão do MVP. Isso permite que
