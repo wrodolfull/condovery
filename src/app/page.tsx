@@ -823,7 +823,7 @@ export default function Page(){
   async function logout(){
     advanceSessionGeneration();
     try{await api('auth/logout',{method:'POST'});}catch{}
-    setViewer(null);setGoogleSignup(null);setHome(emptyHome);setFavoriteIds([]);setFavoriteProducts([]);setFavoriteShopIds([]);setFavoriteShops([]);setCart([]);setMyShop(null);setOrders([]);setOrdersCursor(null);setSellerOrders([]);setSellerOrdersCursor(null);go('home');
+    setViewer(null);setGoogleSignup(null);setHome(emptyHome);setFavoriteIds([]);setFavoriteProducts([]);setFavoriteShopIds([]);setFavoriteShops([]);setCart([]);setPendingAttempt(null);setMyShop(null);setOrders([]);setOrdersCursor(null);setSellerOrders([]);setSellerOrdersCursor(null);go('home');
   }
   async function openShop(id:string){
     setBusy(true);
@@ -929,6 +929,7 @@ export default function Page(){
     if(cart.length&&cart[0].product.shop_id!==selectedProduct.shop_id){
       if(!window.confirm('Seu carrinho é de outra loja. Deseja substituí-lo?'))return;
     }
+    if(pendingAttempt){setError('Resolva primeiro a tentativa de pedido anterior no carrinho.');go('cart');return;}
     setCart(current=>{
       const base=current.length&&current[0].product.shop_id!==selectedProduct.shop_id?[]:current;
       const selected={...productChoices};
@@ -1510,7 +1511,8 @@ export default function Page(){
       {view==='cart'&&<>
         <div className="page-title"><h1>Meu carrinho</h1><p>Escolha a entrega e finalize diretamente com o vendedor pelo WhatsApp.</p></div>
         {!cart.length?<Empty title="Seu carrinho está vazio" subtitle="Adicione produtos de uma loja para começar." action="Explorar produtos" onAction={()=>go('categories')}/>:
-        <div className={"checkout-layout"+(cartShop?.is_open===false?" is-shop-closed":"")}><section className="checkout-main">{cartShop?.is_open===false&&<div className="shop-closed-notice" role="status">Loja fechada. Não é possível concluir este pedido agora. Você pode remover os itens do carrinho.</div>}
+        <div className={"checkout-layout"+(cartShop?.is_open===false?" is-shop-closed":"")}><section className="checkout-main"><fieldset disabled={!!pendingAttempt} style={{border:0,padding:0,margin:0,minWidth:0}}>
+          {cartShop?.is_open===false&&<div className="shop-closed-notice" role="status">Loja fechada. Não é possível concluir este pedido agora. Você pode remover os itens do carrinho.</div>}
           {!cartShop&&<div className="shop-closed-notice" role="status">{cartShopLookup?.error||'Carregando informações da loja...'} {cartShopLookup?.error&&<button className="outline-button" onClick={()=>setCartShopRetry(n=>n+1)}>Tentar novamente</button>}</div>}
           <div className="white-panel"><h2><Store size={19}/> {cartShop?.name??'Sua loja'}</h2>{cart.map((item,index)=><div className="cart-item" key={item.product.id+'-'+index}>
             <ProductPicture src={item.product.image_url} name={item.product.name}/><div className="cart-item-details"><strong>{item.product.name}</strong>
@@ -1541,10 +1543,15 @@ export default function Page(){
             </div>
             <label className="field-label">Observações gerais<textarea rows={3} maxLength={400} value={checkoutNote} onChange={e=>setCheckoutNote(e.target.value)} placeholder="Algo mais que o vendedor precisa saber?"/></label>
           </div>
-        </section><aside className="checkout-total white-panel"><h2>Resumo do pedido</h2><div className="total-line"><span>{cartCount} {cartCount===1?'item':'itens'}</span><strong>{money(cartSubtotal)}</strong></div>
+        </fieldset></section><aside className="checkout-total white-panel"><h2>Resumo do pedido</h2><div className="total-line"><span>{cartCount} {cartCount===1?'item':'itens'}</span><strong>{money(cartSubtotal)}</strong></div>
           {actualFulfillment==='delivery'&&<div className="total-line"><span>Taxa de entrega</span><strong>{fee?money(fee):'Grátis'}</strong></div>}
           <div className="total-line bold"><span>Total do pedido</span><strong>{money(cartTotal)}</strong></div><p>{paymentMethod?'Pagamento escolhido: '+PAYMENT_LABELS[paymentMethod]+'. ':''}O pagamento será combinado diretamente com o vendedor.</p>
-          {revisedQuote&&<div className="price-changed" role="alert">
+          {pendingAttempt&&<div className="price-changed" role="status">
+            <strong>Envio anterior sem confirmação</strong>
+            <p>A solicitação pode já ter sido registrada. Retome exatamente a mesma tentativa para consultar o resultado, sem criar outro pedido. Os dados do carrinho ficam bloqueados até a resposta definitiva.</p>
+            <button type="button" className="outline-button" onClick={()=>go('orders')}>Ver meus pedidos</button>
+          </div>}
+          {revisedQuote&&!pendingAttempt&&<div className="price-changed" role="alert">
             <strong>O valor foi atualizado</strong>
             <p>Anterior: {money(cartTotal)} → <strong>Atual: {money(revisedQuote.total_cents)}</strong></p>
             {revisedQuote.lines.map((line,n)=><small key={n}>{line.quantity}× {line.name} — {money(line.total_cents)}</small>)}
@@ -1554,8 +1561,8 @@ export default function Page(){
             </button>
             <button type="button" className="outline-button" onClick={()=>setRevisedQuote(null)}>Revisar carrinho</button>
           </div>}
-          {!revisedQuote&&<button className="primary-button" disabled={busy||!cartShop||cartShop.is_open===false} onClick={()=>checkout()}>
-            {busy?'Conferindo valores...':preferWhatsAppMessenger()?'Registrar pedido':'Continuar no WhatsApp'}<ArrowRight size={18}/>
+          {(pendingAttempt||!revisedQuote)&&<button className="primary-button" disabled={busy||(!pendingAttempt&&(!cartShop||cartShop.is_open===false))} onClick={()=>checkout()}>
+            {busy?'Conferindo pedido...':pendingAttempt?'Retomar envio do pedido':preferWhatsAppMessenger()?'Registrar pedido':'Continuar no WhatsApp'}<ArrowRight size={18}/>
           </button>}
           <small>O pedido fica registrado mesmo se você fechar o WhatsApp. Apenas a loja poderá confirmá-lo.</small>
         </aside></div>}
