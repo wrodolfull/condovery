@@ -109,6 +109,30 @@ try {
     });
   }
   const [buyer, seller] = users;
+  // Regression: expired or revoked sessions cannot read tenant data or create
+  // an order. Logout and a cached UI must never be relied on for authorization.
+  for(const kind of ["mobile","web"]){
+    const expiredToken=crypto.randomBytes(32).toString("hex");
+    await db.query(
+      "INSERT INTO sessions(token_hash,user_id,client_kind,expires_at) VALUES($1,$2,$3,now()-interval '2 minutes')",
+      [hash(expiredToken),buyer.me.id,kind]
+    );
+    const credential=kind==="mobile"?{token:expiredToken}:{cookie:"condovery_session="+expiredToken};
+    assert.equal((await request("me",credential)).data.viewer,null);
+    await request("home",{...credential,expected:401});
+    await request("orders",{...credential,expected:401});
+    await request("orders/quote",{...credential,method:"POST",body:{items:[]},expected:401});
+  }
+  // A token explicitly revoked by the server is no longer usable.
+  const revokedToken=crypto.randomBytes(32).toString("hex");
+  await db.query(
+    "INSERT INTO sessions(token_hash,user_id,client_kind,expires_at) VALUES($1,$2,'mobile',now()+interval '1 day')",
+    [hash(revokedToken),buyer.me.id]
+  );
+  assert.equal((await request("me",{token:revokedToken})).data.viewer.id,buyer.me.id);
+  await db.query("DELETE FROM sessions WHERE token_hash=$1",[hash(revokedToken)]);
+  assert.equal((await request("me",{token:revokedToken})).data.viewer,null);
+  await request("orders",{token:revokedToken,expected:401});
   await request("home", { token: buyer.token });
   const emptyShop = await request("shops/mine", { token: buyer.token });
   assert.equal(emptyShop.data.shop, null);

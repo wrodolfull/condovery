@@ -14,6 +14,7 @@ import {ImageCropper,type ImageKind} from '@/components/ImageCropper';
 import {PasswordFeedback} from '@/components/PasswordFeedback';
 import {isValidPassword} from '@/lib/password-policy';
 import {clientUUID} from '@/lib/client-uuid';
+import {advanceSessionGeneration,currentSessionGeneration,sessionWasRevoked,SESSION_EXPIRED_EVENT} from '@/lib/session-expiry';
 import {parseMoneyInput} from '@/lib/money-input';
 import {mergeRefreshedOrders} from '@/lib/order-live-refresh';
 import {shopSharePath} from '@/lib/shop-slug';
@@ -118,9 +119,15 @@ async function prepareImageForUpload(file:File):Promise<File>{
 }
 
 async function api<T>(url:string,opts:RequestInit={}):Promise<T>{
+  const generation=currentSessionGeneration();
+  const method=(opts.method??'GET').toUpperCase();
   const res=await fetch('/api/'+url,{credentials:'same-origin',...opts,headers:{...(opts.body instanceof FormData?{}:{'Content-Type':'application/json'}),...opts.headers}});
   const data=await res.json().catch(()=>({}));
-  if(!res.ok)throw new Error(data.error||'Não foi possível concluir.');
+  if(!res.ok){
+    if(sessionWasRevoked(res.status,url.split('?')[0],method,generation))
+      window.dispatchEvent(new Event(SESSION_EXPIRED_EVENT));
+    throw new Error(data.error||'Não foi possível concluir.');
+  }
   return data as T;
 }
 const payload=(data:unknown)=>JSON.stringify(data);
@@ -291,6 +298,44 @@ export default function Page(){
   const [shopDraftDirty,setShopDraftDirty]=useState(false);
   const viewerRef=useRef<Viewer|null>(null);
   viewerRef.current=viewer;
+  useEffect(()=>{
+    const expire=()=>{
+      // The session can already have been cleared, or a later login succeeded.
+      if(!viewerRef.current)return;
+      viewerRef.current=null;
+      advanceSessionGeneration();
+      setViewer(null);setGoogleSignup(null);setAuthMode('login');
+      setView('home');setSelectedShop(null);setSelectedProduct(null);
+      setMyShop(null);setMyProducts([]);setAdminData(null);setTenants([]);setTenantList([]);
+      setHome(emptyHome);setAds([]);setOrders([]);setOrdersCursor(null);
+      setSellerOrders([]);setSellerOrdersCursor(null);
+      setFavoriteIds([]);setFavoriteProducts([]);setFavoriteShopIds([]);setFavoriteShops([]);
+      setCart([]);setCheckoutKey(null);setLastOrder(null);
+      setShowDeleteAccount(false);setShowDeleteShop(false);
+      setError('Sua sessão expirou. Entre novamente.');
+      try{window.localStorage.removeItem('condovery_cart');}catch{}
+    };
+    // Session-expired events are sent only for revoked authenticated requests.
+    window.addEventListener(SESSION_EXPIRED_EVENT,expire);
+    return()=>window.removeEventListener(SESSION_EXPIRED_EVENT,expire);
+  },[]);
+  useEffect(()=>{
+    // A suspended browser tab may keep showing outdated private information
+    // even without another API call. Revalidate when it becomes visible.
+    let active=true;
+    const validate=()=>{
+      if(document.visibilityState!=='visible'||!viewerRef.current)return;
+      const epoch=currentSessionGeneration();
+      api<{viewer:Viewer|null}>('me')
+        .then(r=>{
+          if(active&&!r.viewer&&epoch===currentSessionGeneration()&&viewerRef.current)
+            window.dispatchEvent(new Event(SESSION_EXPIRED_EVENT));
+        })
+        .catch(()=>{/* Offline is not logout: allow the next revalidation. */});
+    };
+    document.addEventListener('visibilitychange',validate);
+    return()=>{active=false;document.removeEventListener('visibilitychange',validate);};
+  },[]);
   const [productForm,setProductForm]=useState({id:'',name:'',description:'',category_id:'',price:'',promo:'',stock:'',image_url:'',visibility:'available' as Product['visibility'],lead_time:'',option_groups:[] as OptionGroup[]});
   const [editingProduct,setEditingProduct]=useState(false);
   const [deleteProductTarget,setDeleteProductTarget]=useState<Product|null>(null);
@@ -725,6 +770,7 @@ export default function Page(){
           method:'POST',
           body:payload({name:authForm.name,phone:authForm.phone,invite:authForm.invite,tower:authForm.tower,apartment:authForm.apartment})
         });
+        advanceSessionGeneration();
         const response=await api<{viewer:Viewer}>('me');
         setGoogleSignup(null);setViewer(response.viewer);
         setProfile({name:response.viewer.name,phone:response.viewer.phone,tower:response.viewer.tower,apartment:response.viewer.apartment,avatar_image:response.viewer.avatar_image??''});
@@ -735,6 +781,7 @@ export default function Page(){
         setAuthMode('login');setAuthForm(s=>({...s,password:''}));notify(result.message);
       } else {
         await api('auth/login',{method:'POST',body:payload({email:authForm.email,password:authForm.password})});
+        advanceSessionGeneration();
         const response=await api<{viewer:Viewer}>('me');setViewer(response.viewer);
         const u=response.viewer;
         if(u.status==='approved')await refresh(u);
@@ -751,6 +798,7 @@ export default function Page(){
       const result=await api<{message:string;status:'completed'|'pending'}>('me',{
         method:'DELETE',body:payload({confirmation:'EXCLUIR',password:deletePassword||undefined})
       });
+      advanceSessionGeneration();
       try{window.localStorage.removeItem('condovery_cart');}catch{}
       setCart([]);setViewer(null);setGoogleSignup(null);setHome(emptyHome);
       setOrders([]);setOrdersCursor(null);setSellerOrders([]);setSellerOrdersCursor(null);setMyShop(null);setMyProducts([]);
@@ -760,6 +808,7 @@ export default function Page(){
     }catch(e){fail(e);}finally{setBusy(false);}
   }
   async function logout(){
+    advanceSessionGeneration();
     try{await api('auth/logout',{method:'POST'});}catch{}
     setViewer(null);setGoogleSignup(null);setHome(emptyHome);setFavoriteIds([]);setFavoriteProducts([]);setFavoriteShopIds([]);setFavoriteShops([]);setCart([]);setMyShop(null);setOrders([]);setOrdersCursor(null);setSellerOrders([]);setSellerOrdersCursor(null);go('home');
   }
