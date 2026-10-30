@@ -191,6 +191,17 @@ export async function handlePushApi(
         b.project_id !== process.env.EXPO_PROJECT_ID
       )
         bad("Projeto push não configurado.", 503);
+      // A refresh with unchanged session and token needs no write or lock.
+      // New login sessions still rebind so deliveries target the new session.
+      const bindingParams = [
+        b.expo_token, u.id, u.condominium_id, sessionHash,
+        b.installation_id, b.platform,
+      ];
+      const bindingSql =
+        "SELECT 1 FROM push_devices WHERE expo_token=$1 AND user_id=$2 AND condominium_id=$3 " +
+        "AND session_hash=$4 AND installation_id=$5 AND platform=$6 AND disabled=false";
+      if ((await query(bindingSql, bindingParams)).rowCount)
+        return json({ ok: true });
       await transaction(async (tx) => {
         // Serialize rebinding by token; queued messages are tied to the old session.
         await tx.query("SELECT pg_advisory_xact_lock(hashtextextended($1,0))", [
@@ -199,6 +210,8 @@ export async function handlePushApi(
         await tx.query("SELECT pg_advisory_xact_lock(hashtextextended($1,0))", [
           "push-devices:" + u.id,
         ]);
+        // Recheck after locks: a concurrent request may have bound this device.
+        if ((await tx.query(bindingSql, bindingParams)).rowCount) return;
         const count = await tx.query(
           "SELECT count(*)::int AS n FROM push_devices d JOIN sessions s ON s.token_hash=d.session_hash WHERE d.user_id=$1 AND d.disabled=false AND s.expires_at>now() AND d.expo_token<>$2 AND d.installation_id<>$3",
           [u.id, b.expo_token, b.installation_id],
