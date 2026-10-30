@@ -59,6 +59,16 @@ function imagePath(input:unknown) {
   if(!/^\/api\/media\/[0-9a-f-]{36}$/.test(url))bad('Utilize uma imagem enviada pela plataforma.');
   return url;
 }
+async function shopImagePath(input:unknown,condominiumId:string,shopId:string):Promise<string|null>{
+  const url=imagePath(input);
+  if(!url)return null;
+  const owned=await query(
+    "SELECT 1 FROM media_assets WHERE id=$1 AND condominium_id=$2 AND shop_id=$3 AND user_id IS NULL",
+    [url.slice('/api/media/'.length),condominiumId,shopId]
+  );
+  if(!owned.rowCount)bad('A imagem não pertence à sua loja.',403);
+  return url;
+}
 const credentials=z.object({email:z.string().email().max(250).transform(v=>v.trim().toLowerCase()),password:z.string().min(1).max(100)});
 const newPasswordSchema=z.string().min(8).max(100)
   .refine(isValidPassword,'A senha precisa ter pelo menos 8 caracteres, uma letra maiúscula, um número e um caractere especial.');
@@ -842,9 +852,11 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
       normalizeWhatsApp(b.whatsapp);
       if(violatesCommunityLanguage(b.name,b.description,b.pickup_instructions))bad('Revise o texto: linguagem imprópria não é permitida.');
       if(!b.delivery_enabled&&!b.pickup_enabled)bad('Habilite entrega ou retirada.');
+      const cover=await shopImagePath(b.cover_image,u.condominium_id,shop.id);
+      const logo=await shopImagePath(b.logo_image,u.condominium_id,shop.id);
       const r=await query(
         'UPDATE shops SET name=$1,description=$2,whatsapp=$3,is_open=$4,delivery_enabled=$5,pickup_enabled=$6,lead_time=$7,pickup_instructions=$8,cover_image=$9,logo_image=$12,delivery_fee_cents=$13,payment_methods=$14::text[] WHERE id=$10 AND condominium_id=$11 RETURNING *',
-        [b.name,b.description,b.whatsapp,b.is_open,b.delivery_enabled,b.pickup_enabled,b.lead_time,b.pickup_instructions,imagePath(b.cover_image),shop.id,u.condominium_id,imagePath(b.logo_image),b.delivery_fee_cents,b.payment_methods]);
+        [b.name,b.description,b.whatsapp,b.is_open,b.delivery_enabled,b.pickup_enabled,b.lead_time,b.pickup_instructions,cover,shop.id,u.condominium_id,logo,b.delivery_fee_cents,b.payment_methods]);
       return out({shop:r.rows[0]});
     }
   }
@@ -912,10 +924,18 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
   if(parts[0]==='media'&&parts[1]&&method==='GET'){
     if(!uuid(parts[1]))bad('Arquivo inválido.');
     let r=await query('SELECT mime,bytes,storage_key,user_id FROM media_assets WHERE condominium_id=$1 AND id=$2',[u.condominium_id,parts[1]]);
-    // Superadmin may preview institutional ADS uploaded for another condominium.
-    // Never allow this cross-tenant fallback for shop or personal media.
+    // A global administrator may preview ONLY a cross-tenant ad image.
+    // Fair, giveaway, draft, seller and personal images stay tenant-scoped,
+    // even when their media_assets row has no shop_id or user_id.
     if(!r.rowCount&&u.is_superadmin){
-      r=await query('SELECT mime,bytes,storage_key,user_id FROM media_assets WHERE id=$1 AND shop_id IS NULL AND user_id IS NULL',[parts[1]]);
+      r=await query(
+        "SELECT m.mime,m.bytes,m.storage_key,m.user_id FROM media_assets m "+
+        "WHERE m.id=$1 AND m.shop_id IS NULL AND m.user_id IS NULL "+
+        "AND (m.storage_key LIKE (m.condominium_id::text || '/ads/%') "+
+        "OR EXISTS(SELECT 1 FROM advertising_campaigns a WHERE a.condominium_id=m.condominium_id "+
+        "AND a.image_url='/api/media/' || m.id::text))",
+        [parts[1]]
+      );
     }
     if(!r.rowCount)bad('Imagem não encontrada.',404);
     if(r.rows[0].user_id&&r.rows[0].user_id!==u.id)bad('Foto pessoal indisponível.',403);
@@ -947,9 +967,10 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
     const category=await query('SELECT id,name FROM categories WHERE id=$1 AND condominium_id=$2 AND is_active=true',[b.category_id,u.condominium_id]);
     if(!category.rowCount)bad('Categoria inválida.');
     if(!isCommercialProductCategory(category.rows[0].name))bad(EXCLUSIVE_DESAPEGO_MESSAGE);
+    const image=await shopImagePath(b.image_url,u.condominium_id,shop.id);
     const r=await query(
       'INSERT INTO products(condominium_id,shop_id,category_id,name,description,price_cents,promo_price_cents,stock,image_url,is_available,visibility,lead_time,option_groups) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13::jsonb) RETURNING *',
-      [u.condominium_id,shop.id,b.category_id,b.name,b.description??'',b.price_cents,b.promo_price_cents??null,b.stock??null,imagePath(b.image_url),
+      [u.condominium_id,shop.id,b.category_id,b.name,b.description??'',b.price_cents,b.promo_price_cents??null,b.stock??null,image,
         (b.visibility??(b.is_available===false?'hidden':'available'))==='available',
         b.visibility??(b.is_available===false?'hidden':'available'),b.lead_time??'',JSON.stringify(b.option_groups)]
     );
@@ -1002,6 +1023,7 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
     const cat=await query('SELECT id,name FROM categories WHERE id=$1 AND condominium_id=$2 AND is_active=true',[b.category_id,u.condominium_id]);
     if(!cat.rowCount)bad('Categoria inválida.');
     if(!isCommercialProductCategory(cat.rows[0].name))bad(EXCLUSIVE_DESAPEGO_MESSAGE);
+    const image=await shopImagePath(b.image_url,u.condominium_id,shop.id);
     const r=await transaction(async tx=>{
       // Use the same lock order as checkout (shop, then product). A seller
       // cannot reduce finite stock below quantities already promised to buyers.
@@ -1023,7 +1045,7 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
       }
       return tx.query(
         'UPDATE products SET name=$1,description=$2,category_id=$3,price_cents=$4,promo_price_cents=$5,stock=$6,image_url=$7,is_available=$8,lead_time=$9,visibility=$13,option_groups=$14::jsonb WHERE id=$10 AND shop_id=$11 AND condominium_id=$12 AND deleted_at IS NULL RETURNING *',
-        [b.name,b.description,b.category_id,b.price_cents,b.promo_price_cents,b.stock,imagePath(b.image_url),
+        [b.name,b.description,b.category_id,b.price_cents,b.promo_price_cents,b.stock,image,
           (b.visibility??(b.is_available===false?'hidden':'available'))==='available',b.lead_time,parts[1],shop.id,u.condominium_id,
           b.visibility??(b.is_available===false?'hidden':'available'),JSON.stringify(b.option_groups)]
       );
