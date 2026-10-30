@@ -1,4 +1,4 @@
-# Publicação de Termos de Uso e Política de Privacidade — Condovery
+# Publicação de Termos de Uso e Política de Privacidade — Elevadoor
 
 ## URLs públicas
 - /politica-de-privacidade — descrição das categorias de dados, bases legais,
