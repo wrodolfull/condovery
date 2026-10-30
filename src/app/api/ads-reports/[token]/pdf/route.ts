@@ -11,7 +11,7 @@ export async function GET(req:NextRequest,{params}:{params:Promise<{token:string
   try{
     const report=await advertiserReport(id,reportRange(req.nextUrl.searchParams.get('range')));
     return new NextResponse(new Uint8Array(buildAdvertiserPdf(report)),{headers:{
-      'Content-Type':'application/pdf','Content-Disposition':'attachment; filename="condovery-ads-'+id.slice(0,8)+'.pdf"',
+      'Content-Type':'application/pdf','Content-Disposition':'attachment; filename="elevadoor-ads-'+id.slice(0,8)+'.pdf"',
       'Cache-Control':'no-store','X-Robots-Tag':'noindex, nofollow',
       'Referrer-Policy':'no-referrer','X-Content-Type-Options':'nosniff'
     }});
