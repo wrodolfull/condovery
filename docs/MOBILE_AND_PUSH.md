@@ -18,7 +18,15 @@ EXPO_ACCESS_TOKEN=TOKEN_PRIVADO_EXPO_SOMENTE_NO_SERVIDOR
 
 O `EXPO_PROJECT_ID` precisa ser igual ao `EXPO_PUBLIC_EAS_PROJECT_ID` utilizado pela build. Ative `PUSH_ENABLED=true` somente após configurar FCM/APNs e a segurança adicional de push no projeto Expo. `APP_URL` deve ser o endereço HTTPS real do backend. Preserve `AUTH_RATE_LIMIT_SECRET`, as configurações Supabase e as regras existentes do proxy.
 
-Autorize no Supabase Auth o novo redirect HTTPS exato: `https://SEU_DOMINIO/api/mobile/auth/google/callback`. Preserve também os callbacks web existentes. O browser de autenticação recebe um cookie HttpOnly de fluxo no endpoint `/api/mobile/auth/google/open`; a sessão final é entregue ao app por um código curto de uso único vinculado ao desafio PKCE do aparelho. O app retorna em `condovery://auth/callback`, que é o destino fixo autorizado pelo servidor.
+### Entrar e cadastrar com Google no app
+
+O app Elevadoor tem as ações **Entrar com Google** (tela de login) e **Cadastrar com Google** (tela de cadastro). A mesma identidade Google existente no site web é reutilizada via Supabase Auth: contas já vinculadas recebem uma sessão mobile; novos usuários devem informar **código do condomínio, WhatsApp, torre e apartamento** antes que a conta seja criada, sem cadastrar senha separada.
+
+Autorize no **Supabase Dashboard → Authentication → URL Configuration → Redirect URLs** o endereço HTTPS **exato do backend**, por exemplo: `https://SEU_DOMINIO/api/mobile/auth/google/callback`. Preserve os callbacks web existentes. O provedor Google também precisa estar habilitado em **Authentication → Providers → Google**, com as credenciais corretas.
+
+O browser de autenticação recebe um cookie HttpOnly de fluxo no endpoint `/api/mobile/auth/google/open`; a sessão final é entregue ao app por um código curto de uso único vinculado ao desafio PKCE do aparelho. O app retorna em `condovery://auth/callback` (identificador técnico preservado), destino fixo autorizado pelo servidor.
+
+`MOBILE_AUTH_REDIRECT_URI` é opcional se estiver ausente: o servidor usa o callback nativo legado acima por padrão. Se informada, deve ser exatamente `condovery://auth/callback`; valores divergentes são rejeitados. `SUPABASE_URL`, `SUPABASE_ANON_KEY` e `APP_URL` continuam obrigatórios. O login Google real **exige uma build nativa de desenvolvimento ou distribuição**, não o Expo Go. As telas podem ser verificadas na prévia web, mas o redirect autenticado deve ser validado num dispositivo Android/iOS.
 
 ## Sessões e autorização
 

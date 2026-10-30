@@ -96,11 +96,14 @@ async function nativeSession(id: string) {
     expires_in: 14 * 24 * 60 * 60,
   });
 }
+// The callback URI is part of the released native app's deep-link scheme.
+ // Keep it stable even when the optional environment variable was omitted.
+const MOBILE_GOOGLE_CALLBACK = "condovery://auth/callback";
 function redirectUri() {
-  const configured = process.env.MOBILE_AUTH_REDIRECT_URI;
-  if (configured !== "condovery://auth/callback")
+  const configured = process.env.MOBILE_AUTH_REDIRECT_URI || MOBILE_GOOGLE_CALLBACK;
+  if (configured !== MOBILE_GOOGLE_CALLBACK)
     bad("Retorno do aplicativo não configurado.", 503);
-  return configured!;
+  return configured;
 }
 function mobileRedirect(destination: URL) {
   const response = NextResponse.redirect(destination);
@@ -128,7 +131,8 @@ export async function handleMobileAuth(
       version: 1,
       google:
         googleConfigured() &&
-        process.env.MOBILE_AUTH_REDIRECT_URI === "condovery://auth/callback",
+        (!process.env.MOBILE_AUTH_REDIRECT_URI ||
+          process.env.MOBILE_AUTH_REDIRECT_URI === MOBILE_GOOGLE_CALLBACK),
     });
   if (!path.startsWith("mobile/auth/")) return null;
   if (path === "mobile/auth/login" && method === "POST")
