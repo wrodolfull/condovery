@@ -1,11 +1,11 @@
-# Condovery — Guia de fidelidade visual (mobile-first)
+# Elevadoor — Guia de fidelidade visual (mobile-first)
 
 Referência: storyboard compartilhado e aprovado na conversa de 24/10/2026.
 A referência é CONCEITUAL, não uma captura do sistema ou autorização para
 exibir funcionalidades inexistentes.
 
 ## Identidade
-- Nome sempre grafado: **condovery.** (minúsculas; ponto coral).
+- Nome sempre grafado: **elevadoor.** (minúsculas; ponto coral).
 - Assinatura: **Tudo de bom mora aqui.**
 - Paleta: coral/laranja #FC6741, amarelo #FFCF25, grafite #251F18,
   creme #F7F5EE e cartões brancos.
