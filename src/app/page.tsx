@@ -1210,7 +1210,7 @@ export default function Page(){
   }
   const bottomNav:[View,React.ElementType,string][]=[['home',Home,'Início'],['categories',LayoutGrid,'Explorar'],['favorites',Heart,'Salvos'],['orders',Receipt,'Pedidos'],['account',UserRound,'Conta']];
 
-  if(loading)return <main className="loading-page"><div className="spinner"/><strong>condovery.</strong><span>Preparando sua vizinhança</span></main>;
+  if(loading)return <main className="loading-page"><div className="spinner"/><strong>elevadoor.</strong><span>Preparando sua vizinhança</span></main>;
   if(!viewer&&(authMode==='recover'||authMode==='reset'))return <main className="auth-layout">
     <div className="auth-aside"><div className="auth-logo">elevadoor<span>.</span></div><IllustrationSlot className="auth-art" src={artwork.recoverPassword} alt="Ilustração de recuperação de acesso" eager fallback={<img src="/hero.png" alt=""/>}/><h1>Seu condomínio mais perto de você!</h1><p>Produtos, comida e serviços dos seus vizinhos, com tudo organizado em um só lugar.</p></div>
     <section className="auth-card">
