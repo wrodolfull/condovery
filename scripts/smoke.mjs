@@ -280,8 +280,9 @@ assert.equal(retry.data.whatsapp_url,created.data.whatsapp_url);
    });
    return {status:response.status,data:await response.json()};
  }));
+ assert.equal(attempts[0].data.order.id,attempts[1].data.order.id,
+   'Concurrent same-key requests must point to exactly the same order.');
  assert.deepEqual(attempts.map(v=>v.status).sort(),[200,201]);
- assert.equal(attempts[0].data.order.id,attempts[1].data.order.id);
  await request('orders/'+attempts[0].data.order.id,{method:'PATCH',cookie:sellerCookie,body:{status:'cancelled'}});
  console.log('Checkout recovery: delayed response, store closed after POST and concurrent same-key replay PASS.');
 assert.equal(created.data.order.payment_method,'pix');
