@@ -1,9 +1,9 @@
-# Condovery — autenticação centralizada no Supabase Auth
+# Elevadoor — autenticação centralizada no Supabase Auth
 
 ## Arquitetura
 Supabase Auth é a única fonte de identidade para cadastro com e-mail e senha,
 confirmação de e-mail, login, recuperação de senha e Google. O navegador só
-chama a API Next.js do Condovery. O backend valida a identidade via Supabase,
+chama a API Next.js do Elevadoor. O backend valida a identidade via Supabase,
 emite uma sessão opaca HttpOnly e aplica regras de condomínio e suspensão administrativa.
 Nenhuma senha é validada no PostgreSQL da aplicação.
 
@@ -39,7 +39,7 @@ e são guardadas em bucket privado do Supabase Storage.
    Nunca exponha as chaves ou a senha do banco ao navegador.
 9. Execute npm run db:migrate e npm run db:bootstrap. O bootstrap cria ou
    encontra o usuário administrador em Supabase Auth e o associa ao
-   cadastro condominial do Condovery sem armazenar a senha no PostgreSQL.
+   cadastro condominial do Elevadoor sem armazenar a senha no PostgreSQL.
 
 ## Fluxos de acesso
 - Cadastro de morador: convite e torre/apartamento são validados pelo
@@ -54,7 +54,7 @@ e são guardadas em bucket privado do Supabase Storage.
 - Recuperação: resetPasswordForEmail envia o e-mail do Supabase;
   verifyOtp valida o hash de recuperação; o backend emite um ticket
   temporário HttpOnly de uso único (15 minutos). admin.updateUserById
-  grava a nova senha no Supabase, e sessões Condovery anteriores são
+  grava a nova senha no Supabase, e sessões Elevadoor anteriores são
   invalidadas.
 
 ## Migração de usuários da versão anterior
