@@ -1,6 +1,8 @@
 import type { NextConfig } from 'next';
 const nextConfig: NextConfig = {
   reactStrictMode:true,
+  // Keep the project as the tracing root, even when Windows home has another package-lock.json.
+  outputFileTracingRoot: process.cwd(),
   async headers(){
     return [{source:'/:path*',headers:[
       {key:'X-Content-Type-Options',value:'nosniff'},
