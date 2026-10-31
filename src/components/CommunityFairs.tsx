@@ -27,7 +27,7 @@ export function FairHomeTeaser({condominiumId,onOpen}:{condominiumId:string;onOp
  if(!fairs.length)return null;
  return <section className="admin-section" aria-label="Feiras do condomínio" style={{margin:'20px 0'}}>
    <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:10,marginBottom:12}}>
-     <h2>Feiras da vizinhança</h2><button type="button" className="outline-button" onClick={onOpen}>Ver feiras <ArrowRight size={16}/></button>
+     <h2>Feiras da vizinhança</h2><button type="button" className="promo-action" onClick={onOpen}>Ver feiras <ArrowRight size={16}/></button>
    </div>
    <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(min(100%,220px),1fr))',gap:12}}>
      {fairs.slice(0,3).map(f=><button type="button" key={f.id} className="white-panel" style={{textAlign:'left',border:'1px solid #eee',padding:12,borderRadius:14}} onClick={onOpen}>

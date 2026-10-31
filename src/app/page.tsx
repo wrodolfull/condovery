@@ -25,6 +25,7 @@ import {PAYMENT_METHODS,PAYMENT_LABELS,allowedPaymentMethods,type PaymentMethod}
 import {supportsMessengerIntent,whatsappMessengerHref} from '@/lib/whatsapp-launch';
 import {towerLabels,currentTowerScheme,type TowerScheme} from '@/lib/towers';
 import {artwork,getCategoryArtwork} from '@/lib/artwork';
+import {unitsInCart,remainingToAdd,maxLineQuantity} from '@/lib/cart-stock';
 import {IMAGE_MIME_TYPES, imageSizeIsAllowed} from '@/lib/image-limits';
 import {selectedOptions, extrasTotal, arrivalInstructionOptions, toggleArrivalInstruction, type OptionGroup, type Selection} from '@/lib/orders';
 import {
@@ -727,6 +728,9 @@ export default function Page(){
   const fee=actualFulfillment==='delivery'?Number(cartShopSafe(cart,home.shops,selectedShop,loadedCartShop)?.delivery_fee_cents??0):0;
   const cartTotal=cartSubtotal+fee;
   const cartCount=cart.reduce((n,i)=>n+i.quantity,0);
+  // Cada produto compartilha um limite entre personalizações diferentes.
+  const selectedRemaining=selectedProduct?remainingToAdd(selectedProduct.stock,cart.filter(i=>i.product.shop_id===selectedProduct.shop_id),selectedProduct.id):null;
+  const selectedAddMax=Math.min(30,selectedRemaining??30);
   const cartShop=home.shops.find(s=>s.id===cart[0]?.product.shop_id)||selectedShop?.shop;
   const acceptedPaymentMethods=allowedPaymentMethods(cartShop?.payment_methods);
   const featured=home.products.filter(p=>p.promo_price_cents!=null||p.is_featured).slice(0,8);
@@ -931,11 +935,20 @@ export default function Page(){
       if(!window.confirm('Seu carrinho é de outra loja. Deseja substituí-lo?'))return;
     }
     if(pendingAttempt){setError('Resolva primeiro a tentativa de pedido anterior no carrinho.');go('cart');return;}
+    const before=cart.length&&cart[0].product.shop_id!==selectedProduct.shop_id?[]:cart;
+    const already=unitsInCart(before,selectedProduct.id);
+    if(selectedProduct.stock!==null&&already+qty>selectedProduct.stock){notify('Quantidade acima do estoque disponível.');return;}
+    const previous=before.find(i=>i.product.id===selectedProduct.id&&i.note===itemNote
+      &&JSON.stringify(i.selections??{})===JSON.stringify(productChoices));
+    if(previous&&previous.quantity+qty>30){notify('O limite é de 30 unidades por item.');return;}
     setCart(current=>{
       const base=current.length&&current[0].product.shop_id!==selectedProduct.shop_id?[]:current;
       const selected={...productChoices};
       const same=base.find(i=>i.product.id===selectedProduct.id&&i.note===itemNote
         &&JSON.stringify(i.selections??{})===JSON.stringify(selected));
+      // Checar novamente dentro da atualização funcional evita exceder por dois toques rápidos.
+      if(selectedProduct.stock!==null&&unitsInCart(base,selectedProduct.id)+qty>selectedProduct.stock)return current;
+      if(same&&same.quantity+qty>30)return current;
       return same?base.map(i=>i===same?{...i,quantity:i.quantity+qty}:i):
         [...base,{product:selectedProduct,quantity:qty,note:itemNote,selections:selected,line_key:clientUUID()}];
     });
@@ -1492,7 +1505,7 @@ export default function Page(){
           <ProductPicture src={selectedProduct.image_url} name={selectedProduct.name} large/>
           <div className="product-detail-copy">
             {!productCanBuy(selectedProduct)?<Pill tone="neutral">{!productCanBuy(selectedProduct)&&(selectedProduct.is_open===false||home.shops.find(s=>s.id===selectedProduct.shop_id)?.is_open===false||selectedShop?.shop.id===selectedProduct.shop_id&&selectedShop.shop.is_open===false)?'Loja fechada':selectedProduct.stock===0?'Esgotado':'Indisponível no momento'}</Pill>:<Pill tone="orange">Da nossa vizinhança</Pill>}<h1>{selectedProduct.name}</h1>
-            <p className="seller-by">Por {selectedProduct.shop_name??home.shops.find(s=>s.id===selectedProduct.shop_id)?.name}</p>
+            <p className="seller-by">Por <a href={"/?loja="+encodeURIComponent(selectedProduct.shop_id)} onClick={e=>{e.preventDefault();void openShop(selectedProduct.shop_id);}}>{selectedProduct.shop_name??home.shops.find(s=>s.id===selectedProduct.shop_id)?.name??"Ver loja"}</a></p>
             <div className="detail-price">{selectedProduct.promo_price_cents!=null&&<del>{money(selectedProduct.price_cents)}</del>}<strong>{money(price(selectedProduct))}</strong></div>
             <p>{selectedProduct.description||'Produto disponível diretamente com um morador do condomínio.'}</p>
             {selectedProduct.lead_time&&<p className="time-hint"><Clock3 size={16}/> Prazo informado: {selectedProduct.lead_time}</p>}
@@ -1508,8 +1521,9 @@ export default function Page(){
                   onClick={()=>setProductChoices(c=>({...c,[group.id]:[]}))}>Limpar escolha</button>}
             </fieldset>)}
             <label className="field-label">Observações sobre este produto<textarea disabled={!productCanBuy(selectedProduct)} maxLength={200} rows={3} value={itemNote} onChange={e=>setItemNote(e.target.value)} placeholder="Ex.: sem cobertura, embalagem para presente..."/></label>
-            <div className="add-row"><div className="quantity"><button disabled={!productCanBuy(selectedProduct)} onClick={()=>setQty(Math.max(1,qty-1))} aria-label="Diminuir"><Minus size={18}/></button><strong>{qty}</strong><button disabled={!productCanBuy(selectedProduct)} onClick={()=>setQty(Math.min(Math.max(1,selectedProduct.stock??30),qty+1))} aria-label="Aumentar"><Plus size={18}/></button></div>
-            <button className="primary-button" disabled={!productCanBuy(selectedProduct)} onClick={addToCart}><Plus size={18}/>Adicionar · {money((price(selectedProduct)+addOns(selectedProduct,productChoices))*qty)}</button></div>
+            <div className="add-row"><div className="quantity"><button disabled={!productCanBuy(selectedProduct)||qty<=1} onClick={()=>setQty(Math.max(1,qty-1))} aria-label="Diminuir"><Minus size={18}/></button><strong>{qty}</strong><button disabled={!productCanBuy(selectedProduct)||selectedAddMax===0||qty>=selectedAddMax} onClick={()=>setQty(Math.min(Math.max(1,selectedAddMax),qty+1))} aria-label="Aumentar"><Plus size={18}/></button></div>
+            <button className="primary-button" disabled={!productCanBuy(selectedProduct)||selectedAddMax===0||qty>selectedAddMax} onClick={addToCart}><Plus size={18}/>Adicionar · {money((price(selectedProduct)+addOns(selectedProduct,productChoices))*qty)}</button></div>
+            {selectedRemaining!==null&&<p className="helper-note" role="status">{selectedRemaining===0?"Você já atingiu o estoque disponível deste produto no carrinho.":`Disponível para adicionar: ${selectedRemaining} unidade(s).`}</p>}
             {!productCanBuy(selectedProduct)&&<p className="helper-note">Produto indisponível ou loja fechada. Compras temporariamente desativadas.</p>}
             <button className="report-trigger" onClick={()=>setReportTarget({type:'product',id:selectedProduct.id,name:selectedProduct.name})}>Denunciar produto</button>
           </div>
@@ -1529,7 +1543,7 @@ export default function Page(){
               })).filter(Boolean).map((detail,i)=><small key={i}>{detail}</small>)}
               {item.note&&<small>Obs.: {item.note}</small>}
               <b>{money(cartUnitPrice(item)*item.quantity)}</b>
-            <div className="cart-controls"><button onClick={()=>setCart(s=>s.map((i,n)=>n===index?{...i,quantity:Math.max(1,i.quantity-1)}:i))} aria-label="Diminuir"><Minus size={15}/></button><span>{item.quantity}</span><button onClick={()=>setCart(s=>s.map((i,n)=>n===index?{...i,quantity:Math.min(30,i.quantity+1)}:i))} aria-label="Aumentar"><Plus size={15}/></button><button className="trash" onClick={()=>setCart(s=>s.filter((_,n)=>n!==index))} aria-label="Remover"><Trash2 size={16}/></button></div>
+            <div className="cart-controls"><button onClick={()=>setCart(s=>s.map((i,n)=>n===index?{...i,quantity:Math.max(1,i.quantity-1)}:i))} aria-label="Diminuir"><Minus size={15}/></button><span>{item.quantity}</span><button disabled={item.quantity>=maxLineQuantity(item.product.stock,cart,item.product.id,index)} onClick={()=>setCart(s=>s.map((i,n)=>n===index?{...i,quantity:Math.min(maxLineQuantity(i.product.stock,s,i.product.id,index),i.quantity+1)}:i))} aria-label="Aumentar"><Plus size={15}/></button><button className="trash" onClick={()=>setCart(s=>s.filter((_,n)=>n!==index))} aria-label="Remover"><Trash2 size={16}/></button></div>
             </div></div>)}</div>
           <div className="white-panel"><h2><Truck size={19}/> Como prefere receber?</h2><div className="choice-row">
             {cartShop?.delivery_enabled!==false&&<button className={actualFulfillment==='delivery'?'selected':''} onClick={()=>setFulfillment('delivery')}><Truck size={19}/> Entrega</button>}

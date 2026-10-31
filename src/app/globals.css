@@ -1363,3 +1363,12 @@ font-weight:750;padding:12px 20px;cursor:pointer}
 .new-arrivals-nav button:hover{border-color:#e9b25c;background:#fff7eb}
 .new-arrivals-nav button:focus-visible{outline:2px solid var(--orange);outline-offset:2px}
 @media(min-width:600px){.new-arrivals-nav{display:flex}}
+
+/* Publicidade e feiras usam a mesma chamada comercial. */
+.promo-action{display:inline-flex;align-items:center;justify-content:center;gap:7px;background:#111;color:#fff;
+  font-size:13px;font-weight:700;line-height:normal;padding:12px 17px;border:0;border-radius:13px;
+  text-decoration:none;white-space:nowrap;cursor:pointer}
+.promo-action:hover,.promo-action:focus-visible{background:#292929;color:#fff}
+.product-detail-copy .seller-by a{color:inherit;text-decoration:underline;text-underline-offset:3px;
+  font:inherit;cursor:pointer}
+.product-detail-copy .seller-by a:hover{color:#24231c}
