@@ -13,9 +13,9 @@ test('category images use packaged WebP names and unknown categories keep the ic
   assert.equal(getCategoryArtwork('Sorvetes'),'/categories/sorvetes.webp');
   assert.equal(getCategoryArtwork('Sobremesas e sorvetes','ice-cream-cone'),'/categories/sorvetes.webp');
   assert.equal(getCategoryArtwork('Pets'),'/categories/pets.webp');
-  assert.equal(getCategoryArtwork('Pães e salgados'),'/categories/salgados.webp');
+  assert.equal(getCategoryArtwork('Pães e salgados'),'/categories/padaria.webp');
   assert.equal(getCategoryArtwork('Mercadinho'),'/categories/mercado.webp');
-  assert.equal(getCategoryArtwork('Desapego','gift'),null);
+  assert.equal(getCategoryArtwork('Desapego','gift'),'/categories/desapego.webp');
   assert.equal(getCategoryArtwork('Categoria desconhecida','shopping-bag'),null);
 });
 
@@ -45,4 +45,16 @@ test('seven additional categories each have their own replaceable image',()=>{
     artwork[key]=src;
     assert.equal(getCategoryArtwork(name,icon),src,name);
   }
+});
+
+test('optional catalog categories also have artwork, including disabled ones',()=>{
+  const expected=[
+    ['Moda','moda'],['Presentes','presentes'],['Outros','outros'],
+    ['Saúde e bem-estar','saude'],['Eletrônicos','eletronicos'],
+    ['Desapego','desapego'],['Beleza','beleza'],['Serviços','servicos'],
+    ['Casa e decoração','casa-decoracao'],['Limpeza','limpeza'],
+    ['Pets','pets'],['Açaí','acai'],['Sushi','sushi']
+  ];
+  for(const [name,slug] of expected)
+    assert.equal(getCategoryArtwork(name),'/categories/'+slug+'.webp',name);
 });
