@@ -22,17 +22,17 @@ export const artwork = {
   categoryRefeicoes: '/categories/refeicoes.webp',
   categoryBebidas: '/categories/bebidas.webp',
   categoryBeleza: '/categories/beleza.webp',
-  categoryModa: null,
-  categoryPresentes: null,
-  categoryOutros: null,
+  categoryModa: '/categories/moda.webp',
+  categoryPresentes: '/categories/presentes.webp',
+  categoryOutros: '/categories/outros.webp',
   categoryRestaurantes: '/categories/refeicoes.webp',
-  categorySobremesas: '/categories/doces.webp',
+  categorySobremesas: '/categories/sorvetes.webp',
   categoryLanches: '/categories/lanches.webp',
   categoryMercadinho: '/categories/mercado.webp',
   categoryServicos: '/categories/servicos.webp',
-  categorySaude: null,
+  categorySaude: '/categories/saude.webp',
   categoryCasa: '/categories/casa-decoracao.webp',
-  categoryEletronicos: null
+  categoryEletronicos: '/categories/eletronicos.webp'
 } as Record<string, string | null>;
 export type ArtworkKey = keyof typeof artwork;
 
@@ -40,11 +40,14 @@ export function getCategoryArtwork(name:string,icon?:string):string|null {
   const normalized=name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
   // Specific categories take precedence over broad groups (e.g. pizza vs. lanches).
   // A missing or invalid image is handled by IllustrationSlot's existing icon fallback.
+  if(/desapego/.test(normalized))return '/categories/desapego.webp';
+  if(/^outros?$/.test(normalized))return '/categories/outros.webp';
   if(/pizza/.test(normalized))return '/categories/pizzas.webp';
   if(/sushi|japones/.test(normalized))return '/categories/sushi.webp';
   if(/acai/.test(normalized))return '/categories/acai.webp';
   if(/\bpet(s)?\b|animais/.test(normalized))return '/categories/pets.webp';
   if(/limpeza/.test(normalized))return '/categories/limpeza.webp';
+  if(/(?:paes|pao).*(?:salgado)|(?:salgado).*(?:paes|pao)/.test(normalized))return '/categories/padaria.webp';
   if(/salgado/.test(normalized))return '/categories/salgados.webp';
   if(/padaria/.test(normalized))return '/categories/padaria.webp';
   if(/\bdoce(s)?\b|brigadeiro/.test(normalized)&&!/bolo/.test(normalized))return '/categories/doces.webp';
@@ -56,7 +59,7 @@ export function getCategoryArtwork(name:string,icon?:string):string|null {
   if(/casa|decorac/.test(normalized))return artwork.categoryCasa;
   if(/eletronic|informatica|celular/.test(normalized))return artwork.categoryEletronicos;
   if(/sorvete|gelato|ice[ -]?cream/.test(normalized))return '/categories/sorvetes.webp';
-  if(/sobremesa|acai/.test(normalized))return artwork.categorySobremesas;
+  if(/sobremesa/.test(normalized))return '/categories/doces.webp';
   if(/bolo|doce/.test(normalized))return artwork.categoryBolos;
   if(/pao|salgado/.test(normalized))return artwork.categoryPaes;
   if(/refeic|comida|almoco|jantar/.test(normalized))return artwork.categoryRefeicoes;
