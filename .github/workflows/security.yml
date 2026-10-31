@@ -1,0 +1,21 @@
+name: Production dependency security
+on:
+  pull_request:
+  push:
+    branches: [main]
+  schedule:
+    - cron: '15 9 * * 1'
+permissions:
+  contents: read
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Check preflight script syntax
+        run: node --check scripts/security-preflight.mjs
+      - name: Audit locked production dependencies
+        run: npm audit --omit=dev --audit-level=high
