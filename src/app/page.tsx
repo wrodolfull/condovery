@@ -1346,6 +1346,13 @@ export default function Page(){
       {view==='home'&&<>
         <div className="hello-row"><div><p>Olá, {viewer.name.split(' ')[0]}! <span className="wave">✳</span></p><h1>Seu condomínio mais perto de você!</h1></div><div className="hello-bag"><ShoppingBasket size={27}/></div></div>
         <div className="search-container"><Search size={20}/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Busque produtos ou lojas..." aria-label="Buscar produtos ou lojas"/>{query&&<button onClick={()=>setQuery('')} aria-label="Limpar busca"><X size={16}/></button>}</div>
+        <div className="home-category-nav">
+          <div className="category-track" aria-label="Categorias">
+            {home.categories.map(c=><button key={c.id} className="category-card" onClick={()=>{if(c.name==='Desapego')go('giveaways');else {setCategory(c.id);go('categories');}}}>
+              <CategoryArtwork category={c}/><span>{c.name}</span></button>)}
+          </div>
+          <button type="button" className="category-all-link" onClick={()=>{setCategory('');go('categories');}}>Explorar tudo <ArrowRight size={15}/></button>
+        </div>
         {!query&&<section className="hero-banner"><div className="hero-copy">
   <span className="eyebrow">TUDO DE BOM MORA AQUI</span>
   <h2>Descubra o melhor <em>da sua vizinhança.</em></h2>
@@ -1354,16 +1361,6 @@ export default function Page(){
     fallback={<img src="/hero.png" alt=""/>}/>
   <button onClick={()=>{setCategory('');go('categories');}}>Começar a explorar <ArrowRight size={17}/></button>
   </div></section>}
-        <SectionHeader title="Descubra o que tem por aqui" action="Ver categorias" onAction={()=>go('categories')}/>
-        <div className="category-track" aria-label="Categorias">
-          <button className="category-card" onClick={()=>{setCategory('');go('categories');}}>
-            <IllustrationSlot className="category-art" src={artwork.categoryAll}
-              alt="Todas as categorias" fit="contain" fallback={<LayoutGrid size={25}/>}/>
-            <span>Todos</span>
-          </button>
-          {home.categories.map(c=><button key={c.id} className="category-card" onClick={()=>{if(c.name==='Desapego')go('giveaways');else {setCategory(c.id);go('categories');}}}>
-            <CategoryArtwork category={c}/><span>{c.name}</span></button>)}
-        </div>
         {!query&&<>
           <FairHomeTeaser condominiumId={viewer.condominium_id} onOpen={()=>go('fairs')}/>
           {ads.length>0?<AdsCarousel campaigns={ads}/>:<section className="weekly-offer-banner">
@@ -1412,16 +1409,12 @@ export default function Page(){
         <div className="page-title"><h1>Explorar</h1><p>Descubra alimentos, bebidas e delícias preparadas pelos seus vizinhos.</p></div>
         <div className="search-container"><Search size={20}/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Buscar por produto ou loja" aria-label="Buscar"/>{query&&<button onClick={()=>setQuery('')}><X size={16}/></button>}</div>
         <div className="category-track explore-category-track" aria-label="Explorar por categoria">
-          <button className={'category-card'+(!category?' selected':'')} onClick={()=>setCategory('')} aria-pressed={!category}>
-            <IllustrationSlot className="category-art" src={artwork.categoryAll} alt="Todas as categorias"
-              fallback={<LayoutGrid size={25}/>}/><span>Todos</span>
-          </button>
           {home.categories.map(c=><button key={c.id} className={'category-card'+(category===c.id?' selected':'')}
             onClick={()=>{if(c.name==='Desapego')go('giveaways');else setCategory(c.id);}} aria-pressed={category===c.id}>
               <CategoryArtwork category={c}/><span>{c.name}</span>
             </button>)}
         </div>
-        <div className="filter-chips"><button className={!category?'chosen':''} onClick={()=>setCategory('')}>Todos</button>{home.categories.map(c=><button key={c.id} className={category===c.id?'chosen':''} onClick={()=>{if(c.name==='Desapego')go('giveaways');else setCategory(c.id);}}>{c.name}</button>)}</div>
+        <div className="filter-chips">{category&&<button onClick={()=>setCategory('')}>Limpar filtro</button>}{home.categories.map(c=><button key={c.id} className={category===c.id?'chosen':''} onClick={()=>{if(c.name==='Desapego')go('giveaways');else setCategory(c.id);}}>{c.name}</button>)}</div>
         <SectionHeader title={categoryName??'Produtos dos vizinhos'}/>
         {filtered.length?<div className="product-grid">{filtered.map(p=><ProductCard key={p.id} p={p} onClick={()=>openProduct(p)} favorite={favoriteIds.includes(p.id)} onFavorite={toggleFavorite}/>)}</div>:
           catalogLoading?<div className="loading-inline"><div className="spinner"/> Buscando produtos...</div>:
