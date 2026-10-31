@@ -26,7 +26,7 @@ export const artwork = {
   categoryPresentes: '/categories/presentes.webp',
   categoryOutros: '/categories/outros.webp',
   categoryRestaurantes: '/categories/refeicoes.webp',
-  categorySobremesas: '/categories/sorvetes.webp',
+  categorySobremesas: '/categories/doces.webp',
   categoryLanches: '/categories/lanches.webp',
   categoryMercadinho: '/categories/mercado.webp',
   categoryServicos: '/categories/servicos.webp',
@@ -59,7 +59,7 @@ export function getCategoryArtwork(name:string,icon?:string):string|null {
   if(/casa|decorac/.test(normalized))return artwork.categoryCasa;
   if(/eletronic|informatica|celular/.test(normalized))return artwork.categoryEletronicos;
   if(/sorvete|gelato|ice[ -]?cream/.test(normalized))return '/categories/sorvetes.webp';
-  if(/sobremesa/.test(normalized))return '/categories/doces.webp';
+  if(/sobremesa/.test(normalized))return artwork.categorySobremesas;
   if(/bolo|doce/.test(normalized))return artwork.categoryBolos;
   if(/pao|salgado/.test(normalized))return artwork.categoryPaes;
   if(/refeic|comida|almoco|jantar/.test(normalized))return artwork.categoryRefeicoes;
@@ -71,11 +71,11 @@ export function getCategoryArtwork(name:string,icon?:string):string|null {
     'cake-slice':artwork.categoryBolos,'sandwich':artwork.categoryPaes,
     'utensils':artwork.categoryRefeicoes,'coffee':artwork.categoryBebidas,
     'sparkles':artwork.categoryBeleza,'shirt':artwork.categoryModa,
-    'gift':artwork.categoryPresentes,'shopping-bag':artwork.categoryOutros,
+    'gift':artwork.categoryPresentes,'shopping-bag':null,
     'pizza':artwork.categoryLanches,'ice-cream-cone':artwork.categorySobremesas,
     'shopping-basket':artwork.categoryMercadinho,'wrench':artwork.categoryServicos,
     'heart-pulse':artwork.categorySaude,'house':artwork.categoryCasa,
     'smartphone':artwork.categoryEletronicos
   };
-  return icon?categoryByIcon[icon]??artwork.categoryOutros:artwork.categoryOutros;
+  return icon?categoryByIcon[icon]??null:null;
 }
