@@ -10,6 +10,8 @@ test('category images use packaged WebP names and unknown categories keep the ic
   assert.equal(getCategoryArtwork('Pizza'),'/categories/pizzas.webp');
   assert.equal(getCategoryArtwork('Sushi'),'/categories/sushi.webp');
   assert.equal(getCategoryArtwork('Açaí'),'/categories/acai.webp');
+  assert.equal(getCategoryArtwork('Sorvetes'),'/categories/sorvetes.webp');
+  assert.equal(getCategoryArtwork('Sobremesas e sorvetes','ice-cream-cone'),'/categories/sorvetes.webp');
   assert.equal(getCategoryArtwork('Pets'),'/categories/pets.webp');
   assert.equal(getCategoryArtwork('Pães e salgados'),'/categories/salgados.webp');
   assert.equal(getCategoryArtwork('Mercadinho'),'/categories/mercado.webp');
@@ -31,7 +33,7 @@ test('category art routes independently of the product catalog',()=>{
 test('seven additional categories each have their own replaceable image',()=>{
   const fixtures=[
     ['Lanches','pizza','categoryLanches'],
-    ['Sobremesas e sorvetes','ice-cream-cone','categorySobremesas'],
+    ['Sobremesas','ice-cream-cone','categorySobremesas'],
     ['Mercadinho','shopping-basket','categoryMercadinho'],
     ['Serviços','wrench','categoryServicos'],
     ['Saúde e bem-estar','heart-pulse','categorySaude'],
