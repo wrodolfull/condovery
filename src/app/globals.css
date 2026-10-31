@@ -70,11 +70,11 @@ button:focus-visible,a:focus-visible{outline:3px solid #be9e1b;outline-offset:3p
 .category-card:nth-child(4n + 4) div{background:#fff0bf;color:#c59114}
 .category-card:hover div{transform:translateY(-3px)}
 
-/* Category shortcuts directly below search on Home, no heading or Todos tile. */
+/* Categorias diretamente abaixo da busca; Tudo encerra o próprio carrossel. */
 .home-category-nav{margin:0 0 18px}
 .home-category-nav .category-track{margin-bottom:0;padding-bottom:4px}
-.home-category-nav .category-all-link{display:flex;align-items:center;justify-content:flex-end;gap:6px;width:max-content;max-width:100%;margin:5px 0 0 auto;padding:7px 0;border:0;background:transparent;color:#cf5a3a;font-size:12px;font-weight:800}
-.home-category-nav .category-all-link:hover{text-decoration:underline}
+.category-card .category-all-art{background:#fff0e9;color:#de6d50}
+.category-card .category-all-art svg{display:block}
 
 .product-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:15px}
 .product-track{display:flex;gap:14px;overflow-x:auto;scrollbar-width:none;align-items:stretch;padding:1px 0 8px}
