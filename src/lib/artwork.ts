@@ -55,7 +55,8 @@ export function getCategoryArtwork(name:string,icon?:string):string|null {
   if(/saude|bem[ -]?estar/.test(normalized))return artwork.categorySaude;
   if(/casa|decorac/.test(normalized))return artwork.categoryCasa;
   if(/eletronic|informatica|celular/.test(normalized))return artwork.categoryEletronicos;
-  if(/sobremesa|sorvete|acai/.test(normalized))return artwork.categorySobremesas;
+  if(/sorvete|gelato|ice[ -]?cream/.test(normalized))return '/categories/sorvetes.webp';
+  if(/sobremesa|acai/.test(normalized))return artwork.categorySobremesas;
   if(/bolo|doce/.test(normalized))return artwork.categoryBolos;
   if(/pao|salgado/.test(normalized))return artwork.categoryPaes;
   if(/refeic|comida|almoco|jantar/.test(normalized))return artwork.categoryRefeicoes;
