@@ -45,7 +45,7 @@ export function AdsCarousel({campaigns}:{campaigns:AdCampaign[]}){
         <p style={{fontSize:14,lineHeight:1.5,color:'#626262',margin:'0 0 17px'}}>{ad.description}</p>
         <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:12,flexWrap:'wrap'}}>
           <span style={{display:'inline-flex',alignItems:'center',gap:6,color:'#555',fontSize:13}}><MapPin size={16}/>{ad.location}</span>
-          <a href={ad.destination_url} onClick={()=>{void fetch('/api/ads/'+ad.id+'/click',{method:'POST',credentials:'same-origin',keepalive:true}).catch(()=>{});}} target="_blank" rel="noopener noreferrer sponsored" style={{display:'inline-flex',alignItems:'center',gap:7,background:'#111',color:'white',fontSize:13,padding:'12px 17px',borderRadius:13,textDecoration:'none',fontWeight:700}}>Ver oferta <ArrowUpRight size={16}/></a>
+          <a href={ad.destination_url} onClick={()=>{void fetch('/api/ads/'+ad.id+'/click',{method:'POST',credentials:'same-origin',keepalive:true}).catch(()=>{});}} target="_blank" rel="noopener noreferrer sponsored" className="promo-action">Saiba mais <ArrowUpRight size={16}/></a>
         </div>
       </div>
     </article>
