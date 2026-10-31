@@ -19,6 +19,19 @@ test('category images use packaged WebP names and unknown categories keep the ic
   assert.equal(getCategoryArtwork('Categoria desconhecida','shopping-bag'),null);
 });
 
+
+test('optional catalog categories also have artwork, including disabled ones',()=>{
+  const expected=[
+    ['Moda','moda'],['Presentes','presentes'],['Outros','outros'],
+    ['Saúde e bem-estar','saude'],['Eletrônicos','eletronicos'],
+    ['Desapego','desapego'],['Beleza','beleza'],['Serviços','servicos'],
+    ['Casa e decoração','casa-decoracao'],['Limpeza','limpeza'],
+    ['Pets','pets'],['Açaí','acai'],['Sushi','sushi']
+  ];
+  for(const [name,slug] of expected)
+    assert.equal(getCategoryArtwork(name),'/categories/'+slug+'.webp',name);
+});
+
 test('category art routes independently of the product catalog',()=>{
   artwork.categoryBolos='/illustrations/bolo.webp';
   artwork.categoryBebidas='/illustrations/bebida.webp';
@@ -45,16 +58,4 @@ test('seven additional categories each have their own replaceable image',()=>{
     artwork[key]=src;
     assert.equal(getCategoryArtwork(name,icon),src,name);
   }
-});
-
-test('optional catalog categories also have artwork, including disabled ones',()=>{
-  const expected=[
-    ['Moda','moda'],['Presentes','presentes'],['Outros','outros'],
-    ['Saúde e bem-estar','saude'],['Eletrônicos','eletronicos'],
-    ['Desapego','desapego'],['Beleza','beleza'],['Serviços','servicos'],
-    ['Casa e decoração','casa-decoracao'],['Limpeza','limpeza'],
-    ['Pets','pets'],['Açaí','acai'],['Sushi','sushi']
-  ];
-  for(const [name,slug] of expected)
-    assert.equal(getCategoryArtwork(name),'/categories/'+slug+'.webp',name);
 });
