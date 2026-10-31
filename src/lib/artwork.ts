@@ -17,27 +17,37 @@ export const artwork = {
   emptyFavorites: null,
   sellerWelcome: null,
   categoryAll: null,
-  categoryBolos: null,
-  categoryPaes: null,
-  categoryRefeicoes: null,
-  categoryBebidas: null,
-  categoryBeleza: null,
+  categoryBolos: '/categories/bolos.webp',
+  categoryPaes: '/categories/padaria.webp',
+  categoryRefeicoes: '/categories/refeicoes.webp',
+  categoryBebidas: '/categories/bebidas.webp',
+  categoryBeleza: '/categories/beleza.webp',
   categoryModa: null,
   categoryPresentes: null,
   categoryOutros: null,
-  categoryRestaurantes: null,
-  categorySobremesas: null,
-  categoryLanches: null,
-  categoryMercadinho: null,
-  categoryServicos: null,
+  categoryRestaurantes: '/categories/refeicoes.webp',
+  categorySobremesas: '/categories/doces.webp',
+  categoryLanches: '/categories/lanches.webp',
+  categoryMercadinho: '/categories/mercado.webp',
+  categoryServicos: '/categories/servicos.webp',
   categorySaude: null,
-  categoryCasa: null,
+  categoryCasa: '/categories/casa-decoracao.webp',
   categoryEletronicos: null
 } as Record<string, string | null>;
 export type ArtworkKey = keyof typeof artwork;
 
 export function getCategoryArtwork(name:string,icon?:string):string|null {
   const normalized=name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+  // Specific categories take precedence over broad groups (e.g. pizza vs. lanches).
+  // A missing or invalid image is handled by IllustrationSlot's existing icon fallback.
+  if(/pizza/.test(normalized))return '/categories/pizzas.webp';
+  if(/sushi|japones/.test(normalized))return '/categories/sushi.webp';
+  if(/acai/.test(normalized))return '/categories/acai.webp';
+  if(/\bpet(s)?\b|animais/.test(normalized))return '/categories/pets.webp';
+  if(/limpeza/.test(normalized))return '/categories/limpeza.webp';
+  if(/salgado/.test(normalized))return '/categories/salgados.webp';
+  if(/padaria/.test(normalized))return '/categories/padaria.webp';
+  if(/\bdoce(s)?\b|brigadeiro/.test(normalized)&&!/bolo/.test(normalized))return '/categories/doces.webp';
   if(/restaurante|delivery/.test(normalized))return artwork.categoryRestaurantes;
   if(/lanch|hamburg|pizza/.test(normalized))return artwork.categoryLanches;
   if(/mercad|conveniencia|supermerc/.test(normalized))return artwork.categoryMercadinho;

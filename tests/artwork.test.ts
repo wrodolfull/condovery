@@ -6,6 +6,17 @@ test('all illustration slots default to an intentional fallback',()=>{
   assert.ok(Object.keys(artwork).length>=20);
   assert.ok(Object.values(artwork).every(v=>v===null||typeof v==='string'));
 });
+test('category images use packaged WebP names and unknown categories keep the icon fallback',()=>{
+  assert.equal(getCategoryArtwork('Pizza'),'/categories/pizzas.webp');
+  assert.equal(getCategoryArtwork('Sushi'),'/categories/sushi.webp');
+  assert.equal(getCategoryArtwork('Açaí'),'/categories/acai.webp');
+  assert.equal(getCategoryArtwork('Pets'),'/categories/pets.webp');
+  assert.equal(getCategoryArtwork('Pães e salgados'),'/categories/salgados.webp');
+  assert.equal(getCategoryArtwork('Mercadinho'),'/categories/mercado.webp');
+  assert.equal(getCategoryArtwork('Desapego','gift'),null);
+  assert.equal(getCategoryArtwork('Categoria desconhecida','shopping-bag'),null);
+});
+
 test('category art routes independently of the product catalog',()=>{
   artwork.categoryBolos='/illustrations/bolo.webp';
   artwork.categoryBebidas='/illustrations/bebida.webp';
