@@ -1433,7 +1433,6 @@ export default function Page(){
             <div className="category-art category-all-art"><LayoutGrid size={26} strokeWidth={1.8}/></div><span>Tudo</span>
           </button>
         </div>
-        <div className="filter-chips">{category&&<button onClick={()=>setCategory('')}>Limpar filtro</button>}{home.categories.map(c=><button key={c.id} className={category===c.id?'chosen':''} onClick={()=>{if(c.name==='Desapego')go('giveaways');else setCategory(c.id);}}>{c.name}</button>)}</div>
         <SectionHeader title={categoryName??'Produtos dos vizinhos'}/>
         {filtered.length?<div className="product-grid">{filtered.map(p=><ProductCard key={p.id} p={p} onClick={()=>openProduct(p)} favorite={favoriteIds.includes(p.id)} onFavorite={toggleFavorite}/>)}</div>:
           catalogLoading?<div className="loading-inline"><div className="spinner"/> Buscando produtos...</div>:
