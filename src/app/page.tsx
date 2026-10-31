@@ -1363,8 +1363,10 @@ export default function Page(){
           <div className="category-track" aria-label="Categorias">
             {home.categories.map(c=><button key={c.id} className="category-card" onClick={()=>{if(c.name==='Desapego')go('giveaways');else {setCategory(c.id);go('categories');}}}>
               <CategoryArtwork category={c}/><span>{c.name}</span></button>)}
+            <button type="button" className="category-card" aria-label="Tudo: explorar todos os produtos" onClick={()=>{setCategory('');go('categories');}}>
+              <div className="category-art category-all-art"><LayoutGrid size={26} strokeWidth={1.8}/></div><span>Tudo</span>
+            </button>
           </div>
-          <button type="button" className="category-all-link" onClick={()=>{setCategory('');go('categories');}}>Explorar tudo <ArrowRight size={15}/></button>
         </div>
         {!query&&<section className="hero-banner"><div className="hero-copy">
   <span className="eyebrow">TUDO DE BOM MORA AQUI</span>
@@ -1426,6 +1428,10 @@ export default function Page(){
             onClick={()=>{if(c.name==='Desapego')go('giveaways');else setCategory(c.id);}} aria-pressed={category===c.id}>
               <CategoryArtwork category={c}/><span>{c.name}</span>
             </button>)}
+          <button type="button" className={'category-card'+(!category?' selected':'')} aria-pressed={!category}
+            onClick={()=>setCategory('')} aria-label="Tudo: mostrar todos os produtos">
+            <div className="category-art category-all-art"><LayoutGrid size={26} strokeWidth={1.8}/></div><span>Tudo</span>
+          </button>
         </div>
         <div className="filter-chips">{category&&<button onClick={()=>setCategory('')}>Limpar filtro</button>}{home.categories.map(c=><button key={c.id} className={category===c.id?'chosen':''} onClick={()=>{if(c.name==='Desapego')go('giveaways');else setCategory(c.id);}}>{c.name}</button>)}</div>
         <SectionHeader title={categoryName??'Produtos dos vizinhos'}/>
