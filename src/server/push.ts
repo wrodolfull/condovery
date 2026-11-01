@@ -248,6 +248,35 @@ export async function handlePushApi(
       return json({ ok: true });
     }
   }
+  // A lightweight inbox count independent of Android permission, Expo tokens,
+  // and the dispatch worker. Unread notices belong to the authenticated user.
+  if (path === "push/summary" && method === "GET") {
+    const r = await query(
+      "SELECT count(*)::int AS unread_count FROM push_notifications " +
+      "WHERE user_id=$1 AND condominium_id=$2 AND read_at IS NULL AND kind<>'shop'",
+      [u.id, u.condominium_id],
+    );
+    return json({ unread_count: Number(r.rows[0].unread_count) });
+  }
+  // Never return Expo tokens, secrets, device IDs or details from other users.
+  // An API-level check cannot prove that cron/FCM or a physical device works.
+  if (path === "push/status" && method === "GET") {
+    const credential = sessionCredential(req);
+    if (credential?.kind !== "mobile") bad("Use a sessão do aplicativo.", 403);
+    const sessionHash = tokenHash(credential!.token);
+    const r = await query(
+      "SELECT count(*)::int AS registered_devices FROM push_devices d " +
+      "JOIN sessions s ON s.token_hash=d.session_hash " +
+      "WHERE d.user_id=$1 AND d.condominium_id=$2 AND d.session_hash=$3 " +
+      "AND d.disabled=false AND s.expires_at>now() AND s.client_kind='mobile'",
+      [u.id, u.condominium_id, sessionHash],
+    );
+    return json({
+      registered_devices: Number(r.rows[0].registered_devices),
+      transport_enabled: process.env.PUSH_ENABLED === "true",
+      provider_configured: Boolean(process.env.EXPO_ACCESS_TOKEN && process.env.EXPO_PROJECT_ID),
+    });
+  }
   if (path === "push/preferences") {
     if (method === "GET") {
       const r = await query(
