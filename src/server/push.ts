@@ -263,7 +263,7 @@ export async function handlePushApi(
   if (path === "push/status" && method === "GET") {
     const credential = sessionCredential(req);
     if (credential?.kind !== "mobile") bad("Use a sessão do aplicativo.", 403);
-    const sessionHash = tokenHash(credential.token);
+    const sessionHash = tokenHash(credential!.token);
     const r = await query(
       "SELECT count(*)::int AS registered_devices FROM push_devices d " +
       "JOIN sessions s ON s.token_hash=d.session_hash " +
