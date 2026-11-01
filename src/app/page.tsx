@@ -1522,14 +1522,14 @@ export default function Page(){
                       <span>{choice.name}{choice.available===false?' · Indisponível':''}</span>
                       <small>{choice.price_cents>0?'+'+money(choice.price_cents)+' por unidade':'Incluso'}</small>
                       <div className="option-quantity-stepper">
-                        <button type="button" aria-label={'Remover '+choice.name} disabled={count===0||choice.available===false} onClick={()=>changeChoice(group,choice.id,-1)}>−</button>
+                        <button type="button" aria-label={'Remover '+choice.name} disabled={count===0} onClick={()=>changeChoice(group,choice.id,-1)}>−</button>
                         <strong aria-live="polite">{count}</strong>
                         <button type="button" aria-label={'Adicionar '+choice.name} disabled={chosen.length>=bounds.max||choice.available===false} onClick={()=>changeChoice(group,choice.id,1)}>+</button>
                       </div>
                     </div>:
                     <label className="option-item" key={choice.id}>
                       <input type={group.multiple?'checkbox':'radio'} name={'group-'+group.id}
-                        disabled={choice.available===false} checked={count>0} onChange={()=>changeChoice(group,choice.id)}/>
+                        disabled={choice.available===false&&count===0} checked={count>0} onChange={()=>changeChoice(group,choice.id)}/>
                       <span>{choice.name}{choice.available===false?' · Indisponível':''}</span>
                       <small>{choice.price_cents>0?'+'+money(choice.price_cents):'Incluso'}</small>
                     </label>;
