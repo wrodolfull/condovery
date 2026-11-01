@@ -53,6 +53,7 @@ export function mobileRouteAllowed(path: string, method: string): boolean {
   if (path === "giveaways" || new RegExp("^giveaways/" + id + "$").test(path))
     return ["GET", "POST", "PUT", "PATCH", "DELETE"].includes(method);
   if (path === "push/devices") return ["POST", "DELETE"].includes(method);
+  if (path === "push/summary" || path === "push/status") return method === "GET";
   if (path === "push/preferences") return ["GET", "PATCH"].includes(method);
   if (path === "push/inbox") return method === "GET";
   if (new RegExp("^push/inbox/" + id + "$").test(path))
