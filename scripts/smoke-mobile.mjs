@@ -550,6 +550,25 @@ try {
   );
   assert.ok(!(await request("push/inbox",{token:seller.token})).data.notifications.some(n=>n.id===legacyShopNotice));
   await request("push/inbox/"+legacyShopNotice,{token:seller.token,expected:404});
+  // Legacy moderation outcomes must never appear in inbox, unread count,
+  // details or push delivery, even if they were queued by an older release.
+  const legacyModerationNotice=crypto.randomUUID();
+  const unreadBeforeLegacy=(await request("push/summary",{token:seller.token})).data.unread_count;
+  await db.query(
+    "INSERT INTO push_notifications(id,user_id,condominium_id,kind,title,body,event_key) "+
+    "VALUES($1,$2,$3,'review_update','Old moderation outcome','Private decision',$4)",
+    [legacyModerationNotice,seller.me.id,seller.me.condominium_id,"old-review-update:"+tag]
+  );
+  await db.query(
+    "INSERT INTO push_deliveries(notification_id,device_id,session_hash) VALUES($1,$2,$3)",
+    [legacyModerationNotice,legacyDevice.id,legacyDevice.session_hash]
+  );
+  assert.equal((await request("push/summary",{token:seller.token})).data.unread_count,unreadBeforeLegacy);
+  assert.ok(!(await request("push/inbox",{token:seller.token})).data.notifications.some(
+    n=>n.id===legacyModerationNotice
+  ));
+  await request("push/inbox/"+legacyModerationNotice,{token:seller.token,expected:404});
+  await request("push/inbox/"+legacyModerationNotice,{token:seller.token,method:"PATCH"});
   const staleNotice = crypto.randomUUID(),
     optoutNotice = crypto.randomUUID();
   for (const [id, kind, key] of [
@@ -590,6 +609,11 @@ try {
     [legacyShopNotice]
   )).rows[0];
   assert.deepEqual(retiredState,{state:"failed",last_error:"SHOP_NOTICES_DISABLED"});
+  const legacyModerationState=(await db.query(
+    "SELECT state,last_error FROM push_deliveries WHERE notification_id=$1",
+    [legacyModerationNotice],
+  )).rows[0];
+  assert.deepEqual(legacyModerationState,{state:"failed",last_error:"REVIEW_MODERATION_PRIVATE"});
   assert.ok(dispatch.sent > 0);
   assert.equal(sentCalls, 1);
   const filtered = await db.query(
