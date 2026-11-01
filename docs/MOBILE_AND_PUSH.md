@@ -47,12 +47,11 @@ Após a migração `db/044_seller_notification_events.sql` (incluída em `npm ru
 | Pedido registrado (`seller_order`) | Proprietário da loja | Minha loja → Pedidos, pedido destacado |
 | Pedido confirmado, concluído ou cancelado (`order`) | Comprador | Detalhe do próprio pedido |
 | Avaliação enviada (`seller_review`) | Proprietário da loja | Minha loja → Avaliações, avaliação destacada |
-| Avaliação aprovada ou rejeitada (`review_update`) | Comprador | Detalhe do próprio pedido |
 | Pedido confirmado há 2 h ou mais, ainda não concluído (`seller_reminder`) | Proprietário da loja | Minha loja → Pedidos, pedido destacado |
 
 O lembrete de conclusão é **único por pedido**; evita avisar pedidos concluídos/cancelados e considera `delivery_day` (não notifica antes da data informada). Ele é gerado por `npm run push:dispatch`, mesmo que a entrega push externa esteja desabilitada; **a rotina agendada precisa estar efetivamente ativa** para gerar o lembrete. O histórico in-app é independente da permissão Android e da entrega FCM.
 
-A preferência "Pedidos, avaliações e pendências da minha loja" cobre `seller_order`, `seller_review` e `seller_reminder`; a preferência de atualizações dos pedidos cobre `order` e `review_update`. As mudanças de estado e avaliações são gravadas junto dos avisos na mesma transação, garantindo consistência.
+A preferência "Pedidos, avaliações e pendências da minha loja" cobre `seller_order`, `seller_review` e `seller_reminder`; a preferência de atualizações dos pedidos cobre somente `order`. Avaliações novas geram avisos apenas para o vendedor. **Aprovar ou rejeitar uma avaliação é uma decisão interna da loja:** o comprador recebe somente a confirmação neutra de que enviou sua avaliação, sem aviso posterior nem estado de moderação na API ou nas telas. Avisos legados de `review_update` são ocultados do inbox/contador e suas entregas pendentes são canceladas.
 
 O aplicativo faz uma **solicitação visível no primeiro acesso autenticado** com as opções Ativar e Agora não. A permissão nativa só é solicitada após um toque do usuário; Android 13+ exige canal configurado antes do prompt. Quem já negou e não pode ser solicitado novamente recebe orientação para acessar Configurações. Reinstalar/atualizar o APK sem publicar as migrações e a API associadas não habilita o envio remoto. Testar em aparelho físico.
 
