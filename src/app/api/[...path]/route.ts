@@ -84,7 +84,7 @@ const orderSchema=z.object({
   shop_id:z.string().uuid(),
   items:z.array(z.object({id:z.string().uuid(),quantity:z.number().int().min(1).max(30),
     note:z.string().max(200).optional(),
-    selections:z.record(z.array(z.string().uuid()).max(15)).optional()})).min(1).max(25),
+    selections:z.record(z.array(z.string().uuid()).max(30)).optional()})).min(1).max(25),
   payment_method:paymentMethodSchema,
   fulfillment:z.enum(['delivery','pickup']),delivery_day:z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
   delivery_window:z.string().max(70).optional(),instructions:z.array(z.enum(['Bater na porta','Tocar a campainha','Não tocar a campainha','Deixar na porta','Entregar pessoalmente','Retirar na portaria']))
