@@ -371,6 +371,17 @@ try {
   await request("push/inbox/"+sellerNotice.id,{token:seller.token,method:"PATCH"});
   const unreadRead=(await request("push/summary",{token:seller.token})).data.unread_count;
   assert.equal(unreadRead,unreadAfter-1,"Badge must clear when notice is read");
+  // Reproduce the reported scenario: web buyer -> mobile seller inbox.
+  const webPlaced=(await request("orders",{
+    cookie:buyer.cookie,method:"POST",expected:201,
+    body:{...draft,client_order_key:crypto.randomUUID(),expected_total_cents:quote.total_cents}
+  })).data.order;
+  const afterWeb=(await request("push/summary",{token:seller.token})).data.unread_count;
+  assert.equal(afterWeb,unreadRead+1,"Web purchase must appear as seller unread notice");
+  assert.ok((await request("push/inbox",{token:seller.token})).data.notifications.some(
+    n=>n.kind==="seller_order"&&n.target_id===webPlaced.id
+  ));
+
 
   await request("orders/" + placed.id, {
     cookie: seller.cookie,
