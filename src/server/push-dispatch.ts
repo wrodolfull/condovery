@@ -75,6 +75,8 @@ export async function dispatchPush(transport: typeof fetch = fetch) {
       "JOIN users u ON u.id=n.user_id JOIN condominiums c ON c.id=n.condominium_id LEFT JOIN push_preferences p ON p.user_id=u.id " +
       "WHERE dev.id=d.device_id AND dev.session_hash=d.session_hash AND dev.user_id=n.user_id AND dev.condominium_id=n.condominium_id " +
       "AND s.user_id=dev.user_id AND u.condominium_id=n.condominium_id AND u.status='approved' AND c.is_active=true AND dev.disabled=false AND s.expires_at>now() " +
+      "AND (n.kind<>'seller_reminder' OR EXISTS (SELECT 1 FROM orders o " +
+      "WHERE o.id=n.target_id AND o.condominium_id=n.condominium_id AND o.status='confirmed')) " +
       "AND CASE n.kind WHEN 'condominium' THEN COALESCE(p.condominium,true) WHEN 'order' THEN COALESCE(p.orders,true) " +
       "WHEN 'seller_order' THEN COALESCE(p.seller_orders,true) " +
       "WHEN 'seller_review' THEN COALESCE(p.seller_orders,true) " +
