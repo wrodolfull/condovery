@@ -27,7 +27,7 @@ import {towerLabels,currentTowerScheme,type TowerScheme} from '@/lib/towers';
 import {artwork,getCategoryArtwork} from '@/lib/artwork';
 import {unitsInCart,remainingToAdd,maxLineQuantity} from '@/lib/cart-stock';
 import {IMAGE_MIME_TYPES, imageSizeIsAllowed} from '@/lib/image-limits';
-import {selectedOptions, extrasTotal, arrivalInstructionOptions, toggleArrivalInstruction, type OptionGroup, type Selection} from '@/lib/orders';
+import {selectedOptions, selectionBounds, changeOptionSelection, previewExtrasTotal, arrivalInstructionOptions, toggleArrivalInstruction, type OptionGroup, type Selection} from '@/lib/orders';
 import {
   ArrowLeft, ArrowRight, Bell, Building2, CakeSlice, Check, CheckCircle2, ChevronDown, ChevronRight,
   CircleHelp, Clock3, Coffee, Gift, Heart, Home, ImagePlus, LayoutGrid, LogOut, MapPin,
@@ -40,7 +40,7 @@ type Viewer={id:string;condominium_id:string;name:string;email:string;phone:stri
 type Category={id:string;name:string;icon:string;is_active?:boolean};
 type Shop={id:string;slug:string;name:string;description:string;cover_image:string|null;logo_image:string|null;status?:string;is_open:boolean;delivery_enabled:boolean;delivery_fee_cents:number;pickup_enabled:boolean;lead_time:string;pickup_instructions?:string;whatsapp?:string;payment_methods:PaymentMethod[]};
 type Product={id:string;shop_id:string;shop_name?:string;is_open?:boolean;visibility:'available'|'unavailable'|'hidden';category_id:string;name:string;description:string;price_cents:number;promo_price_cents:number|null;image_url:string|null;stock:number|null;is_available?:boolean;lead_time?:string;is_featured?:boolean;option_groups?:OptionGroup[]};
-type Order={id:string;code:number;status:string;review_status?:'pending'|'approved'|'rejected'|null;can_review?:boolean;is_own_shop?:boolean;total_cents:number;shop_name:string;buyer_name:string;buyer_phone:string;tower:string;apartment:string;fulfillment:string;delivery_day:string|null;delivery_window:string;delivery_instructions:string[];note:string;subtotal_cents:number;delivery_fee_cents:number;payment_method?:PaymentMethod|null;items:{name:string;quantity:number;unit_price_cents:number;note:string;options?:{group:string;name:string;price_cents:number}[]}[];created_at:string};
+type Order={id:string;code:number;status:string;review_status?:'pending'|'approved'|'rejected'|null;can_review?:boolean;is_own_shop?:boolean;total_cents:number;shop_name:string;buyer_name:string;buyer_phone:string;tower:string;apartment:string;fulfillment:string;delivery_day:string|null;delivery_window:string;delivery_instructions:string[];note:string;subtotal_cents:number;delivery_fee_cents:number;payment_method?:PaymentMethod|null;items:{name:string;quantity:number;unit_price_cents:number;note:string;options?:{group:string;name:string;price_cents:number;quantity?:number}[]}[];created_at:string};
 type ReviewStatus='pending'|'approved'|'rejected';
 type PublicReview={id:string;rating:number;description:string;created_at:string};
 type ReviewSummary={average:number|null;count:number};
@@ -50,10 +50,10 @@ type ContentReport={id:string;target_type:'shop'|'product';target_id:string;targ
 type CartItem={product:Product;quantity:number;note:string;selections?:Selection;line_key?:string};
 type CheckoutQuote={subtotal_cents:number;delivery_fee_cents:number;total_cents:number;lines:{
   name:string;quantity:number;unit_price_cents:number;total_cents:number;
-  options:{group:string;name:string;price_cents:number}[];note:string
+  options:{group:string;name:string;price_cents:number;quantity?:number}[];note:string
 }[]};
 const addOns=(p:Product,choices:Selection={})=>{
-  try{return extrasTotal(selectedOptions(p.option_groups??[],choices));}catch{return 0;}
+  try{return previewExtrasTotal(p.option_groups??[],choices);}catch{return 0;}
 };
 const cartUnitPrice=(i:CartItem)=>price(i.product)+addOns(i.product,i.selections);
 const moneyInput=(v:number)=>Number.isFinite(v)?(v/100).toFixed(2):'0.00';
@@ -875,14 +875,10 @@ export default function Page(){
     }catch(e){fail(e);}finally{setBusy(false);}
   }
   function openProduct(p:Product){if(!productCanBuy(p))return;setSelectedProduct(p);setQty(1);setItemNote('');setProductChoices({});go('product');}
-  function changeChoice(group:OptionGroup,id:string){
-    setProductChoices(current=>{
-      const currentIds=current[group.id]??[];
-      const selected=group.multiple
-        ?currentIds.includes(id)?currentIds.filter(x=>x!==id):[...currentIds,id]
-        :[id];
-      return {...current,[group.id]:selected};
-    });
+  function changeChoice(group:OptionGroup,id:string,delta:1|-1=1){
+    setProductChoices(current=>({...current,
+      [group.id]:changeOptionSelection(group,current[group.id]??[],id,delta)
+    }));
   }
   const productCanBuy=(p:Product)=>{
     const shop=selectedShop?.shop.id===p.shop_id?selectedShop.shop:home.shops.find(s=>s.id===p.shop_id);
@@ -1514,17 +1510,34 @@ export default function Page(){
             <div className="detail-price">{selectedProduct.promo_price_cents!=null&&<del>{money(selectedProduct.price_cents)}</del>}<strong>{money(price(selectedProduct))}</strong></div>
             <p>{selectedProduct.description||'Produto disponível diretamente com um morador do condomínio.'}</p>
             {selectedProduct.lead_time&&<p className="time-hint"><Clock3 size={16}/> Prazo informado: {selectedProduct.lead_time}</p>}
-            {(selectedProduct.option_groups??[]).map(group=><fieldset className="options-picker" key={group.id} disabled={!productCanBuy(selectedProduct)}>
-              <legend><strong>{group.name}</strong><small>{group.required?' Obrigatório':' Opcional'} · {group.multiple?'Várias escolhas':'Escolha uma'}</small></legend>
-              {group.options.map(choice=><label className="option-item" key={choice.id}>
-                <input type={group.multiple?'checkbox':'radio'} name={'group-'+group.id}
-                  checked={(productChoices[group.id]??[]).includes(choice.id)} onChange={()=>changeChoice(group,choice.id)}/>
-                <span>{choice.name}</span><small>{choice.price_cents>0?'+'+money(choice.price_cents):'Incluso'}</small>
-              </label>)}
-              {!group.required&&!group.multiple&&(productChoices[group.id]??[]).length>0&&
-                <button type="button" className="quiet-link"
-                  onClick={()=>setProductChoices(c=>({...c,[group.id]:[]}))}>Limpar escolha</button>}
-            </fieldset>)}
+            {(selectedProduct.option_groups??[]).map(group=>{
+              const chosen=productChoices[group.id]??[];
+              const bounds=selectionBounds(group);
+              return <fieldset className="options-picker" key={group.id} disabled={!productCanBuy(selectedProduct)}>
+                <legend><strong>{group.name}</strong><small>{bounds.min?'Obrigatório':'Opcional'} · {group.multiple?'Várias escolhas':'Escolha uma'} · {chosen.length}/{bounds.max} selecionado(s){bounds.min>1?' · mínimo '+bounds.min:''}</small></legend>
+                {group.options.map(choice=>{
+                  const count=chosen.filter(id=>id===choice.id).length;
+                  return group.multiple&&group.allow_quantity?
+                    <div key={choice.id} className={'option-quantity-row'+(choice.available===false?' is-unavailable':'')}>
+                      <span>{choice.name}{choice.available===false?' · Indisponível':''}</span>
+                      <small>{choice.price_cents>0?'+'+money(choice.price_cents)+' por unidade':'Incluso'}</small>
+                      <div className="option-quantity-stepper">
+                        <button type="button" aria-label={'Remover '+choice.name} disabled={count===0} onClick={()=>changeChoice(group,choice.id,-1)}>−</button>
+                        <strong aria-live="polite">{count}</strong>
+                        <button type="button" aria-label={'Adicionar '+choice.name} disabled={chosen.length>=bounds.max||choice.available===false} onClick={()=>changeChoice(group,choice.id,1)}>+</button>
+                      </div>
+                    </div>:
+                    <label className="option-item" key={choice.id}>
+                      <input type={group.multiple?'checkbox':'radio'} name={'group-'+group.id}
+                        disabled={choice.available===false&&count===0} checked={count>0} onChange={()=>changeChoice(group,choice.id)}/>
+                      <span>{choice.name}{choice.available===false?' · Indisponível':''}</span>
+                      <small>{choice.price_cents>0?'+'+money(choice.price_cents):'Incluso'}</small>
+                    </label>;
+                })}
+                {!group.required&&!group.multiple&&chosen.length>0&&
+                  <button type="button" className="quiet-link" onClick={()=>setProductChoices(c=>({...c,[group.id]:[]}))}>Limpar escolha</button>}
+              </fieldset>;
+            })}
             <label className="field-label">Observações sobre este produto<textarea disabled={!productCanBuy(selectedProduct)} maxLength={200} rows={3} value={itemNote} onChange={e=>setItemNote(e.target.value)} placeholder="Ex.: sem cobertura, embalagem para presente..."/></label>
             <div className="add-row"><div className="quantity"><button disabled={!productCanBuy(selectedProduct)||qty<=1} onClick={()=>setQty(Math.max(1,qty-1))} aria-label="Diminuir"><Minus size={18}/></button><strong>{qty}</strong><button disabled={!productCanBuy(selectedProduct)||selectedAddMax===0||qty>=selectedAddMax} onClick={()=>setQty(Math.min(Math.max(1,selectedAddMax),qty+1))} aria-label="Aumentar"><Plus size={18}/></button></div>
             <button className="primary-button" disabled={!productCanBuy(selectedProduct)||selectedAddMax===0||qty>selectedAddMax} onClick={addToCart}><Plus size={18}/>Adicionar · {money((price(selectedProduct)+addOns(selectedProduct,productChoices))*qty)}</button></div>
@@ -1543,9 +1556,9 @@ export default function Page(){
           {!cartShop&&<div className="shop-closed-notice" role="status">{cartShopLookup?.error||'Carregando informações da loja...'} {cartShopLookup?.error&&<button className="outline-button" onClick={()=>setCartShopRetry(n=>n+1)}>Tentar novamente</button>}</div>}
           <div className="white-panel"><h2><Store size={19}/> {cartShop?.name??'Sua loja'}</h2>{cart.map((item,index)=><div className="cart-item" key={item.product.id+'-'+index}>
             <ProductPicture src={item.product.image_url} name={item.product.name}/><div className="cart-item-details"><strong>{item.product.name}</strong>
-              {(item.product.option_groups??[]).flatMap(g=>(item.selections?.[g.id]??[]).map(id=>{
-                const option=g.options.find(o=>o.id===id);return option?g.name+': '+option.name+(option.price_cents?' (+'+money(option.price_cents)+')':''):null;
-              })).filter(Boolean).map((detail,i)=><small key={i}>{detail}</small>)}
+              {(()=>{try{return selectedOptions(item.product.option_groups??[],item.selections??{}).map((opt,i)=>
+                <small key={i}>{opt.group}: {opt.quantity&&opt.quantity>1?opt.quantity+'x ':''}{opt.name}{opt.price_cents?' (+'+money(opt.price_cents*(opt.quantity??1))+')':''}</small>);
+              }catch{return <small>Personalização alterada; revise o pedido.</small>;}})()}
               {item.note&&<small>Obs.: {item.note}</small>}
               <b>{money(cartUnitPrice(item)*item.quantity)}</b>
             <div className="cart-controls"><button onClick={()=>setCart(s=>s.map((i,n)=>n===index?{...i,quantity:Math.max(1,i.quantity-1)}:i))} aria-label="Diminuir"><Minus size={15}/></button><span>{item.quantity}</span><button disabled={item.quantity>=maxLineQuantity(item.product.stock,cart,item.product.id,index)} onClick={()=>setCart(s=>s.map((i,n)=>n===index?{...i,quantity:Math.min(maxLineQuantity(i.product.stock,s,i.product.id,index),i.quantity+1)}:i))} aria-label="Aumentar"><Plus size={15}/></button><button className="trash" onClick={()=>setCart(s=>s.filter((_,n)=>n!==index))} aria-label="Remover"><Trash2 size={16}/></button></div>
@@ -1856,7 +1869,7 @@ export default function Page(){
             <p><strong>{o.buyer_name}</strong> · {o.fulfillment==='delivery'?o.tower+' · Ap. '+o.apartment:'Retirada'}</p>
             <div className="seller-order-lines">{o.items.map((item,index)=><div key={index}>
               <strong>{item.quantity}× {item.name} — {money(item.unit_price_cents*item.quantity)}</strong>
-              {item.options?.map((opt,i)=><small key={i}>{opt.group}: {opt.name}{opt.price_cents>0?' (+'+money(opt.price_cents)+')':''}</small>)}
+              {item.options?.map((opt,i)=><small key={i}>{opt.group}: {opt.quantity&&opt.quantity>1?opt.quantity+'x ':''}{opt.name}{opt.price_cents>0?' (+'+money(opt.price_cents*(opt.quantity??1))+')':''}</small>)}
               {item.note&&<small>Obs. do produto: {item.note}</small>}
             </div>)}</div>
             {o.payment_method&&<p>Pagamento: {PAYMENT_LABELS[o.payment_method]}</p>}
@@ -1922,16 +1935,26 @@ export default function Page(){
                     onChange={e=>setProductForm(x=>({...x,option_groups:x.option_groups.map(g=>g.id===group.id?{...g,name:e.target.value}:g)}))}/></label>
                   <div className="option-flags">
                     <label><input type="checkbox" checked={group.required}
-                      onChange={e=>setProductForm(x=>({...x,option_groups:x.option_groups.map(g=>g.id===group.id?{...g,required:e.target.checked}:g)}))}/> Obrigatório</label>
+                      onChange={e=>setProductForm(x=>({...x,option_groups:x.option_groups.map(g=>g.id===group.id?{...g,required:e.target.checked,min_select:e.target.checked?Math.max(1,g.min_select??0):0}:g)}))}/> Obrigatório</label>
                     <label><input type="checkbox" checked={group.multiple}
-                      onChange={e=>setProductForm(x=>({...x,option_groups:x.option_groups.map(g=>g.id===group.id?{...g,multiple:e.target.checked}:g)}))}/> Permitir várias opções</label>
+                      onChange={e=>setProductForm(x=>({...x,option_groups:x.option_groups.map(g=>g.id===group.id?{...g,multiple:e.target.checked,max_select:e.target.checked?undefined:1,allow_quantity:e.target.checked?g.allow_quantity:false,min_select:e.target.checked?g.min_select:Math.min(1,g.min_select??(g.required?1:0))}:g)}))}/> Permitir várias opções</label>
+                    {group.multiple&&<label><input type="checkbox" checked={group.allow_quantity??false}
+                      onChange={e=>setProductForm(x=>({...x,option_groups:x.option_groups.map(g=>g.id===group.id?{...g,allow_quantity:e.target.checked,max_select:undefined}:g)}))}/> Permitir quantidade por opção</label>}
                   </div>
+                  {group.multiple&&<div className="option-bounds">
+                    <label>Mínimo de escolhas<input type="number" min={group.required?1:0} max={30} value={group.min_select??(group.required?1:0)}
+                      onChange={e=>setProductForm(x=>({...x,option_groups:x.option_groups.map(g=>g.id===group.id?{...g,min_select:Number(e.target.value)}:g)}))}/></label>
+                    <label>Máximo de escolhas<input type="number" min={1} max={30} value={group.max_select??selectionBounds(group).max}
+                      onChange={e=>setProductForm(x=>({...x,option_groups:x.option_groups.map(g=>g.id===group.id?{...g,max_select:Number(e.target.value)}:g)}))}/></label>
+                  </div>}
                   {group.options.map(opt=><div key={opt.id} className="option-choice-editor">
                     <label>Escolha<input required maxLength={70} placeholder="Ex.: Chocolate" value={opt.name}
                       onChange={e=>setProductForm(x=>({...x,option_groups:x.option_groups.map(g=>g.id===group.id?{...g,options:g.options.map(o=>o.id===opt.id?{...o,name:e.target.value}:o)}:g)}))}/></label>
                     <label>Adicional (R$)<MoneyInput cents={opt.price_cents} onValue={cents=>setProductForm(x=>({...x,
                       option_groups:x.option_groups.map(g=>g.id===group.id?{...g,options:g.options.map(o=>o.id===opt.id?{...o,price_cents:cents}:o)}:g)
                     }))}/></label>
+                    <label className="option-available"><input type="checkbox" checked={opt.available!==false}
+                      onChange={e=>setProductForm(x=>({...x,option_groups:x.option_groups.map(g=>g.id===group.id?{...g,options:g.options.map(o=>o.id===opt.id?{...o,available:e.target.checked}:o)}:g)}))}/> Disponível</label>
                     <button type="button" className="option-remove" aria-label="Remover escolha"
                       disabled={group.options.length<=1} onClick={()=>setProductForm(x=>({...x,option_groups:x.option_groups.map(g=>g.id===group.id?{...g,options:g.options.filter(o=>o.id!==opt.id)}:g)}))}><X size={16}/></button>
                   </div>)}

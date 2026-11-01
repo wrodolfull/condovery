@@ -11,43 +11,93 @@ export function normalizeWhatsApp(phone: string): string {
   throw new Error('O vendedor deve cadastrar um WhatsApp brasileiro válido.');
 }
 
-const choiceSchema=z.object({
+const choiceSchema = z.object({
   id:z.string().uuid(), name:z.string().trim().min(1).max(70),
-  price_cents:z.number().int().min(0).max(1_000_000)
+  price_cents:z.number().int().min(0).max(1_000_000),
+  available:z.boolean().optional()
 }).strict();
-const groupSchema=z.object({
+const groupSchema = z.object({
   id:z.string().uuid(), name:z.string().trim().min(2).max(65),
   required:z.boolean(), multiple:z.boolean(),
+  min_select:z.number().int().min(0).max(30).optional(),
+  max_select:z.number().int().min(1).max(30).optional(),
+  allow_quantity:z.boolean().optional(),
   options:z.array(choiceSchema).min(1).max(15)
-}).strict().refine(g=>new Set(g.options.map(o=>o.id)).size===g.options.length,
-  {message:'Opções repetidas no grupo.'});
+}).strict().superRefine((g,ctx)=>{
+  const min=g.min_select??(g.required?1:0);
+  const max=g.max_select??(g.multiple?(g.allow_quantity?30:g.options.length):1);
+  if(new Set(g.options.map(o=>o.id)).size!==g.options.length)
+    ctx.addIssue({code:'custom',message:'Opções repetidas no grupo.'});
+  if(min>max)ctx.addIssue({code:'custom',message:'O mínimo não pode superar o máximo.'});
+  if(g.required&&min<1)ctx.addIssue({code:'custom',message:'Grupo obrigatório precisa ter mínimo de 1 escolha.'});
+  if(!g.multiple&&(max!==1||min>1||g.allow_quantity))
+    ctx.addIssue({code:'custom',message:'Escolha única permite somente uma opção sem quantidade.'});
+});
 export const optionGroupsSchema=z.array(groupSchema).max(8)
   .refine(groups=>new Set(groups.map(g=>g.id)).size===groups.length,
     {message:'Grupos de personalização repetidos.'});
 export type OptionGroup=z.infer<typeof groupSchema>;
+/** Duplicate option IDs encode multiple units without changing the checkout API contract. */
 export type Selection=Record<string,string[]>;
-export type ChosenOption={group:string;name:string;price_cents:number};
+export type ChosenOption={group:string;name:string;price_cents:number;quantity?:number};
+
+export function selectionBounds(group:OptionGroup){
+  return {min:group.min_select??(group.required?1:0),
+    max:group.max_select??(group.multiple?(group.allow_quantity?30:group.options.length):1)};
+}
+export function changeOptionSelection(group:OptionGroup,current:string[],id:string,delta:1|-1):string[]{
+  const option=group.options.find(o=>o.id===id);
+  if(!option)return current;
+  const {max}=selectionBounds(group);
+  if(group.multiple&&group.allow_quantity){
+    if(delta===1)return option.available!==false&&current.length<max?[...current,id]:current;
+    const index=current.lastIndexOf(id);
+    return index<0?current:[...current.slice(0,index),...current.slice(index+1)];
+  }
+  if(!group.multiple)return option.available===false?current:(delta===1?[id]:[]);
+  if(delta===-1||current.includes(id))return current.filter(v=>v!==id);
+  return option.available!==false&&current.length<max?[...current,id]:current;
+}
 
 export function selectedOptions(groups:OptionGroup[],selections:Selection={}):ChosenOption[]{
-  if(selections===null||typeof selections!=='object'||Array.isArray(selections))throw new Error('Personalização inválida.');
-  if(Object.keys(selections).some(id=>!groups.some(g=>g.id===id)))throw new Error('Grupo de personalização inválido.');
+  if(selections===null||typeof selections!=='object'||Array.isArray(selections))
+    throw new Error('Personalização inválida.');
+  if(Object.keys(selections).some(id=>!groups.some(g=>g.id===id)))
+    throw new Error('Grupo de personalização inválido.');
   const selected:ChosenOption[]=[];
   for(const group of groups){
     const chosen=selections[group.id]??[];
-    if(!Array.isArray(chosen)||chosen.some(id=>typeof id!=='string'))throw new Error('Seleção inválida.');
-    if(group.required&&chosen.length===0)throw new Error('Selecione '+group.name+'.');
-    if(!group.multiple&&chosen.length>1)throw new Error('Escolha apenas uma opção de '+group.name+'.');
-    if(new Set(chosen).size!==chosen.length)throw new Error('Opções repetidas.');
+    if(!Array.isArray(chosen)||chosen.some(id=>typeof id!=='string'))
+      throw new Error('Seleção inválida.');
+    const {min,max}=selectionBounds(group);
+    if(chosen.length<min)throw new Error('Selecione pelo menos '+min+' em '+group.name+'.');
+    if(chosen.length>max)throw new Error('Selecione no máximo '+max+' em '+group.name+'.');
+    if(!group.multiple&&chosen.length>1)
+      throw new Error('Escolha apenas uma opção de '+group.name+'.');
+    if(!group.allow_quantity&&new Set(chosen).size!==chosen.length)
+      throw new Error('Opções repetidas.');
+    const counts=new Map<string,number>();
     for(const id of chosen){
       const option=group.options.find(o=>o.id===id);
-      if(!option)throw new Error('Uma opção de '+group.name+' não está mais disponível.');
-      selected.push({group:group.name,name:option.name,price_cents:option.price_cents});
+      if(!option||option.available===false)
+        throw new Error('Uma opção de '+group.name+' não está mais disponível.');
+      counts.set(id,(counts.get(id)??0)+1);
+    }
+    for(const [id,quantity] of counts){
+      const option=group.options.find(o=>o.id===id)!;
+      selected.push({group:group.name,name:option.name,price_cents:option.price_cents,
+        ...(quantity>1?{quantity}:{})});
     }
   }
   return selected;
 }
 export function extrasTotal(options:ChosenOption[]):number{
-  return options.reduce((sum,opt)=>sum+opt.price_cents,0);
+  return options.reduce((sum,opt)=>sum+opt.price_cents*(opt.quantity??1),0);
+}
+/** Calculate a live preview even while required groups are unfinished. */
+export function previewExtrasTotal(groups:OptionGroup[],selections:Selection):number{
+  const preview=groups.map(group=>({...group,required:false,min_select:0}));
+  return extrasTotal(selectedOptions(preview,selections));
 }
 // Arrival instructions follow the order into the vendor WhatsApp message.
 export const arrivalInstructionOptions=[
@@ -83,7 +133,7 @@ export function orderMessage(order: {
     'Morador: '+order.buyer,'Itens:',
     ...order.items.flatMap(i=>[
       '• '+i.quantity+'x '+i.name+' — '+BRL(i.unit_price_cents*i.quantity),
-      ...(i.options?.length?[...i.options.map(o=>'  - '+o.group+': '+o.name+(o.price_cents?' (+'+BRL(o.price_cents)+')':''))]:[]),
+      ...(i.options?.length?[...i.options.map(o=>'  - '+o.group+': '+(o.quantity&&o.quantity>1?o.quantity+'x ':'')+o.name+(o.price_cents?' (+'+BRL(o.price_cents*(o.quantity??1))+')':''))]:[]),
       ...(i.note?['  Obs.: '+i.note]:[])
     ]),
     '',

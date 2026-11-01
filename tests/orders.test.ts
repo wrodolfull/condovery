@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { BRL, normalizeWhatsApp, orderMessage, unitPrice, optionGroupsSchema, selectedOptions, extrasTotal, arrivalInstructionOptions, toggleArrivalInstruction, validArrivalInstructions } from '../src/lib/orders';
+import { BRL, normalizeWhatsApp, orderMessage, unitPrice, optionGroupsSchema, selectedOptions, extrasTotal, changeOptionSelection, previewExtrasTotal, arrivalInstructionOptions, toggleArrivalInstruction, validArrivalInstructions } from '../src/lib/orders';
 
 test('formats BRL cents without rounding mistakes',()=>assert.equal(BRL(3990),'R$ 39,90'));
 test('normalizes Brazilian WhatsApp numbers',()=>{
@@ -65,4 +65,37 @@ test('knocking is included in the WhatsApp order message',()=>{
     items:[{name:'Bolo',quantity:1,unit_price_cents:2500}],total_cents:2500,fulfillment:'delivery',
     instructions:['Bater na porta','Não tocar a campainha']});
   assert.match(msg,/Instruções: Bater na porta; Não tocar a campainha/);
+});
+
+
+test('advanced groups enforce minimum, maximum, quantity extras and availability',()=>{
+  const fills='11111111-1111-4111-8111-111111111111';
+  const extras='22222222-2222-4222-8222-222222222222';
+  const bacon='33333333-3333-4333-8333-333333333333';
+  const chicken='44444444-4444-4444-8444-444444444444';
+  const cheese='55555555-5555-4555-8555-555555555555';
+  const cfg=optionGroupsSchema.parse([
+    {id:fills,name:'Recheios',required:true,multiple:true,min_select:2,max_select:2,
+      options:[{id:bacon,name:'Bacon',price_cents:0},{id:chicken,name:'Frango',price_cents:0}]},
+    {id:extras,name:'Adicionais',required:false,multiple:true,allow_quantity:true,
+      min_select:0,max_select:5,options:[{id:cheese,name:'Cheddar',price_cents:300}]}
+  ]);
+  assert.throws(()=>selectedOptions(cfg,{[fills]:[bacon]}),/pelo menos 2/);
+  assert.throws(()=>selectedOptions(cfg,{[fills]:[bacon,chicken,bacon]}),/no máximo 2/);
+  assert.throws(()=>selectedOptions(cfg,{[fills]:[bacon,bacon]}),/Opções repetidas/);
+  assert.throws(()=>selectedOptions(cfg,{[fills]:[bacon,chicken],[extras]:Array(6).fill(cheese)}),/no máximo 5/);
+  const chosen=selectedOptions(cfg,{[fills]:[bacon,chicken],[extras]:[cheese,cheese]});
+  assert.equal(extrasTotal(chosen),600);
+  assert.equal(chosen.find(o=>o.name==='Cheddar')?.quantity,2);
+  const msg=orderMessage({code:101,shop:'Milho',buyer:'Maria',tower:'T1',apartment:'1',
+    items:[{name:'Pote',quantity:1,unit_price_cents:2590,options:chosen}],
+    total_cents:2590,fulfillment:'pickup'});
+  assert.match(msg,/2x Cheddar/);
+  assert.equal(changeOptionSelection(cfg[1],[],cheese,1).length,1);
+  assert.equal(changeOptionSelection(cfg[1],[cheese,cheese],cheese,-1).length,1);
+  assert.throws(()=>optionGroupsSchema.parse([{...cfg[0],min_select:3,max_select:2}]),/./);
+  const unavailable=optionGroupsSchema.parse([{...cfg[1],options:[{id:cheese,name:'Cheddar',price_cents:300,available:false}]}]);
+  assert.throws(()=>selectedOptions(unavailable,{[extras]:[cheese]}),/não está mais disponível/);
+  assert.equal(changeOptionSelection(unavailable[0],[],cheese,1).length,0);
+  assert.equal(previewExtrasTotal(cfg,{[extras]:[cheese,cheese]}),600);
 });
