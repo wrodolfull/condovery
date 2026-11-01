@@ -74,12 +74,41 @@ Push/Expo/FCM/APNs não garantem entrega exatamente uma vez nem recibo de leitur
 | `DELETE /api/push/devices` | Remove dispositivos vinculados à sessão atual |
 | `GET/PATCH /api/push/preferences` | Preferências próprias do usuário |
 | `GET/PUT/DELETE /api/push/shops/:id` | Rota desativada: retorna 410 para clientes antigos |
+| `GET /api/push/summary` | Contagem de avisos não lidos, independente da entrega push; base do ponto vermelho no app |
+| `GET /api/push/status` | Sessão nativa: número de dispositivos registrados e flags de configuração (sem tokens ou segredos) |
 | `GET /api/push/inbox?page=0` | Histórico próprio, 30 avisos por página |
 | `GET/PATCH /api/push/inbox/:id` | Aviso próprio e marcação de leitura |
 | `POST /api/admin/push/announcements` | Administrador web, condomínio ativo da sessão |
 | `POST /api/shops/mine/push` | Rota desativada: retorna 410 para clientes antigos |
 
 Dispositivos, tokens de provedor e listas privadas de destinatários não são devolvidos ao remetente nem ao aplicativo. O app só recebe o identificador do aviso no payload de navegação e consulta a API autenticada para abri-lo.
+
+## Diagnóstico de produção: notificação não chegou
+
+**Distinguir três etapas:** (1) pedido gera linha em `push_notifications`, (2) dispositivo gera vínculo em `push_devices` e entrega em `push_deliveries`, (3) worker com `PUSH_ENABLED=true` transmite a mensagem ao Expo e confirma recibo. A caixa de entrada e o ponto vermelho no header dependem **somente da etapa 1**, não de FCM.
+
+Depois de atualizar a web/backend e o app, no servidor execute apenas a leitura agregada:
+
+```bash
+cd /var/www/condovery
+npm run push:diagnose
+crontab -l | grep 'push:dispatch' || true
+systemctl list-timers --all | grep -i push || true
+```
+
+`push:diagnose` não altera banco, não envia mensagem e nunca mostra os tokens/segredos. O resultado identifica se o envio está desativado, se as credenciais estão presentes, quantos dispositivos ativos foram registrados, avisos criados nas últimas 24 horas e estados das entregas. Também veja `/var/log/condovery-push.log` se o agendador e caminho de log acima forem utilizados; outros deploys podem direcionar o log para systemd.
+
+No APK, acesse **Conta → Preferências de notificações → Diagnóstico de notificações**. O status mostra se a sessão do aparelho possui registro no backend, se o transporte foi habilitado e se as credenciais estão presentes. Não garante que o cron esteja em execução nem que FCM esteja correto.
+
+Interpretação:
+- Pedido existe, mas não há `seller_order` em `push_notifications`: verifique a versão do backend e transação `enqueueNewOrder`.
+- Há `seller_order`, mas não há device ativo: abra o APK, autorize notificações e registre em Preferências. Confirme o `EXPO_PROJECT_ID` idêntico ao APK.
+- Há aviso e device, mas fila permanece `pending`: verifique `PUSH_ENABLED=true` e agendamento do worker.
+- Entrega `failed`: verifique erros não sensíveis em `last_error` e credenciais FCM/Expo. `receipt` indica aceite inicial, não garantia de entrega ao aparelho.
+- Há aviso e nenhuma entrega vinculada ao pedido: o dispositivo pode não ter sido registrado no momento em que o aviso foi criado, ou a preferência de novos pedidos estava desligada. Registre primeiro o aparelho e **faça um novo pedido de teste**.
+- O histórico mostra o aviso, mas não havia bolinha: atualizar app com a consulta `push/summary`; a versão antiga nunca renderizava o contador.
+
+Nenhuma dessas consultas deve mostrar `expo_token`, `session_hash`, chaves privadas ou o conteúdo de pedidos. Não execute envio manual em produção antes de identificar a origem da falha.
 
 ## Testes
 
