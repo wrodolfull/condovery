@@ -47,16 +47,16 @@ export function selectionBounds(group:OptionGroup){
 }
 export function changeOptionSelection(group:OptionGroup,current:string[],id:string,delta:1|-1):string[]{
   const option=group.options.find(o=>o.id===id);
-  if(!option||option.available===false)return current;
+  if(!option)return current;
   const {max}=selectionBounds(group);
   if(group.multiple&&group.allow_quantity){
-    if(delta===1)return current.length<max?[...current,id]:current;
+    if(delta===1)return option.available!==false&&current.length<max?[...current,id]:current;
     const index=current.lastIndexOf(id);
     return index<0?current:[...current.slice(0,index),...current.slice(index+1)];
   }
-  if(!group.multiple)return delta===1?[id]:[];
+  if(!group.multiple)return option.available===false?current:(delta===1?[id]:[]);
   if(delta===-1||current.includes(id))return current.filter(v=>v!==id);
-  return current.length<max?[...current,id]:current;
+  return option.available!==false&&current.length<max?[...current,id]:current;
 }
 
 export function selectedOptions(groups:OptionGroup[],selections:Selection={}):ChosenOption[]{
