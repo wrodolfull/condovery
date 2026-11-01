@@ -1495,7 +1495,7 @@ export default function Page(){
           </div>:<div className="shop-reviews-empty">
             <RoundedStars value={0} size={24}/>
             <strong>Sem avaliação</strong>
-            <span>As avaliações dos compradores aparecerão aqui após moderação.</span>
+            <span>As avaliações dos moradores aparecerão aqui.</span>
           </div>}
         </section>
       </>}
