@@ -455,7 +455,7 @@ await request(reviewEndpoint,{method:'POST',cookie:buyerCookie,
 await request('shops/mine/reviews',{cookie:buyerCookie,expected:404});
 const review1=(await request(reviewEndpoint,{method:'POST',cookie:buyerCookie,
   body:{rating:4,description:'Bolo fresquinho e muito gostoso!'},expected:201})).data.review;
-assert.equal(review1.status,'pending');
+assert.deepEqual(Object.keys(review1),['id'],'Buyer must only receive an acknowledgment ID');
 const sellerReviewNotice=(await request('push/inbox',{cookie:sellerCookie})).data.notifications.find(
   n=>n.kind==='seller_review'&&n.target_id===review1.id
 );
@@ -464,7 +464,8 @@ assert.ok(sellerReviewNotice,'New buyer review must notify the seller');
 await request(reviewEndpoint,{method:'POST',cookie:buyerCookie,
   body:{rating:5,description:'Repetida'},expected:409});
 const awaitingReview=(await request('orders?status=completed',{cookie:buyerCookie})).data.orders.find(o=>o.id===orderId);
-assert.equal(awaitingReview.review_status,'pending');
+assert.equal(awaitingReview.has_review,true);
+assert.ok(!Object.hasOwn(awaitingReview,'review_status'),'Do not leak private moderation state');
 assert.equal(awaitingReview.can_review,false);
 assert.equal((await request('shops/'+shopId+'/reviews',{cookie:buyerCookie})).data.summary.count,0);
 const moderationList=(await request('shops/mine/reviews',{cookie:sellerCookie})).data;
@@ -476,10 +477,11 @@ await request('shops/mine/reviews/'+review1.id,{method:'PATCH',cookie:sellerCook
   body:{status:'pending'},expected:400});
 await request('shops/mine/reviews/'+review1.id,{method:'PATCH',cookie:sellerCookie,
   body:{status:'approved'}});
-const buyerModerationNotice=(await request('push/inbox',{cookie:buyerCookie})).data.notifications.find(
-  n=>n.kind==='review_update'&&n.target_id===orderId
-);
-assert.ok(buyerModerationNotice,'Review publication must notify the buyer');
+const buyerNotices=(await request('push/inbox',{cookie:buyerCookie})).data.notifications;
+assert.ok(!buyerNotices.some(n=>n.kind==='review_update'),'Buyer never gets moderation notices');
+const reviewedDetail=(await request('orders/'+orderId,{cookie:buyerCookie})).data.order;
+assert.equal(reviewedDetail.has_review,true);
+assert.ok(!Object.hasOwn(reviewedDetail,'review_status'),'Buyer order detail hides moderation');
 
 await request('shops/mine/reviews/'+review1.id,{method:'PATCH',cookie:sellerCookie,
   body:{status:'rejected'},expected:409});
@@ -522,7 +524,11 @@ const afterReject=(await request('shops/'+shopId+'/reviews',{cookie:buyerCookie}
 assert.equal(afterReject.summary.average,4.5);
 assert.equal(afterReject.summary.count,2);
 const rejectedOrder=(await request('orders',{cookie:buyerCookie})).data.orders.find(o=>o.id===third.createdOrder.id);
-assert.equal(rejectedOrder.review_status,'rejected');
+assert.equal(rejectedOrder.has_review,true);
+assert.ok(!Object.hasOwn(rejectedOrder,'review_status'),'Rejected reviews remain private');
+assert.ok(!(await request('push/inbox',{cookie:buyerCookie})).data.notifications.some(
+  n=>n.kind==='review_update'
+));
 // Restore the product fixture for the subsequent Playwright buying flow.
 await request('products/'+productId,{method:'PATCH',cookie:sellerCookie,body:{
   name:'Bolo de cenoura',description:'Com chocolate',price_cents:2500,promo_price_cents:null,
