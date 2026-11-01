@@ -68,6 +68,13 @@ export async function dispatchPush(transport: typeof fetch = fetch) {
       "FROM push_notifications n WHERE n.id=d.notification_id AND n.kind='shop' " +
       "AND d.state IN ('pending','receipt')",
   );
+  // Retire previously queued moderation pushes. Their historical records stay
+  // private for audit, but no receipt or pending ticket may be delivered again.
+  await query(
+    "UPDATE push_deliveries d SET state='failed',last_error='REVIEW_MODERATION_PRIVATE' " +
+    "FROM push_notifications n WHERE n.id=d.notification_id AND n.kind='review_update' " +
+    "AND d.state IN ('pending','receipt','sending')",
+  );
   // Recheck current binding, authorization and opt-out at dispatch, not only at enqueue time.
   await query(
     "UPDATE push_deliveries d SET state='failed',last_error='INELIGIBLE' WHERE state IN ('pending','receipt') AND (created_at<now()-interval '24 hours' OR NOT EXISTS(" +
@@ -81,14 +88,14 @@ export async function dispatchPush(transport: typeof fetch = fetch) {
       "WHEN 'seller_order' THEN COALESCE(p.seller_orders,true) " +
       "WHEN 'seller_review' THEN COALESCE(p.seller_orders,true) " +
       "WHEN 'seller_reminder' THEN COALESCE(p.seller_orders,true) " +
-      "WHEN 'review_update' THEN COALESCE(p.orders,true) ELSE EXISTS(SELECT 1 FROM shop_push_subscriptions sub JOIN shops sh ON sh.id=sub.shop_id " +
+      "ELSE EXISTS(SELECT 1 FROM shop_push_subscriptions sub JOIN shops sh ON sh.id=sub.shop_id " +
       "WHERE sub.user_id=u.id AND sub.shop_id=n.target_id AND sub.condominium_id=n.condominium_id AND sh.status='approved') END))",
   );
   const claimed = await transaction(async (tx) => {
     const r = await tx.query<Delivery>(
       "SELECT d.id,d.device_id,d.attempts,dev.expo_token,n.id AS notification_id,n.title,n.body,n.kind " +
         "FROM push_deliveries d JOIN push_devices dev ON dev.id=d.device_id AND dev.session_hash=d.session_hash JOIN push_notifications n ON n.id=d.notification_id AND n.user_id=dev.user_id AND n.condominium_id=dev.condominium_id " +
-        "WHERE d.state='pending' AND n.kind<>'shop' AND d.available_at<=now() ORDER BY d.created_at LIMIT 100 FOR UPDATE OF d SKIP LOCKED",
+        "WHERE d.state='pending' AND n.kind NOT IN ('shop','review_update') AND d.available_at<=now() ORDER BY d.created_at LIMIT 100 FOR UPDATE OF d SKIP LOCKED",
     );
     for (const d of r.rows) {
       d.attempts++;
@@ -112,7 +119,7 @@ export async function dispatchPush(transport: typeof fetch = fetch) {
           sound: "default",
           ttl: 3600,
           channelId:
-            d.kind === "order" || d.kind === "review_update" ||
+            d.kind === "order" ||
             d.kind === "seller_order" || d.kind === "seller_review" || d.kind === "seller_reminder"
               ? "pedidos"
               : "avisos",

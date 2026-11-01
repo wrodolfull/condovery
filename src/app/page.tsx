@@ -40,7 +40,7 @@ type Viewer={id:string;condominium_id:string;name:string;email:string;phone:stri
 type Category={id:string;name:string;icon:string;is_active?:boolean};
 type Shop={id:string;slug:string;name:string;description:string;cover_image:string|null;logo_image:string|null;status?:string;is_open:boolean;delivery_enabled:boolean;delivery_fee_cents:number;pickup_enabled:boolean;lead_time:string;pickup_instructions?:string;whatsapp?:string;payment_methods:PaymentMethod[]};
 type Product={id:string;shop_id:string;shop_name?:string;is_open?:boolean;visibility:'available'|'unavailable'|'hidden';category_id:string;name:string;description:string;price_cents:number;promo_price_cents:number|null;image_url:string|null;stock:number|null;is_available?:boolean;lead_time?:string;is_featured?:boolean;option_groups?:OptionGroup[]};
-type Order={id:string;code:number;status:string;review_status?:'pending'|'approved'|'rejected'|null;can_review?:boolean;is_own_shop?:boolean;total_cents:number;shop_name:string;buyer_name:string;buyer_phone:string;tower:string;apartment:string;fulfillment:string;delivery_day:string|null;delivery_window:string;delivery_instructions:string[];note:string;subtotal_cents:number;delivery_fee_cents:number;payment_method?:PaymentMethod|null;items:{name:string;quantity:number;unit_price_cents:number;note:string;options?:{group:string;name:string;price_cents:number;quantity?:number}[]}[];created_at:string};
+type Order={id:string;code:number;status:string;has_review?:boolean;can_review?:boolean;is_own_shop?:boolean;total_cents:number;shop_name:string;buyer_name:string;buyer_phone:string;tower:string;apartment:string;fulfillment:string;delivery_day:string|null;delivery_window:string;delivery_instructions:string[];note:string;subtotal_cents:number;delivery_fee_cents:number;payment_method?:PaymentMethod|null;items:{name:string;quantity:number;unit_price_cents:number;note:string;options?:{group:string;name:string;price_cents:number;quantity?:number}[]}[];created_at:string};
 type ReviewStatus='pending'|'approved'|'rejected';
 type PublicReview={id:string;rating:number;description:string;created_at:string};
 type ReviewSummary={average:number|null;count:number};
@@ -863,7 +863,7 @@ export default function Page(){
       });
       setReviewOrderId(null);setReviewRating(0);setReviewText('');
       await loadOrders(orderFilter);
-      notify('Avaliação enviada! Ela será publicada após aprovação da loja.');
+      notify('Avaliação enviada. Obrigado por compartilhar sua experiência!');
     }catch(e){fail(e);}finally{setBusy(false);}
   }
   async function moderateReview(id:string,status:'approved'|'rejected'){
@@ -1495,7 +1495,7 @@ export default function Page(){
           </div>:<div className="shop-reviews-empty">
             <RoundedStars value={0} size={24}/>
             <strong>Sem avaliação</strong>
-            <span>As avaliações dos compradores aparecerão aqui após moderação.</span>
+            <span>As avaliações dos moradores aparecerão aqui.</span>
           </div>}
         </section>
       </>}
@@ -1659,7 +1659,7 @@ export default function Page(){
               <button type="button" className="outline-button" onClick={()=>reopenOrderWhatsApp(o.id)}>
                 <MessageCircle size={17}/> Abrir WhatsApp</button>
             </div>}
-          {o.status==='completed'&&(!o.review_status?
+          {o.status==='completed'&&(!o.has_review?
             (o.can_review===false?
               <p className="review-status-note">
                 {o.is_own_shop?'Não é possível avaliar sua própria loja. Para testar avaliações, use outra conta de morador.':'Avaliação indisponível para este pedido.'}
@@ -1667,7 +1667,7 @@ export default function Page(){
             <div className="review-order-action">
               {reviewOrderId===o.id?<form className="review-form" onSubmit={sendReview}>
                 <h3>Como foi comprar nesta loja?</h3>
-                <p>Avalie sua experiência. A loja vai moderar antes da publicação.</p>
+                <p>Conte como foi sua experiência com esta compra.</p>
                 <RoundedStars value={reviewRating} onChange={setReviewRating} size={31} label="Escolha de 1 a 5 estrelas"/>
                 <label className="field-label">Conte um pouquinho sobre sua compra
                   <textarea rows={3} maxLength={200} minLength={1} required value={reviewText}
@@ -1683,10 +1683,7 @@ export default function Page(){
                 setReviewOrderId(o.id);setReviewRating(0);setReviewText('');
               }}><RoundedStars value={0} size={18}/> Avaliar esta compra <ChevronRight size={16}/></button>}
             </div>):
-            <p className="review-status-note"><CheckCircle2 size={15}/>
-              {o.review_status==='pending'?'Avaliação enviada · Aguardando moderação':
-              o.review_status==='approved'?'Sua avaliação está publicada':'Avaliação não publicada pela loja'}
-            </p>)}
+            <p className="review-status-note"><CheckCircle2 size={15}/> Avaliação enviada. Obrigado!</p>)}
         </article>)}</div>:
         <Empty art="emptyOrders" title={orderFilter==='all'?'Ainda não fez pedidos?':'Nenhum pedido neste filtro'}
           subtitle={orderFilter==='all'?'Encontre algo gostoso ou útil vendido pertinho de você.':'Experimente outra situação para consultar seus pedidos.'}

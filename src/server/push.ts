@@ -6,7 +6,7 @@ import { bad } from "@/lib/api-error";
 import { sessionCredential, tokenHash, type Viewer } from "@/lib/auth";
 
 export type PushKind = "condominium" | "order" | "seller_order" |
-  "seller_review" | "seller_reminder" | "review_update";
+  "seller_review" | "seller_reminder";
 const json = (value: unknown, status = 200) =>
   NextResponse.json(value, {
     status,
@@ -50,7 +50,7 @@ export async function enqueueNotice(tx: PoolClient, n: Notice) {
       "WHEN 'seller_order' THEN COALESCE(p.seller_orders,true) " +
       "WHEN 'seller_review' THEN COALESCE(p.seller_orders,true) " +
       "WHEN 'seller_reminder' THEN COALESCE(p.seller_orders,true) " +
-      "WHEN 'review_update' THEN COALESCE(p.orders,true) ELSE true END ON CONFLICT DO NOTHING",
+      "ELSE true END ON CONFLICT DO NOTHING",
     [r.rows[0].id, n.userId, n.condominiumId, n.kind],
   );
 }
@@ -126,24 +126,6 @@ export async function enqueueNewReview(
     body: "Um comprador avaliou sua loja. Confira em Avaliações.",
     targetId: review.id,
     eventKey: "seller-review:" + review.id,
-  });
-}
-
-/** Notify the buyer when their review is accepted or rejected. */
-export async function enqueueReviewModerated(
-  tx: PoolClient,
-  review: { id: string; order_id: string; buyer_id: string; condominium_id: string; status: "approved" | "rejected" },
-) {
-  await enqueueNotice(tx, {
-    userId: review.buyer_id,
-    condominiumId: review.condominium_id,
-    kind: "review_update",
-    title: review.status === "approved" ? "Sua avaliação foi publicada" : "Atualização da sua avaliação",
-    body: review.status === "approved"
-      ? "Sua avaliação está visível na loja."
-      : "Sua avaliação não foi publicada. Consulte o pedido.",
-    targetId: review.order_id,
-    eventKey: "review-moderated:" + review.id + ":" + review.status,
   });
 }
 
@@ -340,7 +322,7 @@ export async function handlePushApi(
   if (path === "push/summary" && method === "GET") {
     const r = await query(
       "SELECT count(*)::int AS unread_count FROM push_notifications " +
-      "WHERE user_id=$1 AND condominium_id=$2 AND read_at IS NULL AND kind<>'shop'",
+      "WHERE user_id=$1 AND condominium_id=$2 AND read_at IS NULL AND kind NOT IN ('shop','review_update')",
       [u.id, u.condominium_id],
     );
     return json({ unread_count: Number(r.rows[0].unread_count) });
@@ -407,7 +389,7 @@ export async function handlePushApi(
     if (!Number.isInteger(page) || page < 0 || page > 10000)
       bad("Página inválida.");
     const r = await query(
-      "SELECT id,kind,title,body,target_id,read_at,created_at FROM push_notifications WHERE user_id=$1 AND condominium_id=$2 AND kind<>'shop' ORDER BY created_at DESC,id DESC LIMIT 31 OFFSET $3",
+      "SELECT id,kind,title,body,target_id,read_at,created_at FROM push_notifications WHERE user_id=$1 AND condominium_id=$2 AND kind NOT IN ('shop','review_update') ORDER BY created_at DESC,id DESC LIMIT 31 OFFSET $3",
       [u.id, u.condominium_id, page * 30],
     );
     return json({
@@ -419,7 +401,7 @@ export async function handlePushApi(
     const id = uuid.parse(parts[2]);
     if (method === "GET") {
       const r = await query(
-        "SELECT id,kind,title,body,target_id,read_at,created_at FROM push_notifications WHERE id=$1 AND user_id=$2 AND condominium_id=$3 AND kind<>'shop'",
+        "SELECT id,kind,title,body,target_id,read_at,created_at FROM push_notifications WHERE id=$1 AND user_id=$2 AND condominium_id=$3 AND kind NOT IN ('shop','review_update')",
         [id, u.id, u.condominium_id],
       );
       if (!r.rowCount) bad("Aviso não encontrado.", 404);
@@ -427,7 +409,7 @@ export async function handlePushApi(
     }
     if (method === "PATCH") {
       await query(
-        "UPDATE push_notifications SET read_at=COALESCE(read_at,now()) WHERE id=$1 AND user_id=$2 AND condominium_id=$3 AND kind<>'shop'",
+        "UPDATE push_notifications SET read_at=COALESCE(read_at,now()) WHERE id=$1 AND user_id=$2 AND condominium_id=$3 AND kind NOT IN ('shop','review_update')",
         [id, u.id, u.condominium_id],
       );
       return json({ ok: true });

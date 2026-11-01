@@ -32,7 +32,7 @@ import {parseShopPaging,shopPage,type ShopPagingRow} from '@/lib/shop-pagination
 import {availableForNewOrders,buyerAvailableStockSQL} from '@/lib/pending-stock';
 import {isCommercialProductCategory,EXCLUSIVE_DESAPEGO_MESSAGE} from '@/lib/category-purpose';
 import {handleMobileAuth,passwordMember} from '@/server/mobile-auth';
-import {handlePushApi,enqueueNewOrder,enqueueOrderStatus,enqueueNewReview,enqueueReviewModerated} from '@/server/push';
+import {handlePushApi,enqueueNewOrder,enqueueOrderStatus,enqueueNewReview} from '@/server/push';
 
 export const runtime='nodejs';
 export const dynamic='force-dynamic';
@@ -691,18 +691,15 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
     if(!uuid(parts[3]))bad('Avaliação inválida.');
     const shop=await shopOwned(u,true);
     const b=z.object({status:z.enum(['approved','rejected'])}).parse(await body(req));
-    const review=await transaction(async tx=>{
-      const updated=await tx.query(
-        "UPDATE shop_reviews SET status=$1,moderated_by=$2,moderated_at=now() "+
-        "WHERE id=$3 AND condominium_id=$4 AND shop_id=$5 AND status='pending' "+
-        "RETURNING id,status,order_id,buyer_id,condominium_id",
-        [b.status,u.id,parts[3],u.condominium_id,shop.id]
-      );
-      if(!updated.rowCount)bad('Avaliação não encontrada ou já moderada.',409);
-      await enqueueReviewModerated(tx,updated.rows[0]);
-      return updated.rows[0];
-    });
-    return out({review});
+    // Moderation is a private seller decision. Do not notify the buyer.
+    const updated=await query(
+      "UPDATE shop_reviews SET status=$1,moderated_by=$2,moderated_at=now() "+
+      "WHERE id=$3 AND condominium_id=$4 AND shop_id=$5 AND status='pending' "+
+      "RETURNING id,status",
+      [b.status,u.id,parts[3],u.condominium_id,shop.id]
+    );
+    if(!updated.rowCount)bad('Avaliação não encontrada ou já moderada.',409);
+    return out({review:updated.rows[0]});
   }
   if(parts[0]==='orders'&&parts[1]&&parts[2]==='review'&&method==='POST'){
     if(!uuid(parts[1]))bad('Pedido inválido.');
@@ -743,7 +740,8 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
       if(duplicate.rowCount)bad('Este pedido já foi avaliado.',409);
       bad('Somente o comprador de um pedido concluído pode avaliar.',403);
     }
-    return out({review:inserted.rows[0]},201);
+    // Never expose moderation status, even in the immediate submission response.
+    return out({review:{id:inserted.rows[0].id}},201);
   }
   if(parts[0]==='shops'&&parts[1]&&parts[2]==='reviews'&&method==='GET'){
     if(!uuid(parts[1]))bad('Loja inválida.');
@@ -1070,7 +1068,7 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
   if(parts.length===2&&parts[0]==='orders'&&method==='GET'){
     if(!uuid(parts[1]))bad('Pedido inválido.');
     const r=await query(
-      "SELECT o.*,(SELECT rv.status FROM shop_reviews rv WHERE rv.order_id=o.id AND rv.condominium_id=o.condominium_id) AS review_status,"+
+      "SELECT o.*,EXISTS (SELECT 1 FROM shop_reviews rv WHERE rv.order_id=o.id AND rv.condominium_id=o.condominium_id) AS has_review,"+
       " (s.owner_id=o.buyer_id) AS is_own_shop,"+
       " (o.status='completed' AND o.buyer_id=$2 AND o.buyer_id<>s.owner_id AND s.status='approved' AND NOT EXISTS (SELECT 1 FROM shop_reviews r WHERE r.order_id=o.id AND r.condominium_id=o.condominium_id)) AS can_review,"+
       " s.name AS shop_name,bu.name AS buyer_name,bu.tower,bu.apartment,bu.phone AS buyer_phone,"+
@@ -1226,7 +1224,7 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
     if(paging.cursor){params.push(paging.cursor);filters+=' AND o.code<$'+params.length+'::bigint';}
     params.push(paging.limit+1);
     const r=await query(
-      "SELECT o.*,(SELECT rv.status FROM shop_reviews rv WHERE rv.order_id=o.id AND rv.condominium_id=o.condominium_id) AS review_status,"+
+      "SELECT o.*,EXISTS (SELECT 1 FROM shop_reviews rv WHERE rv.order_id=o.id AND rv.condominium_id=o.condominium_id) AS has_review,"+
       " (s.owner_id=o.buyer_id) AS is_own_shop,"+
       " (o.status='completed' AND o.buyer_id<>s.owner_id AND s.status='approved' AND NOT EXISTS (SELECT 1 FROM shop_reviews r WHERE r.order_id=o.id AND r.condominium_id=o.condominium_id)) AS can_review,"+
       " s.name AS shop_name,bu.name AS buyer_name,bu.tower,bu.apartment,bu.phone AS buyer_phone,"+
