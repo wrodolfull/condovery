@@ -383,11 +383,29 @@ try {
   ));
 
 
+  // A seller can jump from a notification into an exact order page,
+  // including old orders not present in the first paginated list.
+  const ownerOrder=(await request("orders/"+placed.id,{token:seller.token})).data.order;
+  assert.equal(ownerOrder.id,placed.id);
+  await request("orders/"+placed.id,{cookie:admin,expected:404});
   await request("orders/" + placed.id, {
     cookie: seller.cookie,
     method: "PATCH",
     body: { status: "confirmed" },
   });
+  // Once confirmed, a due order produces a *single* completion reminder
+  // without needing a physical device or an Expo provider.
+  await db.query("UPDATE orders SET updated_at=now()-interval '3 hours' WHERE id=$1",[placed.id]);
+  const {enqueueDueCompletionReminders}=await import("../src/server/push.ts");
+  await enqueueDueCompletionReminders();
+  await enqueueDueCompletionReminders();
+  assert.equal((await db.query(
+    "SELECT count(*)::int AS n FROM push_notifications WHERE event_key=$1",
+    ["seller-reminder:"+placed.id],
+  )).rows[0].n,1,"Completion reminders must be idempotent");
+  assert.ok((await request("push/inbox",{token:seller.token})).data.notifications.some(
+    n=>n.kind==="seller_reminder"&&n.target_id===placed.id
+  ));
   assert.ok(
     (
       await request("push/inbox", { token: buyer.token })

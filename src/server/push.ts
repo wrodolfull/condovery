@@ -5,7 +5,8 @@ import { query, transaction } from "@/lib/db";
 import { bad } from "@/lib/api-error";
 import { sessionCredential, tokenHash, type Viewer } from "@/lib/auth";
 
-export type PushKind = "condominium" | "order" | "seller_order";
+export type PushKind = "condominium" | "order" | "seller_order" |
+  "seller_review" | "seller_reminder" | "review_update";
 const json = (value: unknown, status = 200) =>
   NextResponse.json(value, {
     status,
@@ -46,7 +47,10 @@ export async function enqueueNotice(tx: PoolClient, n: Notice) {
       "LEFT JOIN push_preferences p ON p.user_id=d.user_id " +
       "WHERE d.user_id=$2 AND d.condominium_id=$3 AND d.disabled=false AND s.expires_at>now() AND s.client_kind='mobile' " +
       "AND CASE $4 WHEN 'condominium' THEN COALESCE(p.condominium,true) WHEN 'order' THEN COALESCE(p.orders,true) " +
-      "WHEN 'seller_order' THEN COALESCE(p.seller_orders,true) ELSE true END ON CONFLICT DO NOTHING",
+      "WHEN 'seller_order' THEN COALESCE(p.seller_orders,true) " +
+      "WHEN 'seller_review' THEN COALESCE(p.seller_orders,true) " +
+      "WHEN 'seller_reminder' THEN COALESCE(p.seller_orders,true) " +
+      "WHEN 'review_update' THEN COALESCE(p.orders,true) ELSE true END ON CONFLICT DO NOTHING",
     [r.rows[0].id, n.userId, n.condominiumId, n.kind],
   );
 }
@@ -78,6 +82,14 @@ export async function enqueueOrderStatus(
     status: string;
   },
 ) {
+  if (order.status === "completed" || order.status === "cancelled") {
+    // A fulfilled or cancelled order no longer needs a red-badge reminder.
+    await tx.query(
+      "UPDATE push_notifications SET read_at=COALESCE(read_at,now()) " +
+      "WHERE target_id=$1 AND condominium_id=$2 AND kind='seller_reminder'",
+      [order.id,order.condominium_id],
+    );
+  }
   const labels: Record<string, string> = {
     confirmed: "confirmado",
     completed: "concluído",
@@ -91,6 +103,81 @@ export async function enqueueOrderStatus(
     body: "Abra o Elevadoor para conferir os detalhes.",
     targetId: order.id,
     eventKey: "order-status:" + order.id + ":" + order.status,
+  });
+}
+
+/** Notify the owner after a completed buyer review is persisted.
+ * Must be called inside the same transaction as the review itself.
+ */
+export async function enqueueNewReview(
+  tx: PoolClient,
+  review: { id: string; order_id: string; shop_id: string; condominium_id: string },
+) {
+  const owner = await tx.query(
+    "SELECT owner_id FROM shops WHERE id=$1 AND condominium_id=$2 AND status='approved'",
+    [review.shop_id, review.condominium_id],
+  );
+  if (!owner.rowCount) return;
+  await enqueueNotice(tx, {
+    userId: owner.rows[0].owner_id,
+    condominiumId: review.condominium_id,
+    kind: "seller_review",
+    title: "Nova avaliação na sua loja",
+    body: "Um comprador avaliou sua loja. Confira em Avaliações.",
+    targetId: review.id,
+    eventKey: "seller-review:" + review.id,
+  });
+}
+
+/** Notify the buyer when their review is accepted or rejected. */
+export async function enqueueReviewModerated(
+  tx: PoolClient,
+  review: { id: string; order_id: string; buyer_id: string; condominium_id: string; status: "approved" | "rejected" },
+) {
+  await enqueueNotice(tx, {
+    userId: review.buyer_id,
+    condominiumId: review.condominium_id,
+    kind: "review_update",
+    title: review.status === "approved" ? "Sua avaliação foi publicada" : "Atualização da sua avaliação",
+    body: review.status === "approved"
+      ? "Sua avaliação está visível na loja."
+      : "Sua avaliação não foi publicada. Consulte o pedido.",
+    targetId: review.order_id,
+    eventKey: "review-moderated:" + review.id + ":" + review.status,
+  });
+}
+
+/** One reminder for each still-confirmed order, after two hours.
+ * Called by the scheduled push worker; creates the inbox event even if
+ * external transport is disabled. No event is emitted for completed orders.
+ */
+export async function enqueueDueCompletionReminders() {
+  return transaction(async tx => {
+    const rows = await tx.query<{
+      id: string; condominium_id: string; owner_id: string;
+    }>(
+      "SELECT o.id,o.condominium_id,s.owner_id FROM orders o " +
+      "JOIN shops s ON s.id=o.shop_id AND s.condominium_id=o.condominium_id " +
+      "JOIN users owner ON owner.id=s.owner_id AND owner.condominium_id=o.condominium_id AND owner.status='approved' " +
+      "WHERE o.status='confirmed' AND o.updated_at<=now()-interval '2 hours' " +
+      "AND (o.delivery_day IS NULL OR o.delivery_day<=CURRENT_DATE) " +
+      "AND s.status='approved' " +
+      "AND NOT EXISTS (SELECT 1 FROM push_notifications n WHERE n.user_id=s.owner_id " +
+      "AND n.event_key='seller-reminder:'||o.id::text) " +
+      "ORDER BY o.updated_at LIMIT 50 FOR UPDATE OF o SKIP LOCKED",
+    );
+    for (const order of rows.rows) {
+      await enqueueNotice(tx, {
+        userId: order.owner_id,
+        condominiumId: order.condominium_id,
+        kind: "seller_reminder",
+        title: "Pedido aguardando conclusão",
+        body: "Há um pedido confirmado na sua loja. Verifique se já pode concluí-lo.",
+        targetId: order.id,
+        eventKey: "seller-reminder:" + order.id,
+      });
+    }
+    return rows.rowCount ?? 0;
   });
 }
 

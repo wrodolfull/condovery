@@ -32,7 +32,7 @@ import {parseShopPaging,shopPage,type ShopPagingRow} from '@/lib/shop-pagination
 import {availableForNewOrders,buyerAvailableStockSQL} from '@/lib/pending-stock';
 import {isCommercialProductCategory,EXCLUSIVE_DESAPEGO_MESSAGE} from '@/lib/category-purpose';
 import {handleMobileAuth,passwordMember} from '@/server/mobile-auth';
-import {handlePushApi,enqueueNewOrder,enqueueOrderStatus} from '@/server/push';
+import {handlePushApi,enqueueNewOrder,enqueueOrderStatus,enqueueNewReview,enqueueReviewModerated} from '@/server/push';
 
 export const runtime='nodejs';
 export const dynamic='force-dynamic';
@@ -691,13 +691,18 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
     if(!uuid(parts[3]))bad('Avaliação inválida.');
     const shop=await shopOwned(u,true);
     const b=z.object({status:z.enum(['approved','rejected'])}).parse(await body(req));
-    const updated=await query(
-      "UPDATE shop_reviews SET status=$1,moderated_by=$2,moderated_at=now() "+
-      "WHERE id=$3 AND condominium_id=$4 AND shop_id=$5 AND status='pending' RETURNING id,status",
-      [b.status,u.id,parts[3],u.condominium_id,shop.id]
-    );
-    if(!updated.rowCount)bad('Avaliação não encontrada ou já moderada.',409);
-    return out({review:updated.rows[0]});
+    const review=await transaction(async tx=>{
+      const updated=await tx.query(
+        "UPDATE shop_reviews SET status=$1,moderated_by=$2,moderated_at=now() "+
+        "WHERE id=$3 AND condominium_id=$4 AND shop_id=$5 AND status='pending' "+
+        "RETURNING id,status,order_id,buyer_id,condominium_id",
+        [b.status,u.id,parts[3],u.condominium_id,shop.id]
+      );
+      if(!updated.rowCount)bad('Avaliação não encontrada ou já moderada.',409);
+      await enqueueReviewModerated(tx,updated.rows[0]);
+      return updated.rows[0];
+    });
+    return out({review});
   }
   if(parts[0]==='orders'&&parts[1]&&parts[2]==='review'&&method==='POST'){
     if(!uuid(parts[1]))bad('Pedido inválido.');
@@ -718,15 +723,20 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
     if(order.status!=='completed')bad('Este pedido ainda não foi concluído.',403);
     if(order.owner_id===u.id)bad('Você não pode avaliar uma compra na sua própria loja.',403);
     if(order.shop_status!=='approved')bad('A loja não está disponível para avaliações.',403);
-    const inserted=await query(
-      "INSERT INTO shop_reviews(condominium_id,shop_id,order_id,buyer_id,rating,description) "+
-      "SELECT o.condominium_id,o.shop_id,o.id,o.buyer_id,$3,$4 FROM orders o "+
-      "JOIN shops s ON s.id=o.shop_id AND s.condominium_id=o.condominium_id "+
-      "WHERE o.id=$1 AND o.condominium_id=$5 AND o.buyer_id=$2 AND o.status='completed' "+
-      "AND s.owner_id<>$2 AND s.status='approved' "+
-      "ON CONFLICT (order_id) DO NOTHING RETURNING id,status",
-      [parts[1],u.id,b.rating,b.description,u.condominium_id]
-    );
+    const inserted=await transaction(async tx=>{
+      const result=await tx.query(
+        "INSERT INTO shop_reviews(condominium_id,shop_id,order_id,buyer_id,rating,description) "+
+        "SELECT o.condominium_id,o.shop_id,o.id,o.buyer_id,$3,$4 FROM orders o "+
+        "JOIN shops s ON s.id=o.shop_id AND s.condominium_id=o.condominium_id "+
+        "WHERE o.id=$1 AND o.condominium_id=$5 AND o.buyer_id=$2 AND o.status='completed' "+
+        "AND s.owner_id<>$2 AND s.status='approved' "+
+        "ON CONFLICT (order_id) DO NOTHING "+
+        "RETURNING id,status,order_id,shop_id,condominium_id",
+        [parts[1],u.id,b.rating,b.description,u.condominium_id]
+      );
+      if(result.rowCount)await enqueueNewReview(tx,result.rows[0]);
+      return result;
+    });
     if(!inserted.rowCount){
       const duplicate=await query('SELECT id FROM shop_reviews WHERE order_id=$1 AND condominium_id=$2 AND buyer_id=$3',
         [parts[1],u.condominium_id,u.id]);
@@ -1056,18 +1066,18 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
     return out({product:r.rows[0]});
   }
   // Deep links and old orders must resolve independently of list pagination.
-  // Exact buyer scoping prevents knowing whether another resident's ID exists.
+  // Exact buyer OR owner scoping prevents exposing orders to unrelated residents.
   if(parts.length===2&&parts[0]==='orders'&&method==='GET'){
     if(!uuid(parts[1]))bad('Pedido inválido.');
     const r=await query(
       "SELECT o.*,(SELECT rv.status FROM shop_reviews rv WHERE rv.order_id=o.id AND rv.condominium_id=o.condominium_id) AS review_status,"+
       " (s.owner_id=o.buyer_id) AS is_own_shop,"+
-      " (o.status='completed' AND o.buyer_id<>s.owner_id AND s.status='approved' AND NOT EXISTS (SELECT 1 FROM shop_reviews r WHERE r.order_id=o.id AND r.condominium_id=o.condominium_id)) AS can_review,"+
+      " (o.status='completed' AND o.buyer_id=$2 AND o.buyer_id<>s.owner_id AND s.status='approved' AND NOT EXISTS (SELECT 1 FROM shop_reviews r WHERE r.order_id=o.id AND r.condominium_id=o.condominium_id)) AS can_review,"+
       " s.name AS shop_name,bu.name AS buyer_name,bu.tower,bu.apartment,bu.phone AS buyer_phone,"+
       " COALESCE(json_agg(json_build_object('name',i.name_snapshot,'quantity',i.quantity,'unit_price_cents',i.unit_price_cents,'note',i.note,'options',i.options)) FILTER (WHERE i.id IS NOT NULL),'[]'::json) AS items "+
       "FROM orders o JOIN shops s ON s.id=o.shop_id JOIN users bu ON bu.id=o.buyer_id "+
       "LEFT JOIN order_items i ON i.order_id=o.id "+
-      "WHERE o.id=$3 AND o.condominium_id=$1 AND o.buyer_id=$2 "+
+      "WHERE o.id=$3 AND o.condominium_id=$1 AND (o.buyer_id=$2 OR s.owner_id=$2) "+
       "GROUP BY o.id,s.id,s.name,bu.id",
       [u.condominium_id,u.id,parts[1]]
     );
