@@ -1,4 +1,5 @@
 import { query, transaction } from "@/lib/db";
+import { enqueueDueCompletionReminders } from "@/server/push";
 type Delivery = {
   id: string;
   device_id: string;
@@ -35,8 +36,10 @@ async function failure(
 }
 /** Injectable transport for tests; never logs tokens, credentials or notification text. */
 export async function dispatchPush(transport: typeof fetch = fetch) {
+  // Inbox reminders must be recorded even when remote transport is disabled.
+  const reminders = await enqueueDueCompletionReminders();
   if (process.env.PUSH_ENABLED !== "true")
-    return { enabled: false, sent: 0, checked: 0 };
+    return { enabled: false, sent: 0, checked: 0, reminders };
   if (!process.env.EXPO_ACCESS_TOKEN || !process.env.EXPO_PROJECT_ID)
     throw new Error("Push credentials are not configured");
   const request = async (path: string, body: unknown) => {
@@ -73,7 +76,10 @@ export async function dispatchPush(transport: typeof fetch = fetch) {
       "WHERE dev.id=d.device_id AND dev.session_hash=d.session_hash AND dev.user_id=n.user_id AND dev.condominium_id=n.condominium_id " +
       "AND s.user_id=dev.user_id AND u.condominium_id=n.condominium_id AND u.status='approved' AND c.is_active=true AND dev.disabled=false AND s.expires_at>now() " +
       "AND CASE n.kind WHEN 'condominium' THEN COALESCE(p.condominium,true) WHEN 'order' THEN COALESCE(p.orders,true) " +
-      "WHEN 'seller_order' THEN COALESCE(p.seller_orders,true) ELSE EXISTS(SELECT 1 FROM shop_push_subscriptions sub JOIN shops sh ON sh.id=sub.shop_id " +
+      "WHEN 'seller_order' THEN COALESCE(p.seller_orders,true) " +
+      "WHEN 'seller_review' THEN COALESCE(p.seller_orders,true) " +
+      "WHEN 'seller_reminder' THEN COALESCE(p.seller_orders,true) " +
+      "WHEN 'review_update' THEN COALESCE(p.orders,true) ELSE EXISTS(SELECT 1 FROM shop_push_subscriptions sub JOIN shops sh ON sh.id=sub.shop_id " +
       "WHERE sub.user_id=u.id AND sub.shop_id=n.target_id AND sub.condominium_id=n.condominium_id AND sh.status='approved') END))",
   );
   const claimed = await transaction(async (tx) => {
@@ -104,7 +110,8 @@ export async function dispatchPush(transport: typeof fetch = fetch) {
           sound: "default",
           ttl: 3600,
           channelId:
-            d.kind === "order" || d.kind === "seller_order"
+            d.kind === "order" || d.kind === "review_update" ||
+            d.kind === "seller_order" || d.kind === "seller_review" || d.kind === "seller_reminder"
               ? "pedidos"
               : "avisos",
           data: { notification_id: d.notification_id },
@@ -161,5 +168,5 @@ export async function dispatchPush(transport: typeof fetch = fetch) {
   await query(
     "DELETE FROM push_notifications WHERE created_at<now()-interval '90 days'",
   );
-  return { enabled: true, sent, checked };
+  return { enabled: true, sent, checked, reminders };
 }
