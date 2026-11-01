@@ -456,6 +456,11 @@ await request('shops/mine/reviews',{cookie:buyerCookie,expected:404});
 const review1=(await request(reviewEndpoint,{method:'POST',cookie:buyerCookie,
   body:{rating:4,description:'Bolo fresquinho e muito gostoso!'},expected:201})).data.review;
 assert.equal(review1.status,'pending');
+const sellerReviewNotice=(await request('push/inbox',{cookie:sellerCookie})).data.notifications.find(
+  n=>n.kind==='seller_review'&&n.target_id===review1.id
+);
+assert.ok(sellerReviewNotice,'New buyer review must notify the seller');
+
 await request(reviewEndpoint,{method:'POST',cookie:buyerCookie,
   body:{rating:5,description:'Repetida'},expected:409});
 const awaitingReview=(await request('orders?status=completed',{cookie:buyerCookie})).data.orders.find(o=>o.id===orderId);
@@ -471,6 +476,11 @@ await request('shops/mine/reviews/'+review1.id,{method:'PATCH',cookie:sellerCook
   body:{status:'pending'},expected:400});
 await request('shops/mine/reviews/'+review1.id,{method:'PATCH',cookie:sellerCookie,
   body:{status:'approved'}});
+const buyerModerationNotice=(await request('push/inbox',{cookie:buyerCookie})).data.notifications.find(
+  n=>n.kind==='review_update'&&n.target_id===orderId
+);
+assert.ok(buyerModerationNotice,'Review publication must notify the buyer');
+
 await request('shops/mine/reviews/'+review1.id,{method:'PATCH',cookie:sellerCookie,
   body:{status:'rejected'},expected:409});
 const firstPublic=(await request('shops/'+shopId+'/reviews',{cookie:buyerCookie})).data;
