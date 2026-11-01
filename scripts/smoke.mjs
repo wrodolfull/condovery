@@ -1097,7 +1097,9 @@ try{
   const oldOrderId=pageFixtureIds[0];
   const details=(await request('orders/'+oldOrderId,{cookie:newLogin.cookie})).data;
   assert.equal(details.order.id,oldOrderId);
-  await request('orders/'+oldOrderId,{cookie:sellerCookie,expected:404});
+  const sellerDeepLink=(await request('orders/'+oldOrderId,{cookie:sellerCookie})).data;
+  assert.equal(sellerDeepLink.order.id,oldOrderId,'Shop owner may open an older order from notification');
+  assert.equal(sellerDeepLink.order.can_review,false,'Seller cannot evaluate their buyer order');
   await request('orders/not-a-uuid',{cookie:newLogin.cookie,expected:400});
   const seen=new Set();
   let cursor=null;
