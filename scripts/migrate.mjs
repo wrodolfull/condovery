@@ -83,6 +83,8 @@ try {
   await client.query(shopsPagination);
   const dataApiLockdown=await readFile(new URL('../db/043_data_api_permissions_audit.sql',import.meta.url),'utf8');
   await client.query(dataApiLockdown);
+  const sellerNotificationEvents=await readFile(new URL('../db/044_seller_notification_events.sql',import.meta.url),'utf8');
+  await client.query(sellerNotificationEvents);
   console.log('Elevadoor database schema applied successfully.');
 } finally {
   await client.end();
