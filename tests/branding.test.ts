@@ -38,3 +38,11 @@ test('all primary UI, SEO, legal, report and outbound-message surfaces use Eleva
     assert.match(read(path),/>Elevadoor<\/text>/,path+' mockup wordmark');
   }
 });
+
+test('account shortcuts place Minha loja / Quero vender before Feiras do condomínio',()=>{
+  const source=read('src/app/page.tsx');
+  const accountShortcuts=source.split('<div className="account-shortcuts">')[1]?.split('Meus pedidos')[0]??'';
+  const seller=accountShortcuts.indexOf("go('seller')");
+  const fairs=accountShortcuts.indexOf("go('fairs')");
+  assert.ok(seller>=0&&fairs>=0&&seller<fairs,'Seller shortcut must be the first option before fairs');
+});
