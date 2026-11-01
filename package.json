@@ -15,7 +15,8 @@
     "cleanup:orphan-media": "node --env-file=.env.local --import tsx scripts/cleanup-orphan-media.ts",
     "cleanup:ads": "node --env-file=.env.local scripts/cleanup-ad-metrics.mjs",
     "cleanup:auth-security": "node --env-file=.env.local scripts/cleanup-auth-rate-events.mjs",
-    "push:dispatch": "node --env-file=.env.local --import tsx scripts/dispatch-push.ts"
+    "push:dispatch": "node --env-file=.env.local --import tsx scripts/dispatch-push.ts",
+    "security:preflight": "node --env-file=.env.local scripts/security-preflight.mjs"
   },
   "dependencies": {
     "next": "^15.5.0",
