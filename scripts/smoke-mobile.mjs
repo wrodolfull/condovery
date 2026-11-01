@@ -318,6 +318,12 @@ try {
       expected: 201,
     })
   ).data.product;
+  const unreadBefore=(await request("push/summary",{token:seller.token})).data.unread_count;
+  assert.ok(Number.isInteger(unreadBefore));
+  const deviceStatus=(await request("push/status",{token:seller.token})).data;
+  assert.ok(deviceStatus.registered_devices>=1,"Seller device must be registered");
+  assert.equal(typeof deviceStatus.transport_enabled,"boolean");
+  assert.equal(typeof deviceStatus.provider_configured,"boolean");
   const draft = {
     shop_id: owned.id,
     items: [{ id: product.id, quantity: 1 }],
@@ -357,6 +363,15 @@ try {
     ).rows[0].n,
     1,
   );
+  const unreadAfter=(await request("push/summary",{token:seller.token})).data.unread_count;
+  assert.equal(unreadAfter,unreadBefore+1,"New order must light unread badge without push worker");
+  const sellerNotices=(await request("push/inbox",{token:seller.token})).data.notifications;
+  const sellerNotice=sellerNotices.find(n=>n.kind==="seller_order"&&n.target_id===placed.id);
+  assert.ok(sellerNotice,"Seller must see the new order in their inbox");
+  await request("push/inbox/"+sellerNotice.id,{token:seller.token,method:"PATCH"});
+  const unreadRead=(await request("push/summary",{token:seller.token})).data.unread_count;
+  assert.equal(unreadRead,unreadAfter-1,"Badge must clear when notice is read");
+
   await request("orders/" + placed.id, {
     cookie: seller.cookie,
     method: "PATCH",
