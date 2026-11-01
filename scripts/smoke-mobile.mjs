@@ -387,7 +387,7 @@ try {
   // including old orders not present in the first paginated list.
   const ownerOrder=(await request("orders/"+placed.id,{token:seller.token})).data.order;
   assert.equal(ownerOrder.id,placed.id);
-  await request("orders/"+placed.id,{token:admin.token,expected:404});
+  await request("orders/"+placed.id,{cookie:admin,expected:404});
   await request("orders/" + placed.id, {
     cookie: seller.cookie,
     method: "PATCH",
