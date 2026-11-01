@@ -82,6 +82,14 @@ export async function enqueueOrderStatus(
     status: string;
   },
 ) {
+  if (order.status === "completed" || order.status === "cancelled") {
+    // A fulfilled or cancelled order no longer needs a red-badge reminder.
+    await tx.query(
+      "UPDATE push_notifications SET read_at=COALESCE(read_at,now()) " +
+      "WHERE target_id=$1 AND condominium_id=$2 AND kind='seller_reminder'",
+      [order.id,order.condominium_id],
+    );
+  }
   const labels: Record<string, string> = {
     confirmed: "confirmado",
     completed: "concluído",
