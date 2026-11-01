@@ -158,6 +158,7 @@ export async function enqueueDueCompletionReminders() {
     }>(
       "SELECT o.id,o.condominium_id,s.owner_id FROM orders o " +
       "JOIN shops s ON s.id=o.shop_id AND s.condominium_id=o.condominium_id " +
+      "JOIN users owner ON owner.id=s.owner_id AND owner.condominium_id=o.condominium_id AND owner.status='approved' " +
       "WHERE o.status='confirmed' AND o.updated_at<=now()-interval '2 hours' " +
       "AND (o.delivery_day IS NULL OR o.delivery_day<=CURRENT_DATE) " +
       "AND s.status='approved' " +
