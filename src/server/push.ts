@@ -384,17 +384,30 @@ export async function handlePushApi(
   // Old versions may still request subscriptions. Do not restore a send path.
   if (parts[1] === "shops" && parts.length === 3)
     bad("Avisos de lojas foram desativados.", 410);
+  if (path === "push/inbox" && method === "DELETE") {
+    // Clear all visible notices, even unread ones. Keep other users, tenants and
+    // legacy hidden kinds untouched; FK cascade also cancels pending deliveries.
+    const removed = await query(
+      "DELETE FROM push_notifications WHERE user_id=$1 AND condominium_id=$2 " +
+      "AND kind NOT IN ('shop','review_update')",
+      [u.id, u.condominium_id],
+    );
+    return json({ ok: true, deleted: removed.rowCount ?? 0 });
+  }
   if (path === "push/inbox" && method === "GET") {
     const page = Number(req.nextUrl.searchParams.get("page") ?? 0);
+    const limit = Number(req.nextUrl.searchParams.get("limit") ?? 30);
     if (!Number.isInteger(page) || page < 0 || page > 10000)
       bad("Página inválida.");
+    if (!Number.isInteger(limit) || limit < 1 || limit > 30)
+      bad("Limite inválido.");
     const r = await query(
-      "SELECT id,kind,title,body,target_id,read_at,created_at FROM push_notifications WHERE user_id=$1 AND condominium_id=$2 AND kind NOT IN ('shop','review_update') ORDER BY created_at DESC,id DESC LIMIT 31 OFFSET $3",
-      [u.id, u.condominium_id, page * 30],
+      "SELECT id,kind,title,body,target_id,read_at,created_at FROM push_notifications WHERE user_id=$1 AND condominium_id=$2 AND kind NOT IN ('shop','review_update') ORDER BY created_at DESC,id DESC LIMIT $3 OFFSET $4",
+      [u.id, u.condominium_id, limit + 1, page * limit],
     );
     return json({
-      notifications: r.rows.slice(0, 30),
-      hasMore: r.rows.length > 30,
+      notifications: r.rows.slice(0, limit),
+      hasMore: r.rows.length > limit,
     });
   }
   if (parts[1] === "inbox" && parts.length === 3) {
