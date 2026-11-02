@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {IllustrationSlot} from '@/components/IllustrationSlot';
 import {AdsCarousel,type AdCampaign} from '@/components/AdsCarousel';
 import {PushComposer} from '@/components/PushComposer';
+import {NotificationsPanel,NotificationPreferencesPanel,type InboxNotice} from '@/components/NotificationsPanel';
 import {AdsAdmin} from '@/components/AdsAdmin';
 import {SellerInsights} from '@/components/SellerInsights';
 import {FairHomeTeaser,FairMarketplace,SellerFairs,AdminFairs} from '@/components/CommunityFairs';
@@ -74,7 +75,7 @@ function MoneyInput({cents,onValue}:{cents:number;onValue:(value:number)=>void})
 }
 type HomeData={categories:Category[];shops:Shop[];products:Product[];recentProducts:Product[]};
 type AdminData={towers:string[];stats:{residents:number;shops:number;orders:number};categories:Category[]};
-type View='fairs'|'ads-admin'|'home'|'categories'|'favorites'|'orders'|'account'|'shop'|'product'|'cart'|'success'|'seller'|'admin'|'platform'|'giveaways';
+type View='inbox'|'notification-preferences'|'fairs'|'ads-admin'|'home'|'categories'|'favorites'|'orders'|'account'|'shop'|'product'|'cart'|'success'|'seller'|'admin'|'platform'|'giveaways';
 type Tenant={id:string;name:string;slug:string;subdomain:string;custom_domain:string|null;is_active:boolean;residents:number;shops:number};
 const money=(n:number)=>new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(n/100);
 const price=(p:Product)=>p.promo_price_cents??p.price_cents;
@@ -221,6 +222,7 @@ export default function Page(){
   const [error,setError]=useState('');
   const [toast,setToast]=useState('');
   const [view,setView]=useState<View>('home');
+  const [unreadNoticeCount,setUnreadNoticeCount]=useState(0);
   const [home,setHome]=useState<HomeData>(emptyHome);
   const recentProductsTrackRef=useRef<HTMLDivElement|null>(null);
   const [ads,setAds]=useState<AdCampaign[]>([]);
@@ -400,6 +402,37 @@ export default function Page(){
       }
     }
     window.scrollTo({top:0,behavior:'smooth'});
+  };
+  useEffect(()=>{
+    if(!viewer||viewer.status!=='approved'){
+      setUnreadNoticeCount(0);
+      return;
+    }
+    let active=true;
+    const refresh=async()=>{
+      try{
+        const data=await api<{unread_count:number}>('push/summary');
+        if(active)setUnreadNoticeCount(data.unread_count);
+      }catch{/* Inbox remains accessible even if the badge cannot refresh. */}
+    };
+    void refresh();
+    const timer=window.setInterval(()=>void refresh(),20000);
+    return()=>{active=false;window.clearInterval(timer);};
+  },[viewer?.id,viewer?.condominium_id,viewer?.status]);
+  const refreshUnread=()=>{
+    void api<{unread_count:number}>('push/summary')
+      .then(r=>setUnreadNoticeCount(r.unread_count))
+      .catch(()=>{});
+  };
+  const openNotice=(notice:InboxNotice)=>{
+    if(notice.kind==='order'){
+      go('orders');
+      void loadOrders(orderFilter).catch(fail);
+    }else if(['seller_order','seller_reminder','seller_review'].includes(notice.kind)){
+      setSellerTab(notice.kind==='seller_review'?'reviews':'orders');
+      void loadMine().catch(fail);
+      go('seller');
+    }
   };
   const loadHome=useCallback(async()=>{
     const [data,adData]=await Promise.all([api<HomeData>('home'),api<{campaigns:AdCampaign[]}>('ads').catch(()=>({campaigns:[]}))]);
@@ -1360,7 +1393,7 @@ export default function Page(){
         </>}
       </div>
       ):<div className="header-spacer" aria-hidden="true"/>}
-      <div className="header-actions"><button aria-label="Minha loja / Quero vender" title="Minha loja / Quero vender" onClick={()=>{void loadMine().catch(fail);go('seller');}}><Store size={21}/></button><button aria-label="Meus pedidos" onClick={()=>go('orders')}><Receipt size={20}/></button><button className="cart-toggle" aria-label="Abrir carrinho" onClick={()=>go('cart')}><ShoppingBag size={22}/>{cartCount>0&&<span>{cartCount}</span>}</button><button aria-label="Minha conta" onClick={()=>go('account')}><UserRound size={21}/></button></div>
+      <div className="header-actions"><button aria-label="Minha loja / Quero vender" title="Minha loja / Quero vender" onClick={()=>{void loadMine().catch(fail);go('seller');}}><Store size={21}/></button><button type="button" className="header-notification-action" aria-label="Notificações" onClick={()=>go('inbox')}><Bell size={20}/>{unreadNoticeCount>0&&<span className="unread-badge">{unreadNoticeCount>99?'99+':unreadNoticeCount}</span>}</button><button className="header-orders-action" aria-label="Meus pedidos" onClick={()=>go('orders')}><Receipt size={20}/></button><button className="cart-toggle" aria-label="Abrir carrinho" onClick={()=>go('cart')}><ShoppingBag size={22}/>{cartCount>0&&<span>{cartCount}</span>}</button><button aria-label="Minha conta" onClick={()=>go('account')}><UserRound size={21}/></button></div>
     </div></header>
     <div className="desktop-nav"><div className="desktop-nav-inner">
       {bottomNav.map(([target,Icon,label])=><button key={target} className={view===target?'active':''} onClick={()=>go(target)}><Icon size={18}/>{label}</button>)}
@@ -1374,6 +1407,14 @@ export default function Page(){
     {toast&&<div role="status" className="global-toast"><CheckCircle2 size={18}/>{toast}</div>}
 
     <main className="content">
+      {view==='inbox'&&<NotificationsPanel key={viewer.id+'-'+viewer.condominium_id} api={api}
+        scope={viewer.id+'-'+viewer.condominium_id}
+        onUnreadChange={refreshUnread}
+        onOpen={openNotice}
+        onPreferences={()=>go('notification-preferences')}/>}
+      {view==='notification-preferences'&&<NotificationPreferencesPanel
+        key={viewer.id+'-'+viewer.condominium_id}
+        api={api} scope={viewer.id+'-'+viewer.condominium_id}/>}
       {view==='home'&&<>
         <div className="hello-row"><div><p>Olá, {viewer.name.split(' ')[0]}! <span className="wave">✳</span></p><h1>Seu condomínio mais perto de você!</h1></div><div className="hello-bag"><ShoppingBasket size={27}/></div></div>
         <div className="search-container"><Search size={20}/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Busque produtos ou lojas..." aria-label="Buscar produtos ou lojas"/>{query&&<button onClick={()=>setQuery('')} aria-label="Limpar busca"><X size={16}/></button>}</div>
