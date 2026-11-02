@@ -1331,9 +1331,10 @@ export default function Page(){
     <button className="text-button" onClick={logout}>Sair da conta</button></main>;
 
   return <div className="app-shell">
-    <header className="app-header"><div className="header-inner">
+    <header className="app-header"><div className={"header-inner"+(viewer.role==='admin'||viewer.is_superadmin?" admin-header":"")}>
       <button className="brand" onClick={()=>go('home')} aria-label="Início Elevadoor">elevadoor<span>.</span></button>
-      <div style={{position:'relative',minWidth:0}}>
+      {(viewer.role==='admin'||viewer.is_superadmin)?(
+      <div className="header-location-slot">
         <button className="location" onClick={()=>viewer.is_superadmin?showTenantMenu():go('account')}
           title={viewer.is_superadmin?'Selecionar condomínio':'Seu endereço'}
           aria-haspopup={viewer.is_superadmin?'listbox':undefined}
@@ -1358,7 +1359,8 @@ export default function Page(){
           </div>
         </>}
       </div>
-      <div className="header-actions"><button aria-label="Meus pedidos" onClick={()=>go('orders')}><Receipt size={20}/></button><button className="cart-toggle" aria-label="Abrir carrinho" onClick={()=>go('cart')}><ShoppingBag size={22}/>{cartCount>0&&<span>{cartCount}</span>}</button><button aria-label="Minha conta" onClick={()=>go('account')}><UserRound size={21}/></button></div>
+      ):<div className="header-spacer" aria-hidden="true"/>}
+      <div className="header-actions"><button aria-label="Minha loja / Quero vender" title="Minha loja / Quero vender" onClick={()=>{void loadMine().catch(fail);go('seller');}}><Store size={21}/></button><button aria-label="Meus pedidos" onClick={()=>go('orders')}><Receipt size={20}/></button><button className="cart-toggle" aria-label="Abrir carrinho" onClick={()=>go('cart')}><ShoppingBag size={22}/>{cartCount>0&&<span>{cartCount}</span>}</button><button aria-label="Minha conta" onClick={()=>go('account')}><UserRound size={21}/></button></div>
     </div></header>
     <div className="desktop-nav"><div className="desktop-nav-inner">
       {bottomNav.map(([target,Icon,label])=><button key={target} className={view===target?'active':''} onClick={()=>go(target)}><Icon size={18}/>{label}</button>)}
