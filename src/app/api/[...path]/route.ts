@@ -1241,7 +1241,13 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
   }
   if(parts[0]==='orders'&&parts[1]&&method==='PATCH'){
     if(!uuid(parts[1]))bad('Pedido inválido.');
-    const b=z.object({status:z.enum(['confirmed','completed','cancelled'])}).parse(await body(req));
+    // New clients supply a cancellation reason; optional for older installed APKs.
+    const b=z.object({
+      status:z.enum(['confirmed','completed','cancelled']),
+      reason:z.string().trim().min(3).max(200).optional(),
+    }).strict().refine(data=>data.status==='cancelled'||data.reason===undefined,
+      {message:'O motivo só é permitido no cancelamento.'})
+      .parse(await body(req));
     const sh=await shopOwned(u,true);
     const updated=await transaction(async tx=>{
       const r=await tx.query('SELECT * FROM orders WHERE id=$1 AND condominium_id=$2 AND shop_id=$3 FOR UPDATE',[parts[1],u.condominium_id,sh.id]);
@@ -1261,7 +1267,10 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
       } else if(b.status==='cancelled'&&order.status==='confirmed'){
         for(const item of items.rows)await tx.query('UPDATE products SET stock=CASE WHEN stock IS NULL THEN NULL ELSE stock+$1 END WHERE id=$2 AND condominium_id=$3',[item.quantity,item.product_id,u.condominium_id]);
       }
-      const next=await tx.query('UPDATE orders SET status=$1,updated_at=now() WHERE id=$2 RETURNING *',[b.status,order.id]);
+      const next=await tx.query(
+        "UPDATE orders SET status=$1,cancellation_reason=CASE WHEN $1='cancelled' THEN $3 ELSE NULL END,updated_at=now() WHERE id=$2 RETURNING *",
+        [b.status,order.id,b.status==='cancelled'?(b.reason??null):null]
+      );
       await enqueueOrderStatus(tx,next.rows[0]);
       return next.rows[0];
     });
