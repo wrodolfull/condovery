@@ -26,8 +26,9 @@ import {supportsMessengerIntent,whatsappMessengerHref} from '@/lib/whatsapp-laun
 import {towerLabels,currentTowerScheme,type TowerScheme} from '@/lib/towers';
 import {artwork,getCategoryArtwork} from '@/lib/artwork';
 import {unitsInCart,remainingToAdd,maxLineQuantity} from '@/lib/cart-stock';
+import {recommendStoreProducts} from '@/lib/cart-recommendations';
 import {IMAGE_MIME_TYPES, imageSizeIsAllowed} from '@/lib/image-limits';
-import {selectedOptions, selectionBounds, changeOptionSelection, previewExtrasTotal, arrivalInstructionOptions, toggleArrivalInstruction, type OptionGroup, type Selection} from '@/lib/orders';
+import {selectedOptions, selectionBounds, changeOptionSelection, optionSelectionMax, previewExtrasTotal, arrivalInstructionOptions, toggleArrivalInstruction, type OptionGroup, type Selection} from '@/lib/orders';
 import {
   ArrowLeft, ArrowRight, Bell, Building2, CakeSlice, Check, CheckCircle2, ChevronDown, ChevronRight,
   CircleHelp, Clock3, Coffee, Gift, Heart, Home, ImagePlus, LayoutGrid, LogOut, MapPin,
@@ -238,6 +239,7 @@ export default function Page(){
   const [shopDirectoryLoading,setShopDirectoryLoading]=useState(false);
   const [shopDirectoryError,setShopDirectoryError]=useState('');
   const [cartShopLookup,setCartShopLookup]=useState<{id:string;shop:Shop|null;error:string}|null>(null);
+  const [cartShopCatalog,setCartShopCatalog]=useState<{id:string;products:Product[]}|null>(null);
   const [cartShopRetry,setCartShopRetry]=useState(0);
   const [selectedShop,setSelectedShop]=useState<{shop:Shop;products:Product[]}|null>(null);
   const [shopReviews,setShopReviews]=useState<PublicReviews|null>(null);
@@ -604,6 +606,16 @@ export default function Page(){
     return()=>{active=false;};
   },[viewer?.id,viewer?.condominium_id,cartShopId,requiresCartShopLookup,cartShopRetry]);
   const loadedCartShop=requiresCartShopLookup&&cartShopLookup?.id===cartShopId?cartShopLookup.shop:null;
+  // Fresh products are fetched from this exact store; a generic home catalog can be incomplete.
+  useEffect(()=>{
+    if(view!=='cart'||!viewer||!cartShopId||pendingAttempt)return;
+    let active=true;
+    setCartShopCatalog(null);
+    api<{shop:Shop;products:Product[]}>('shops/'+encodeURIComponent(cartShopId))
+      .then(result=>{if(active)setCartShopCatalog({id:cartShopId,products:result.products});})
+      .catch(()=>{if(active)setCartShopCatalog({id:cartShopId,products:[]});});
+    return()=>{active=false;};
+  },[view,viewer?.id,viewer?.condominium_id,cartShopId,!!pendingAttempt]);
 
   useEffect(()=>{
     setCheckoutKey(null);setRevisedQuote(null);
@@ -731,7 +743,15 @@ export default function Page(){
   // Cada produto compartilha um limite entre personalizações diferentes.
   const selectedRemaining=selectedProduct?remainingToAdd(selectedProduct.stock,cart.filter(i=>i.product.shop_id===selectedProduct.shop_id),selectedProduct.id):null;
   const selectedAddMax=Math.min(30,selectedRemaining??30);
-  const cartShop=home.shops.find(s=>s.id===cart[0]?.product.shop_id)||selectedShop?.shop;
+  const cartShop=cartShopSafe(cart,home.shops,selectedShop,loadedCartShop);
+  const cartRecommendations=cartShopId&&cartShop?.is_open===true&&!pendingAttempt&&cartShopCatalog?.id===cartShopId
+    ? recommendStoreProducts(cartShopCatalog.products,cartShopId,cart)
+    : [];
+  let selectedChoicesError='';
+  if(selectedProduct){
+    try{selectedOptions(selectedProduct.option_groups??[],productChoices);}
+    catch(e){selectedChoicesError=e instanceof Error?e.message:'Revise os acompanhamentos.';}
+  }
   const acceptedPaymentMethods=allowedPaymentMethods(cartShop?.payment_methods);
   const featured=home.products.filter(p=>p.promo_price_cents!=null||p.is_featured).slice(0,8);
   const newest=home.products.slice(0,10);
@@ -1512,35 +1532,48 @@ export default function Page(){
             {selectedProduct.lead_time&&<p className="time-hint"><Clock3 size={16}/> Prazo informado: {selectedProduct.lead_time}</p>}
             {(selectedProduct.option_groups??[]).map(group=>{
               const chosen=productChoices[group.id]??[];
-              const bounds=selectionBounds(group);
-              return <fieldset className="options-picker" key={group.id} disabled={!productCanBuy(selectedProduct)}>
-                <legend><strong>{group.name}</strong><small>{bounds.min?'Obrigatório':'Opcional'} · {group.multiple?'Várias escolhas':'Escolha uma'} · {chosen.length}/{bounds.max} selecionado(s){bounds.min>1?' · mínimo '+bounds.min:''}</small></legend>
-                {group.options.map(choice=>{
-                  const count=chosen.filter(id=>id===choice.id).length;
-                  return group.multiple&&group.allow_quantity?
-                    <div key={choice.id} className={'option-quantity-row'+(choice.available===false?' is-unavailable':'')}>
-                      <span>{choice.name}{choice.available===false?' · Indisponível':''}</span>
-                      <small>{choice.price_cents>0?'+'+money(choice.price_cents)+' por unidade':'Incluso'}</small>
-                      <div className="option-quantity-stepper">
-                        <button type="button" aria-label={'Remover '+choice.name} disabled={count===0} onClick={()=>changeChoice(group,choice.id,-1)}>−</button>
-                        <strong aria-live="polite">{count}</strong>
-                        <button type="button" aria-label={'Adicionar '+choice.name} disabled={chosen.length>=bounds.max||choice.available===false} onClick={()=>changeChoice(group,choice.id,1)}>+</button>
+              const {min,max}=selectionBounds(group);
+              return <section className="options-picker" key={group.id} role="group" aria-labelledby={'option-heading-'+group.id}>
+                <div className="options-picker-head">
+                  <strong id={'option-heading-'+group.id}>{group.name} · {min>0?'Obrigatório':'Opcional'}</strong>
+                  <small>{group.multiple?'Várias escolhas':'Escolha uma'} · {chosen.length}/{max} selecionado(s){min>1?' · mínimo '+min:''}</small>
+                </div>
+                <div className="options-picker-list">
+                  {group.options.map(choice=>{
+                    const count=chosen.filter(id=>id===choice.id).length;
+                    const available=choice.available!==false;
+                    const optionMax=optionSelectionMax(group,chosen,choice.id);
+                    const canInteract=productCanBuy(selectedProduct);
+                    return <div key={choice.id} className={'option-add-row'+(!available?' is-unavailable':'')}>
+                      <div className="option-add-copy">
+                        <strong>Adicionar {choice.name}</strong>
+                        <small>{available?(choice.price_cents>0?'+ '+money(choice.price_cents):'Incluso'):'Indisponível'}</small>
                       </div>
-                    </div>:
-                    <label className="option-item" key={choice.id}>
-                      <input type={group.multiple?'checkbox':'radio'} name={'group-'+group.id}
-                        disabled={choice.available===false&&count===0} checked={count>0} onChange={()=>changeChoice(group,choice.id)}/>
-                      <span>{choice.name}{choice.available===false?' · Indisponível':''}</span>
-                      <small>{choice.price_cents>0?'+'+money(choice.price_cents):'Incluso'}</small>
-                    </label>;
-                })}
+                      {count===0?
+                        <button type="button" className="option-add-plus"
+                          aria-label={'Adicionar '+choice.name}
+                          disabled={!available||!canInteract||optionMax<1}
+                          onClick={()=>changeChoice(group,choice.id,1)}><Plus size={22}/></button>:
+                        <div className="option-quantity-stepper">
+                          <button type="button" aria-label={'Remover '+choice.name}
+                            disabled={!canInteract} onClick={()=>changeChoice(group,choice.id,-1)}><Minus size={17}/></button>
+                          <strong aria-live="polite">{count}</strong>
+                          <button type="button" aria-label={'Adicionar '+choice.name}
+                            disabled={!available||!canInteract||count>=optionMax}
+                            onClick={()=>changeChoice(group,choice.id,1)}><Plus size={17}/></button>
+                        </div>}
+                    </div>;
+                  })}
+                </div>
                 {!group.required&&!group.multiple&&chosen.length>0&&
-                  <button type="button" className="quiet-link" onClick={()=>setProductChoices(c=>({...c,[group.id]:[]}))}>Limpar escolha</button>}
-              </fieldset>;
+                  <button type="button" className="quiet-link option-clear" disabled={!productCanBuy(selectedProduct)}
+                    onClick={()=>setProductChoices(c=>({...c,[group.id]:[]}))}>Limpar escolha</button>}
+              </section>;
             })}
             <label className="field-label">Observações sobre este produto<textarea disabled={!productCanBuy(selectedProduct)} maxLength={200} rows={3} value={itemNote} onChange={e=>setItemNote(e.target.value)} placeholder="Ex.: sem cobertura, embalagem para presente..."/></label>
             <div className="add-row"><div className="quantity"><button disabled={!productCanBuy(selectedProduct)||qty<=1} onClick={()=>setQty(Math.max(1,qty-1))} aria-label="Diminuir"><Minus size={18}/></button><strong>{qty}</strong><button disabled={!productCanBuy(selectedProduct)||selectedAddMax===0||qty>=selectedAddMax} onClick={()=>setQty(Math.min(Math.max(1,selectedAddMax),qty+1))} aria-label="Aumentar"><Plus size={18}/></button></div>
-            <button className="primary-button" disabled={!productCanBuy(selectedProduct)||selectedAddMax===0||qty>selectedAddMax} onClick={addToCart}><Plus size={18}/>Adicionar · {money((price(selectedProduct)+addOns(selectedProduct,productChoices))*qty)}</button></div>
+            <button className="primary-button" disabled={!productCanBuy(selectedProduct)||selectedAddMax===0||qty>selectedAddMax||!!selectedChoicesError} onClick={addToCart}><Plus size={18}/>Adicionar · {money((price(selectedProduct)+addOns(selectedProduct,productChoices))*qty)}</button></div>
+            {!!selectedChoicesError&&<p className="helper-note" role="status">{selectedChoicesError}</p>}
             {selectedRemaining!==null&&<p className="helper-note" role="status">{selectedRemaining===0?"Você já atingiu o estoque disponível deste produto no carrinho.":`Disponível para adicionar: ${selectedRemaining} unidade(s).`}</p>}
             {!productCanBuy(selectedProduct)&&<p className="helper-note">Produto indisponível ou loja fechada. Compras temporariamente desativadas.</p>}
             <button className="report-trigger" onClick={()=>setReportTarget({type:'product',id:selectedProduct.id,name:selectedProduct.name})}>Denunciar produto</button>
@@ -1563,6 +1596,28 @@ export default function Page(){
               <b>{money(cartUnitPrice(item)*item.quantity)}</b>
             <div className="cart-controls"><button onClick={()=>setCart(s=>s.map((i,n)=>n===index?{...i,quantity:Math.max(1,i.quantity-1)}:i))} aria-label="Diminuir"><Minus size={15}/></button><span>{item.quantity}</span><button disabled={item.quantity>=maxLineQuantity(item.product.stock,cart,item.product.id,index)} onClick={()=>setCart(s=>s.map((i,n)=>n===index?{...i,quantity:Math.min(maxLineQuantity(i.product.stock,s,i.product.id,index),i.quantity+1)}:i))} aria-label="Aumentar"><Plus size={15}/></button><button className="trash" onClick={()=>setCart(s=>s.filter((_,n)=>n!==index))} aria-label="Remover"><Trash2 size={16}/></button></div>
             </div></div>)}</div>
+          {!pendingAttempt&&<>
+            <button type="button" className="cart-add-more"
+              disabled={busy||!cartShopId}
+              onClick={()=>{if(cartShopId)void openShop(cartShopId);}}>
+              Adicionar mais itens
+            </button>
+            {cartRecommendations.length>0&&<section className="cart-suggestions" aria-label="Sugestões da mesma loja">
+              <h2>Peça também</h2>
+              <div className="cart-suggestions-track" role="region" aria-label="Produtos recomendados" tabIndex={0}>
+                {cartRecommendations.map(product=><button type="button" className="cart-suggestion" key={product.id}
+                  aria-label={'Ver '+product.name+' para adicionar'}
+                  onClick={()=>openProduct({...product,shop_name:cartShop?.name,is_open:cartShop?.is_open})}>
+                  <div className="cart-suggestion-photo">
+                    <ProductPicture src={product.image_url} name={product.name}/>
+                    <span className="cart-suggestion-plus"><Plus size={21}/></span>
+                  </div>
+                  <strong>{money(price(product))}</strong>
+                  <span>{product.name}</span>
+                </button>)}
+              </div>
+            </section>}
+          </>}
           <div className="white-panel"><h2><Truck size={19}/> Como prefere receber?</h2><div className="choice-row">
             {cartShop?.delivery_enabled!==false&&<button className={actualFulfillment==='delivery'?'selected':''} onClick={()=>setFulfillment('delivery')}><Truck size={19}/> Entrega</button>}
             {cartShop?.pickup_enabled!==false&&<button className={actualFulfillment==='pickup'?'selected':''} onClick={()=>setFulfillment('pickup')}><ShoppingBag size={19}/> Retirada</button>}</div>
