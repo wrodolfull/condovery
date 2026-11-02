@@ -19,6 +19,7 @@ test("mobile credentials can buy and use owner-scoped seller capabilities", () =
     ["shops/" + id + "/reviews", "GET"],
     ["media/" + id, "GET"],
     ["giveaways/" + id, "PUT"],
+    ["push/inbox", "DELETE"],
     ["push/inbox/" + id, "GET"],
     ["me", "DELETE"],
     ["ads/" + id + "/impression", "POST"],
@@ -30,6 +31,7 @@ test("mobile credentials can buy and use owner-scoped seller capabilities", () =
     ["platform/condominiums", "GET"],
     ["fairs/manage", "GET"],
     ["media/ad", "POST"],
+    ["push/inbox", "POST"],
     ["auth/login", "POST"],
   ])
     assert.equal(mobileRouteAllowed(path, method), false, path);

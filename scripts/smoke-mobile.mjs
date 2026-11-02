@@ -661,6 +661,38 @@ try {
       )
     ).rows[0].n > 0,
   );
+  // Page size is deliberately bounded, and clearing never reaches another
+  // user's or tenant's notices. Unread entries are deleted without being opened.
+  // Earlier in this smoke flow the buyer explicitly logged out.
+  const activeBuyerToken=(await request("mobile/auth/login",{
+    method:"POST",body:{email:buyer.email,password}
+  })).data.access_token;
+  const noticeIds=Array.from({length:12},()=>crypto.randomUUID());
+  for (const [index,id] of noticeIds.entries()) {
+    await db.query(
+      "INSERT INTO push_notifications(id,user_id,condominium_id,kind,title,body,event_key) VALUES($1,$2,$3,'order',$4,$5,$6)",
+      [id,buyer.me.id,buyer.me.condominium_id,"Notification page "+index,"Unread test", "inbox-pagination:"+tag+":"+index],
+    );
+  }
+  const firstTen=(await request("push/inbox?limit=10&page=0",{token:activeBuyerToken})).data;
+  assert.equal(firstTen.notifications.length,10);
+  assert.equal(firstTen.hasMore,true);
+  const secondPage=(await request("push/inbox?limit=10&page=1",{token:activeBuyerToken})).data;
+  assert.ok(secondPage.notifications.length>=2);
+  assert.ok(secondPage.notifications.every(n=>!firstTen.notifications.some(a=>a.id===n.id)));
+  await request("push/inbox?limit=31",{token:activeBuyerToken,expected:400});
+  await request("push/inbox?limit=-1",{token:activeBuyerToken,expected:400});
+  await request("push/inbox?limit=10.5",{token:activeBuyerToken,expected:400});
+  const sellerBeforeClear=(await request("push/inbox?limit=10",{token:seller.token})).data;
+  const beforeDelete=(await request("push/summary",{token:activeBuyerToken})).data.unread_count;
+  assert.ok(beforeDelete>=12);
+  await request("push/inbox",{token:activeBuyerToken,method:"DELETE"});
+  assert.equal((await request("push/summary",{token:activeBuyerToken})).data.unread_count,0);
+  assert.deepEqual((await request("push/inbox?limit=10",{token:activeBuyerToken})).data.notifications,[]);
+  const sellerAfterClear=(await request("push/inbox?limit=10",{token:seller.token})).data;
+  assert.deepEqual(sellerAfterClear.notifications.map(n=>n.id),sellerBeforeClear.notifications.map(n=>n.id));
+  assert.equal((await request("push/inbox",{token:activeBuyerToken,method:"DELETE"})).data.deleted,0);
+  console.log("Scoped inbox clear-all and 10-item pagination PASS.");
   process.env.PUSH_ENABLED = "false";
   console.log(
     "Provider queue, receipts and invalid-device cleanup PASS (mock transport; no real push sent).",

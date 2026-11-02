@@ -82,6 +82,16 @@ try{
     const storeShortcut=page.getByRole('button',{name:'Minha loja / Quero vender',exact:true});
     await storeShortcut.waitFor({state:'visible'});
     await verify(page,'home',width);
+    // Web inbox shares the same ten-at-a-time list and preferences as native.
+    await page.getByRole('button',{name:'Notificações',exact:true}).click();
+    await page.getByRole('heading',{name:'Notificações',exact:true}).waitFor({state:'visible'});
+    await page.getByRole('button',{name:'Preferências de notificações'}).waitFor({state:'visible'});
+    await verify(page,'notifications',width);
+    await page.getByRole('button',{name:'Preferências de notificações'}).click();
+    await page.getByRole('switch',{name:'Avisos do condomínio'}).waitFor({state:'visible'});
+    await verify(page,'notification-preferences',width);
+    await page.getByRole('button',{name:'Início Elevadoor'}).click();
+    await page.locator('.hero-banner').waitFor({state:'visible'});
     await storeShortcut.click();
     await page.getByRole('heading',{name:'Painel do vendedor'}).waitFor({state:'visible'});
     await verify(page,'seller-shortcut',width);
