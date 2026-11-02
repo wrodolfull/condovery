@@ -1455,8 +1455,10 @@ font-weight:750;padding:12px 20px;cursor:pointer}
 .notification-preference-list{display:grid;gap:12px;margin:24px 0}
 .notification-preference{display:flex;align-items:center;justify-content:space-between;gap:15px;min-height:70px;padding:16px 20px;background:#fffefa;border:1px solid var(--line);border-radius:18px;color:var(--ink);text-align:left;cursor:pointer}
 .notification-preference span:first-child{font-size:15px;font-weight:600}
-.notification-switch{display:flex;align-items:center;justify-content:center;flex:none;width:40px;height:25px;border-radius:100px;background:#ddd9d2;color:#fff}
+.notification-switch{position:relative;display:flex;align-items:center;justify-content:center;flex:none;width:40px;height:25px;border-radius:100px;background:#ddd9d2;color:#fff}
 .notification-switch:after{content:'';position:absolute;width:19px;height:19px;border-radius:50%;background:#fff;transform:translateX(-7px);box-shadow:0 1px 3px rgba(0,0,0,.12)}
 .notification-switch.is-on{background:var(--orange)}
 .notification-switch.is-on:after{transform:translateX(7px)}
 .notification-page :focus-visible{outline:2px solid var(--orange);outline-offset:3px}
+
+.notification-switch svg{position:relative;z-index:1;opacity:0}
