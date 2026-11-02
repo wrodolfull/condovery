@@ -65,60 +65,43 @@ O aplicativo faz uma **solicitação visível no primeiro acesso autenticado** c
 
 O vendedor recebe notificações automáticas sobre novos pedidos no aplicativo. **Não existe envio de avisos personalizados por lojas.** O envio institucional continua reservado à administração do condomínio na web, com idempotência e limite de cinco publicações por administrador por hora. O retorno `recipients` representa registros no histórico e não confirma entrega no aparelho.
 
-## Push quase instantâneo — serviço contínuo (recomendado)
+## Push quase imediato — worker contínuo compatível com Supabase
 
-O cron de um minuto introduz atraso desnecessário. A migração `045` instala um
-`AFTER INSERT` trigger em `push_deliveries` que executa `pg_notify`. O PostgreSQL
-envia a sinalização **após o commit**, de modo que a transação do pedido nunca
-espera pelo Expo. O worker `npm run push:worker` mantém uma conexão PostgreSQL
-com `LISTEN elevadoor_push_ready` e envia as notificações assim que a fila
-sinaliza. Como `NOTIFY` não armazena eventos, o mesmo worker varre a fila a cada
-15 segundos para recuperar sinais perdidos, tentativas atrasadas, recibos e
-lembretes de conclusão. A latência do processamento é normalmente inferior a
-um segundo após o commit, mas o transporte Expo/FCM e o próprio Android são
-assíncronos, sem garantia de tempo exato.
+O Elevadoor usa um serviço `systemd` com `npm run push:worker`. A conexão
+`aws-0-*.pooler.supabase.com:5432` pode aceitar `LISTEN` mas não propagar
+`NOTIFY` entre sessões; o worker não depende mais desse mecanismo.
+Ele consulta apenas a existência de entregas pendentes a cada **2 segundos**
+e executa o despachante somente quando há trabalho. A cada 30 segundos
+também faz manutenção para recibos, lembretes e tentativas de recuperação.
+A solicitação do comprador nunca espera pelo envio Expo/FCM.
 
-### Instalação na VPS (NVM)
-
-Depois do merge e do deploy para `/var/www/condovery`:
+### Atualização da VPS após merge
 
 ```bash
 cd /var/www/condovery
-npm run db:migrate
-# Confirme o caminho do Node na VPS:
-command -v node
-# Ajuste ExecStart no arquivo caso o caminho tenha mudado.
-cp ops/elevadoor-push.service /etc/systemd/system/elevadoor-push.service
-systemctl daemon-reload
-systemctl enable --now elevadoor-push.service
-systemctl status elevadoor-push.service --no-pager
-journalctl -u elevadoor-push.service -n 30 --no-pager
+git pull origin main
+# O mesmo serviço systemd da PR anterior funciona sem alterações.
+sudo systemctl reset-failed elevadoor-push.service
+sudo systemctl restart elevadoor-push.service
+sudo systemctl is-active elevadoor-push.service
+sudo journalctl -u elevadoor-push.service -n 30 --no-pager
 ```
 
-**Não mantenha o cron anterior em paralelo**: remova apenas a linha
-`push:dispatch` do cron, sem apagar outras tarefas do servidor:
+O log de inicialização deve registrar
+`{"event":"push_worker_ready","mode":"polling","poll_seconds":2,"maintenance_seconds":30}`.
+Se houver falha, o log registra um código de erro, sem mostrar tokens.
+Se o cron `push:dispatch` ainda existir, remova-o **somente depois** de
+confirmar que o serviço está `active` e processou um novo pedido:
 
 ```bash
-crontab -l | grep -v 'push:dispatch' | crontab -
+crontab -l > /root/crontab-backup-elevadoor.txt
+crontab -l | grep -v 'push:dispatch' | grep -v 'scripts/dispatch-push.ts' | crontab -
 ```
 
-O `systemd` reinicia o worker se o processo ou a conexão de escuta falhar.
-Verifique `push_worker_ready` no journal. Abra o APK e crie um novo pedido
-com outro usuário na web; o vendedor deverá receber a notificação sem cron.
-O log nunca publica tokens Expo nem conteúdo de notificações.
-
-### Diagnóstico
-
-```bash
-systemctl is-active elevadoor-push
-journalctl -u elevadoor-push -f
-npm run push:diagnose
-```
-
-O estado `receipt` significa que o Expo aceitou o ticket; `sent` representa
-um recibo de sucesso. Nenhum deles equivale a garantia de exibição no Android.
-O comando `push:dispatch` permanece como fallback/manual e não precisa rodar
-via cron quando o serviço contínuo estiver ativo.
+A migração 045, já presente, pode permanecer instalada; este worker não
+depende do evento `NOTIFY`. Não é necessário novo APK. O início do envio
+ocorre geralmente dentro de 2 segundos de uma entrega persistida; a latência
+de apresentação no celular depende de Expo, FCM e Android e não é garantida.
 
 ## Fila e worker
 
