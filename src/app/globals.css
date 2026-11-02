@@ -31,6 +31,8 @@ button:focus-visible,a:focus-visible{outline:3px solid #be9e1b;outline-offset:3p
 .location span{display:flex;flex-direction:column;min-width:0;line-height:1.2}
 .location small{font-size:11px;color:var(--muted)}
 .location strong{max-width:240px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:12px}
+.header-location-slot{position:relative;min-width:0;flex:1}
+.header-spacer{flex:1;min-width:0}
 .header-actions{display:flex;gap:9px;align-items:center}
 .header-actions button{border:0;background:#f4f5f2;border-radius:50%;width:40px;height:40px;display:grid;place-items:center;position:relative}
 .header-actions button:hover{background:#fbe248}
@@ -353,13 +355,22 @@ button:focus-visible,a:focus-visible{outline:3px solid #be9e1b;outline-offset:3p
   .auth-card{padding:65px 55px}
   .admin-row{padding:19px}
 }
+@media(max-width:600px){
+  /* Admins keep the current condominium context on a second header row. */
+  .header-inner.admin-header{flex-wrap:wrap;row-gap:0;padding-top:7px;padding-bottom:7px}
+  .header-inner.admin-header .header-location-slot{order:3;flex:0 0 100%;width:100%}
+  .header-inner.admin-header .header-actions{margin-left:auto}
+  .header-inner.admin-header .location{min-height:30px;padding:3px 0}
+  .header-inner.admin-header .location strong{max-width:calc(100vw - 100px)}
+}
 @media(max-width:420px){
   .header-inner{padding:0 15px;gap:10px}
   .brand{font-size:23px}
   .location strong{max-width:100px}
-  .header-actions{gap:5px}
+  .header-actions{gap:4px}
   .header-actions button{width:34px;height:34px;background:none}
-  .header-actions button:first-child{display:none}
+  /* The first action is now the seller shortcut, and must remain visible. */
+  .header-actions button:first-child{display:grid}
   .hero-banner{min-height:225px;padding:18px}
   .hero-copy{max-width:62%}
   .hero-banner h2{font-size:26px}
