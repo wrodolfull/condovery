@@ -615,7 +615,7 @@ export default function Page(){
       .then(result=>{if(active)setCartShopCatalog({id:cartShopId,products:result.products});})
       .catch(()=>{if(active)setCartShopCatalog({id:cartShopId,products:[]});});
     return()=>{active=false;};
-  },[view,viewer?.id,viewer?.condominium_id,cartShopId,!!pendingAttempt]);
+  },[view,viewer?.id,viewer?.condominium_id,cartShopId,pendingAttempt]);
 
   useEffect(()=>{
     setCheckoutKey(null);setRevisedQuote(null);
