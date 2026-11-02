@@ -77,7 +77,16 @@ try{
       throw new Error('Visual buyer login returned HTTP '+loginResult.status()+': '+String(data.error||'unknown').slice(0,120));
     }
     await page.locator('.hero-banner').waitFor({state:'visible',timeout:15000});
+    if(await page.locator('.header-inner .location').count()!==0)
+      throw new Error('Resident header must not include condominium location at '+width+'px');
+    const storeShortcut=page.getByRole('button',{name:'Minha loja / Quero vender',exact:true});
+    await storeShortcut.waitFor({state:'visible'});
     await verify(page,'home',width);
+    await storeShortcut.click();
+    await page.getByRole('heading',{name:'Painel do vendedor'}).waitFor({state:'visible'});
+    await verify(page,'seller-shortcut',width);
+    await page.getByRole('button',{name:'Início Elevadoor'}).click();
+    await page.locator('.hero-banner').waitFor({state:'visible'});
     await verifyRoundCategories(page,'.category-track:not(.explore-category-track)',width);
     const nav=(label)=>page.locator(width<900?'.bottom-nav':'.desktop-nav')
       .getByRole('button',{name:label,exact:true});
@@ -138,6 +147,19 @@ try{
       await sellerPage.locator('.seller-review-card').first().waitFor({state:'visible'});
       await verify(sellerPage,'seller-reviews',width);
       await sellerContext.close();
+
+      // The platform superadmin retains the active condominium picker in the header.
+      const adminContext=await browser.newContext({viewport:{width,height:820},deviceScaleFactor:1});
+      const adminPage=await adminContext.newPage();
+      await adminPage.goto(origin,{waitUntil:'domcontentloaded'});
+      await adminPage.locator('.auth-card').waitFor({state:'visible'});
+      await adminPage.locator('.auth-card input[type="email"]').fill(process.env.BOOTSTRAP_ADMIN_EMAIL||'admin-smoke@example.com');
+      await adminPage.locator('.auth-card input[type="password"]').fill(process.env.BOOTSTRAP_ADMIN_PASSWORD||'CIOnlyLongSecurePass123!');
+      await adminPage.getByRole('button',{name:'Entrar com e-mail'}).click();
+      await adminPage.locator('.header-inner.admin-header .location').waitFor({state:'visible',timeout:15000});
+      await adminPage.getByText('Você está em',{exact:true}).waitFor({state:'visible'});
+      await verify(adminPage,'admin-header',width);
+      await adminContext.close();
     }
   }
   console.log('Responsive visual QA PASS: '+checked+' views checked at '+widths.join(', ')+'px');
