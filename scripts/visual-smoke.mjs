@@ -153,6 +153,21 @@ try{
       await sellerPage.locator('.bottom-nav').getByRole('button',{name:'Conta'}).click();
       await sellerPage.locator('.account-shortcuts button').filter({hasText:/Minha loja|Quero vender/}).first().click();
       await sellerPage.locator('.seller-tabs').waitFor({state:'visible'});
+      const stages=sellerPage.locator('.seller-order-sections');
+      await stages.waitFor({state:'visible'});
+      for(const [stage,scene] of [['Novos','seller-new'],['Em andamento','seller-ongoing'],['Histórico','seller-history']]){
+        await stages.getByRole('tab',{name:new RegExp(stage)}).click();
+        if(await stages.getByRole('tab',{name:new RegExp(stage)}).getAttribute('aria-selected')!=='true')
+          throw new Error('Seller order tab did not become selected: '+stage);
+        await verify(sellerPage,scene,width);
+      }
+      const firstSummary=sellerPage.locator('.seller-order-summary').first();
+      if(await firstSummary.count()){
+        await firstSummary.click();
+        await sellerPage.locator('.seller-order-expanded').first().waitFor({state:'visible'});
+        await verify(sellerPage,'seller-order-details',width);
+        await firstSummary.click();
+      }
       await sellerPage.locator('.seller-tabs button').filter({hasText:'Avaliações'}).click();
       await sellerPage.locator('.seller-review-card').first().waitFor({state:'visible'});
       await verify(sellerPage,'seller-reviews',width);
