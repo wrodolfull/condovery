@@ -37,6 +37,9 @@ button:focus-visible,a:focus-visible{outline:3px solid #be9e1b;outline-offset:3p
 .header-actions button{border:0;background:#f4f5f2;border-radius:50%;width:40px;height:40px;display:grid;place-items:center;position:relative}
 .header-actions button:hover{background:#fbe248}
 .cart-toggle span{position:absolute;top:-5px;right:-3px;display:grid;place-items:center;background:var(--orange);color:#fff;border-radius:100%;min-width:17px;height:17px;padding:0 3px;font-size:10px;font-weight:800}
+.header-notification-action .unread-badge{position:absolute;top:-5px;right:-3px;display:grid;place-items:center;background:var(--orange);color:#fff;border-radius:100%;min-width:17px;height:17px;padding:0 3px;font-size:10px;font-weight:800}
+@media(max-width:420px){.header-orders-action{display:none!important}}
+
 .desktop-nav{display:none;background:#fff;border-bottom:1px solid var(--line)}
 .desktop-nav-inner{max-width:1160px;margin:auto;padding:0 22px;display:flex;gap:27px}
 .desktop-nav button{padding:13px 0;border:0;background:transparent;display:flex;align-items:center;gap:8px;color:#656961;font-weight:700;border-bottom:3px solid transparent}
@@ -159,6 +162,11 @@ button:focus-visible,a:focus-visible{outline:3px solid #be9e1b;outline-offset:3p
 .white-panel h2{font-size:18px;display:flex;align-items:center;gap:9px;margin-bottom:17px}
 .checkout-layout{display:grid;grid-template-columns:minmax(0,1fr);gap:15px}
 .checkout-main{min-width:0}
+.checkout-main>.white-panel{margin-bottom:18px}
+.checkout-main .cart-item+.cart-item{margin-top:8px}
+.offline-payment-options .choice-row{display:flex;gap:12px;flex-wrap:wrap}
+.offline-payment-options .choice-row button{flex:1 1 140px;min-height:52px;border-radius:14px}
+
 .cart-item{display:flex;align-items:flex-start;gap:13px;padding:15px 0;border-top:1px solid var(--line)}
 .cart-item .product-photo{width:84px;flex:0 0 84px;border-radius:12px;aspect-ratio:1}
 .cart-item .photo-placeholder span{font-size:8px}
@@ -1424,3 +1432,31 @@ font-weight:750;padding:12px 20px;cursor:pointer}
 .product-detail-copy .seller-by a{color:inherit;text-decoration:underline;text-underline-offset:3px;
   font:inherit;cursor:pointer}
 .product-detail-copy .seller-by a:hover{color:#24231c}
+
+
+/* Personal inbox, aligned with the native notification cards. */
+.notification-page{max-width:850px;margin:0 auto 25px;min-width:0}
+.notification-page>h1,.notification-page-title h1{font-size:clamp(25px,5vw,32px);margin:0}
+.notification-page>.muted{margin:14px 0 23px;font-size:14px;line-height:1.6}
+.notification-page-title{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:24px}
+.notification-clear{color:var(--orange);border:0;background:transparent;font-weight:800;font-size:14px;padding:12px 4px;white-space:nowrap;cursor:pointer}
+.notification-clear:disabled{opacity:.5;cursor:default}
+.notification-list{display:flex;flex-direction:column;gap:14px}
+.notification-card{width:100%;display:flex;flex-direction:column;align-items:flex-start;gap:19px;padding:23px 21px;background:#fffefa;border:1px solid var(--line);border-radius:20px;color:var(--ink);text-align:left;cursor:pointer;line-height:1.5}
+.notification-card.is-unread{border-color:var(--orange)}
+.notification-card strong{font-size:17px}
+.notification-card span{font-size:14px}
+.notification-card small{font-size:12px;color:var(--muted)}
+.notification-card:hover{border-color:var(--orange)}
+.notification-empty{display:flex;flex-direction:column;align-items:center;gap:12px;color:var(--muted);padding:25px;text-align:center}
+.notification-empty strong{color:var(--ink)}
+.notification-more{display:flex;width:100%;margin-top:20px}
+.notification-preferences-link{display:flex;width:100%;margin:22px 0}
+.notification-preference-list{display:grid;gap:12px;margin:24px 0}
+.notification-preference{display:flex;align-items:center;justify-content:space-between;gap:15px;min-height:70px;padding:16px 20px;background:#fffefa;border:1px solid var(--line);border-radius:18px;color:var(--ink);text-align:left;cursor:pointer}
+.notification-preference span:first-child{font-size:15px;font-weight:600}
+.notification-switch{display:flex;align-items:center;justify-content:center;flex:none;width:40px;height:25px;border-radius:100px;background:#ddd9d2;color:#fff}
+.notification-switch:after{content:'';position:absolute;width:19px;height:19px;border-radius:50%;background:#fff;transform:translateX(-7px);box-shadow:0 1px 3px rgba(0,0,0,.12)}
+.notification-switch.is-on{background:var(--orange)}
+.notification-switch.is-on:after{transform:translateX(7px)}
+.notification-page :focus-visible{outline:2px solid var(--orange);outline-offset:3px}
