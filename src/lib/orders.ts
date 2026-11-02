@@ -59,6 +59,18 @@ export function changeOptionSelection(group:OptionGroup,current:string[],id:stri
   return option.available!==false&&current.length<max?[...current,id]:current;
 }
 
+/** Effective per-option quantity after other selections consume the group maximum. */
+export function optionSelectionMax(group:OptionGroup,current:string[],id:string):number{
+  const choice=group.options.find(option=>option.id===id);
+  if(!choice)return 0;
+  const count=current.filter(value=>value===id).length;
+  if(choice.available===false)return count;
+  if(!group.multiple)return 1;
+  const {max}=selectionBounds(group);
+  if(!group.allow_quantity)return count>0?1:(current.length<max?1:0);
+  return count+Math.max(0,max-current.length);
+}
+
 export function selectedOptions(groups:OptionGroup[],selections:Selection={}):ChosenOption[]{
   if(selections===null||typeof selections!=='object'||Array.isArray(selections))
     throw new Error('Personalização inválida.');
