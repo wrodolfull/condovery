@@ -16,6 +16,7 @@
     "cleanup:ads": "node --env-file=.env.local scripts/cleanup-ad-metrics.mjs",
     "cleanup:auth-security": "node --env-file=.env.local scripts/cleanup-auth-rate-events.mjs",
     "push:dispatch": "node --env-file=.env.local --import tsx scripts/dispatch-push.ts",
+    "push:worker": "node --env-file=.env.local --import tsx scripts/push-worker.ts",
     "push:diagnose": "node --env-file=.env.local --import tsx scripts/diagnose-push.ts",
     "security:preflight": "node --env-file=.env.local scripts/security-preflight.mjs"
   },

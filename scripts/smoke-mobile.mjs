@@ -338,6 +338,24 @@ try {
       body: draft,
     })
   ).data.quote;
+  // LISTEN/NOTIFY signals the persistent worker only after the delivery
+  // transaction commits, without making the checkout wait for Expo.
+  const listener=new pg.Client({
+    connectionString:process.env.DATABASE_URL,
+    ssl:process.env.DATABASE_SSL==="true"?{rejectUnauthorized:true}:false,
+  });
+  await listener.connect();
+  await listener.query("LISTEN elevadoor_push_ready");
+  let received=0;
+  const wakePromise=new Promise((resolve,reject)=>{
+    const timeout=setTimeout(()=>reject(new Error("No realtime push notification after new order")),5000);
+    listener.on("notification",msg=>{
+      if(msg.channel!=="elevadoor_push_ready")return;
+      received++;
+      clearTimeout(timeout);
+      resolve();
+    });
+  });
   const placed = (
     await request("orders", {
       token: buyer.token,
@@ -346,6 +364,12 @@ try {
       expected: 201,
     })
   ).data.order;
+  try {
+    await wakePromise;
+    assert.equal(received,1,"New order must notify the worker immediately after commit");
+  } finally {
+    await listener.end();
+  }
   const repeated = (
     await request("orders", {
       token: buyer.token,

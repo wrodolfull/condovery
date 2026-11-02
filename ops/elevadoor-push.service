@@ -1,0 +1,22 @@
+# Copy to /etc/systemd/system/elevadoor-push.service
+# Uses the same .env.local as manual npm run push:dispatch.
+# Adjust Node binary path if nvm changes version; keep only one scheduler.
+[Unit]
+Description=Elevadoor instant push notification worker
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/var/www/condovery
+ExecStart=/root/.nvm/versions/node/v22.23.3/bin/node --env-file=.env.local --import tsx scripts/push-worker.ts
+Restart=always
+RestartSec=5
+TimeoutStopSec=25
+StandardOutput=journal
+StandardError=journal
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

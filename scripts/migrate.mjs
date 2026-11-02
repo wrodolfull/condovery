@@ -85,6 +85,8 @@ try {
   await client.query(dataApiLockdown);
   const sellerNotificationEvents=await readFile(new URL('../db/044_seller_notification_events.sql',import.meta.url),'utf8');
   await client.query(sellerNotificationEvents);
+  const instantPushWakeup=await readFile(new URL('../db/045_instant_push_wakeup.sql',import.meta.url),'utf8');
+  await client.query(instantPushWakeup);
   console.log('Elevadoor database schema applied successfully.');
 } finally {
   await client.end();
