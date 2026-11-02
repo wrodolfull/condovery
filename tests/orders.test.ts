@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { BRL, normalizeWhatsApp, orderMessage, unitPrice, optionGroupsSchema, selectedOptions, extrasTotal, changeOptionSelection, previewExtrasTotal, arrivalInstructionOptions, toggleArrivalInstruction, validArrivalInstructions } from '../src/lib/orders';
+import { BRL, normalizeWhatsApp, orderMessage, unitPrice, optionGroupsSchema, selectedOptions, extrasTotal, changeOptionSelection, optionSelectionMax, previewExtrasTotal, arrivalInstructionOptions, toggleArrivalInstruction, validArrivalInstructions } from '../src/lib/orders';
 
 test('formats BRL cents without rounding mistakes',()=>assert.equal(BRL(3990),'R$ 39,90'));
 test('normalizes Brazilian WhatsApp numbers',()=>{
@@ -98,4 +98,41 @@ test('advanced groups enforce minimum, maximum, quantity extras and availability
   assert.throws(()=>selectedOptions(unavailable,{[extras]:[cheese]}),/não está mais disponível/);
   assert.equal(changeOptionSelection(unavailable[0],[],cheese,1).length,0);
   assert.equal(previewExtrasTotal(cfg,{[extras]:[cheese,cheese]}),600);
+});
+
+test('web addon steppers honor required minimum, total maximum and paid quantities',()=>{
+  const group=optionGroupsSchema.parse([{
+    id:'22222222-2222-4222-8222-222222222222',
+    name:'Acompanhamentos',required:true,multiple:true,min_select:1,max_select:5,allow_quantity:true,
+    options:[
+      {id:'33333333-3333-4333-8333-333333333333',name:'Granola',price_cents:0},
+      {id:'44444444-4444-4444-8444-444444444444',name:'Paçoca',price_cents:200},
+    ]
+  }])[0];
+  const granola=group.options[0].id, pacoca=group.options[1].id;
+  assert.throws(()=>selectedOptions([group],{}),/Selecione pelo menos 1/);
+  let chosen=[granola,granola,pacoca,pacoca];
+  assert.equal(optionSelectionMax(group,chosen,granola),3);
+  chosen=changeOptionSelection(group,chosen,granola,1);
+  assert.equal(chosen.length,5);
+  assert.equal(optionSelectionMax(group,chosen,pacoca),2);
+  assert.deepEqual(changeOptionSelection(group,chosen,pacoca,1),chosen);
+  assert.equal(previewExtrasTotal([group],{[group.id]:chosen}),400);
+  const unavailable={...group,options:[{...group.options[0],available:false},group.options[1]]};
+  assert.equal(optionSelectionMax(unavailable,[granola],granola),1);
+  assert.deepEqual(changeOptionSelection(unavailable,[granola],granola,-1),[]);
+  assert.equal(optionSelectionMax(unavailable,[],granola),0);
+});
+test('web single-choice options replace the prior selection while non-quantity checkboxes respect maximum',()=>{
+  const ids=['33333333-3333-4333-8333-333333333333','44444444-4444-4444-8444-444444444444'];
+  const group=optionGroupsSchema.parse([{
+    id:'22222222-2222-4222-8222-222222222222',
+    name:'Tamanho',required:true,multiple:false,
+    options:ids.map(id=>({id,name:'Opção',price_cents:0}))
+  }])[0];
+  assert.equal(optionSelectionMax(group,[ids[0]],ids[1]),1);
+  assert.deepEqual(changeOptionSelection(group,[ids[0]],ids[1],1),[ids[1]]);
+  const multiple={...group,multiple:true,required:false,max_select:1};
+  assert.equal(optionSelectionMax(multiple,[ids[0]],ids[1]),0);
+  assert.equal(optionSelectionMax(multiple,[ids[0]],ids[0]),1);
 });
