@@ -89,9 +89,11 @@ try{
     const affordance=await addHint.evaluate(el=>{
       const style=getComputedStyle(el);
       return {color:style.backgroundColor,radius:parseFloat(style.borderRadius),pointerEvents:style.pointerEvents,
+        borderWidth:style.borderWidth,boxShadow:style.boxShadow,
         parent:el.closest('button')?.className};
     });
     if(affordance.color!=='rgb(255, 207, 37)'||affordance.radius<8||
+       affordance.borderWidth!=='0px'||affordance.boxShadow!=='none'||
        affordance.pointerEvents!=='none'||affordance.parent!=='product-open')
       throw new Error('Product plus affordance inconsistent: '+JSON.stringify(affordance));
     if(await page.getByText('Produtos adicionados nos últimos 3 dias',{exact:true}).count())
