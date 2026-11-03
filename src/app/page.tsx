@@ -195,8 +195,11 @@ function ProductCard({p,onClick,favorite,onFavorite}:{p:Product;onClick:()=>void
   return <article className={'product-card'+(unavailable?' is-unavailable':'')+(closed?' is-shop-closed':'')}>
     {unavailable&&<span className="unavailable-tag">{closed?'Loja fechada':soldOut?'Esgotado':'Indisponível'}</span>}
     <button className="product-open" disabled={unavailable} onClick={onClick} aria-label={'Ver '+p.name}>
-      <ProductPicture src={p.image_url} name={p.name}/>
-      {p.promo_price_cents!=null&&<span className="card-offer">Oferta</span>}
+      <span className="product-card-media">
+        <ProductPicture src={p.image_url} name={p.name}/>
+        {p.promo_price_cents!=null&&<span className="card-offer">Oferta</span>}
+        {!unavailable&&<span className="product-card-add-hint" aria-hidden="true"><Plus size={22} strokeWidth={3}/></span>}
+      </span>
       <div className="product-meta"><span className="product-name">{p.name}</span><span className="muted ellipsis">{p.shop_name??''}</span>
         <div className="product-prices">{p.promo_price_cents!=null&&<del>{money(p.price_cents)}</del>}<strong>{money(price(p))}</strong></div>
       </div>
@@ -1464,7 +1467,7 @@ export default function Page(){
           </section>}
           {home.recentProducts.length>0&&<section className="new-arrivals-section" aria-label="Novidades por aqui">
             <div className="new-arrivals-head">
-              <div><h2>Novidades por aqui</h2><p>Produtos adicionados nos últimos 3 dias</p></div>
+              <div><h2>Novidades por aqui</h2></div>
               {home.recentProducts.length>3&&<div className="new-arrivals-nav">
                 <button type="button" aria-label="Ver novidades anteriores" onClick={()=>recentProductsTrackRef.current?.scrollBy({left:-Math.max(180,recentProductsTrackRef.current.clientWidth*.8),behavior:'smooth'})}><ArrowLeft size={18}/></button>
                 <button type="button" aria-label="Ver próximas novidades" onClick={()=>recentProductsTrackRef.current?.scrollBy({left:Math.max(180,recentProductsTrackRef.current.clientWidth*.8),behavior:'smooth'})}><ArrowRight size={18}/></button>
