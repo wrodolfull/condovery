@@ -84,10 +84,19 @@ export async function dispatchPush(transport: typeof fetch = fetch) {
       "AND s.user_id=dev.user_id AND u.condominium_id=n.condominium_id AND u.status='approved' AND c.is_active=true AND dev.disabled=false AND s.expires_at>now() " +
       "AND (n.kind<>'seller_reminder' OR EXISTS (SELECT 1 FROM orders o " +
       "WHERE o.id=n.target_id AND o.condominium_id=n.condominium_id AND o.status='confirmed')) " +
+      "AND (n.kind NOT IN ('discovery_shop','discovery_products','discovery_sunday') OR EXISTS ( " +
+      "SELECT 1 FROM discovery_campaign_rules r WHERE r.condominium_id=n.condominium_id AND r.enabled=true " +
+      "AND r.campaign=CASE n.kind WHEN 'discovery_shop' THEN 'new_shop' " +
+      "WHEN 'discovery_products' THEN 'new_products' ELSE 'sunday_food' END)) " +
+      "AND (n.kind<>'discovery_shop' OR EXISTS(SELECT 1 FROM shops sh WHERE sh.id=n.target_id " +
+      "AND sh.condominium_id=n.condominium_id AND sh.status='approved' AND sh.is_open=true)) " +
       "AND CASE n.kind WHEN 'condominium' THEN COALESCE(p.condominium,true) WHEN 'order' THEN COALESCE(p.orders,true) " +
       "WHEN 'seller_order' THEN COALESCE(p.seller_orders,true) " +
       "WHEN 'seller_review' THEN COALESCE(p.seller_orders,true) " +
       "WHEN 'seller_reminder' THEN COALESCE(p.seller_orders,true) " +
+      "WHEN 'discovery_shop' THEN COALESCE(p.discovery,false) " +
+      "WHEN 'discovery_products' THEN COALESCE(p.discovery,false) " +
+      "WHEN 'discovery_sunday' THEN COALESCE(p.discovery,false) " +
       "ELSE EXISTS(SELECT 1 FROM shop_push_subscriptions sub JOIN shops sh ON sh.id=sub.shop_id " +
       "WHERE sub.user_id=u.id AND sub.shop_id=n.target_id AND sub.condominium_id=n.condominium_id AND sh.status='approved') END))",
   );
