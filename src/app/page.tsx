@@ -1764,7 +1764,7 @@ export default function Page(){
             <Pill tone={o.status==='completed'?'green':o.status==='cancelled'?'neutral':'orange'}>{statusLabel[o.status]??o.status}</Pill></div>
           <p>{o.items.map(i=>i.quantity+'× '+i.name).join(' · ')}</p><OrderProgress status={o.status}/>
           {o.updated_at&&<p className="order-status-time">Última atualização: {new Date(o.updated_at).toLocaleString('pt-BR')}</p>}
-          {o.status==='cancelled'&&o.cancellation_reason&&<p className="order-cancel-reason"><strong>Motivo do cancelamento:</strong> {o.cancellation_reason}</p>
+          {o.status==='cancelled'&&o.cancellation_reason&&<p className="order-cancel-reason"><strong>Motivo do cancelamento:</strong> {o.cancellation_reason}</p>}
           <div className="order-bottom"><small>{new Date(o.created_at).toLocaleDateString('pt-BR')} · {o.fulfillment==='delivery'?'Entrega':'Retirada'}</small><strong>{money(o.total_cents)}</strong></div>
           {(o.status==='awaiting_confirmation'||o.status==='confirmed')&&
             <div className="order-contact"><p>{o.status==='awaiting_confirmation'?'Aguardando confirmação do vendedor.':'Confirmado pelo vendedor.'} Se precisar, reabra a conversa.</p>
