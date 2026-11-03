@@ -198,10 +198,12 @@ function ProductCard({p,onClick,favorite,onFavorite}:{p:Product;onClick:()=>void
       <div className="product-card-media">
         <ProductPicture src={p.image_url} name={p.name}/>
         {p.promo_price_cents!=null&&<span className="card-offer">Oferta</span>}
-        {!unavailable&&<span className="product-card-add-hint" aria-hidden="true"><Plus size={22} strokeWidth={3}/></span>}
       </div>
       <div className="product-meta"><span className="product-name">{p.name}</span><span className="muted ellipsis">{p.shop_name??''}</span>
-        <div className="product-prices">{p.promo_price_cents!=null&&<del>{money(p.price_cents)}</del>}<strong>{money(price(p))}</strong></div>
+        <div className="product-card-footer">
+          <div className="product-prices">{p.promo_price_cents!=null&&<del>{money(p.price_cents)}</del>}<strong>{money(price(p))}</strong></div>
+          {!unavailable&&<span className="product-card-add-hint" aria-hidden="true"><Plus size={22} strokeWidth={3}/></span>}
+        </div>
       </div>
     </button>
     <button disabled={closed} className={'favorite-heart'+(favorite?' is-favorite':'')} onClick={()=>onFavorite(p.id)} aria-label={favorite?'Remover dos favoritos':'Salvar nos favoritos'} aria-pressed={favorite}>
