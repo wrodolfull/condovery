@@ -5,6 +5,7 @@ import {IllustrationSlot} from '@/components/IllustrationSlot';
 import {AdsCarousel,type AdCampaign} from '@/components/AdsCarousel';
 import {PushComposer} from '@/components/PushComposer';
 import {NotificationsPanel,NotificationPreferencesPanel,type InboxNotice} from '@/components/NotificationsPanel';
+import {DiscoveryCampaignsAdmin} from '@/components/DiscoveryCampaignsAdmin';
 import {AdsAdmin} from '@/components/AdsAdmin';
 import {SellerInsights} from '@/components/SellerInsights';
 import {FairHomeTeaser,FairMarketplace,SellerFairs,AdminFairs} from '@/components/CommunityFairs';
@@ -431,6 +432,10 @@ export default function Page(){
     if(notice.kind==='order'){
       go('orders');
       void loadOrders(orderFilter).catch(fail);
+    }else if(notice.kind==='discovery_shop'&&notice.target_id){
+      void openShop(notice.target_id);
+    }else if(notice.kind==='discovery_products'||notice.kind==='discovery_sunday'){
+      setQuery('');setCategory('');go('categories');
     }else if(['seller_order','seller_reminder','seller_review'].includes(notice.kind)){
       setSellerTab(notice.kind==='seller_review'?'reviews':'orders');
       void loadMine().catch(fail);
@@ -2190,6 +2195,7 @@ export default function Page(){
       {view==='platform'&&viewer.is_superadmin&&<>
         <button className="back-link" onClick={()=>go('account')}><ArrowLeft size={18}/> Minha conta</button>
         <div className="page-title"><h1>Superadmin Elevadoor</h1><p>Gerencie os condomínios e alterne o ambiente administrado.</p></div>
+        <DiscoveryCampaignsAdmin key={viewer.condominium_id} tenantId={viewer.condominium_id} api={api}/>
         <nav className="management-tabs" aria-label="Seções do Superadmin">{([['condominiums','Condomínios'],['administrators','Administradores']] as const).map(([key,label])=><button type="button" key={key} className={platformTab===key?'selected':''} onClick={()=>setPlatformTab(key)}>{label}</button>)}</nav>
         {platformTab==='condominiums'&&<section className="admin-section white-panel"><h2>Criar condomínio</h2>
           <form className="form-stack" onSubmit={createTenant}>
