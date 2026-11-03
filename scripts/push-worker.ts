@@ -8,13 +8,16 @@
  */
 import { query, pool } from "../src/lib/db";
 import { dispatchPush } from "../src/server/push-dispatch";
+import {enqueueDueDiscoveryCampaigns} from "../src/server/discovery";
 
 const pollMs = 2_000;
 const maintenanceMs = 30_000;
+const discoveryCheckMs = 10 * 60_000;
 let stopping = false;
 let busy = false;
 let timer: ReturnType<typeof setInterval> | undefined;
 let lastMaintenance = 0;
+let lastDiscoveryCheck = 0;
 let consecutiveFailures = 0;
 
 function log(event: string, extra: Record<string, unknown> = {}) {
@@ -41,6 +44,11 @@ async function tick() {
         "WHERE state='pending' AND available_at<=now() LIMIT 1) AS ready",
       );
       if (!r.rows[0]?.ready) return;
+    }
+    if(maintenance && now-lastDiscoveryCheck>=discoveryCheckMs){
+      lastDiscoveryCheck=now;
+      const discovery=await enqueueDueDiscoveryCampaigns(new Date(now));
+      if(discovery.queued)log("discovery_campaigns_queued",discovery);
     }
     const result = await dispatchPush();
     if (result.sent || result.checked || result.reminders)
