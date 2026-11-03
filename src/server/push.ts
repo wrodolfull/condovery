@@ -4,9 +4,10 @@ import { z } from "zod";
 import { query, transaction } from "@/lib/db";
 import { bad } from "@/lib/api-error";
 import { sessionCredential, tokenHash, type Viewer } from "@/lib/auth";
+import {discoveryCampaigns,discoveryMessages} from "@/lib/discovery-campaigns";
 
 export type PushKind = "condominium" | "order" | "seller_order" |
-  "seller_review" | "seller_reminder";
+  "seller_review" | "seller_reminder" | "discovery_shop" | "discovery_products" | "discovery_sunday";
 const json = (value: unknown, status = 200) =>
   NextResponse.json(value, {
     status,
@@ -50,7 +51,10 @@ export async function enqueueNotice(tx: PoolClient, n: Notice) {
       "WHEN 'seller_order' THEN COALESCE(p.seller_orders,true) " +
       "WHEN 'seller_review' THEN COALESCE(p.seller_orders,true) " +
       "WHEN 'seller_reminder' THEN COALESCE(p.seller_orders,true) " +
-      "ELSE true END ON CONFLICT DO NOTHING",
+      "WHEN 'discovery_shop' THEN COALESCE(p.discovery,false) " +
+      "WHEN 'discovery_products' THEN COALESCE(p.discovery,false) " +
+      "WHEN 'discovery_sunday' THEN COALESCE(p.discovery,false) " +
+      "ELSE false END ON CONFLICT DO NOTHING",
     [r.rows[0].id, n.userId, n.condominiumId, n.kind],
   );
 }
@@ -223,6 +227,35 @@ export async function handlePushApi(
   parts: string[],
   u: Viewer,
 ): Promise<NextResponse | null> {
+  if(path==="platform/discovery-campaigns"){
+    if(!u.is_superadmin||u.status!=="approved")
+      bad("Acesso restrito ao superadmin.",403);
+    if(method==="GET"){
+      const r=await query<{campaign:string;enabled:boolean}>(
+        "SELECT campaign,enabled FROM discovery_campaign_rules WHERE condominium_id=$1",
+        [u.condominium_id]
+      );
+      return json({
+        campaigns:discoveryCampaigns.map(rule=>({
+          ...rule,enabled:r.rows.find(row=>row.campaign===rule.key)?.enabled??false,
+          variants:discoveryMessages(rule.key,rule.key==="new_shop"?"Loja da Vizinha":undefined),
+        })),
+      });
+    }
+    if(method==="PATCH"){
+      const b=z.object({
+        campaign:z.enum(["new_shop","new_products","sunday_food"]),
+        enabled:z.boolean(),
+      }).strict().parse(await req.json());
+      await query(
+        "INSERT INTO discovery_campaign_rules(condominium_id,campaign,enabled) VALUES($1,$2,$3) " +
+        "ON CONFLICT(condominium_id,campaign) DO UPDATE SET enabled=$3,updated_at=now()",
+        [u.condominium_id,b.campaign,b.enabled]
+      );
+      return json({ok:true});
+    }
+    bad("Método não permitido.",405);
+  }
   // Seller broadcasts are retired. Reject even old clients using the route.
   if (path === "shops/mine/push")
     bad("Avisos de lojas foram desativados.", 410);
@@ -349,7 +382,7 @@ export async function handlePushApi(
   if (path === "push/preferences") {
     if (method === "GET") {
       const r = await query(
-        "SELECT condominium,orders,seller_orders FROM push_preferences WHERE user_id=$1",
+        "SELECT condominium,orders,seller_orders,discovery FROM push_preferences WHERE user_id=$1",
         [u.id],
       );
       const seller = await query(
@@ -361,6 +394,7 @@ export async function handlePushApi(
           condominium: true,
           orders: true,
           seller_orders: true,
+          discovery: false,
         },
         is_seller: Boolean(seller.rowCount),
       });
@@ -371,12 +405,14 @@ export async function handlePushApi(
           condominium: z.boolean(),
           orders: z.boolean(),
           seller_orders: z.boolean(),
+          discovery: z.boolean().optional(),
         })
         .strict()
         .parse(await req.json());
       await query(
-        "INSERT INTO push_preferences(user_id,condominium,orders,seller_orders) VALUES($1,$2,$3,$4) ON CONFLICT(user_id) DO UPDATE SET condominium=$2,orders=$3,seller_orders=$4",
-        [u.id, b.condominium, b.orders, b.seller_orders],
+        "INSERT INTO push_preferences(user_id,condominium,orders,seller_orders,discovery) VALUES($1,$2,$3,$4,COALESCE($5,false)) " +
+        "ON CONFLICT(user_id) DO UPDATE SET condominium=$2,orders=$3,seller_orders=$4,discovery=COALESCE($5,push_preferences.discovery)",
+        [u.id,b.condominium,b.orders,b.seller_orders,b.discovery??null],
       );
       return json({ ok: true });
     }
