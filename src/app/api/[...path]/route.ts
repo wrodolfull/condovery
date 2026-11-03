@@ -34,6 +34,7 @@ import {isCommercialProductCategory,EXCLUSIVE_DESAPEGO_MESSAGE} from '@/lib/cate
 import {handleMobileAuth,passwordMember} from '@/server/mobile-auth';
 import {handlePushApi,enqueueNewOrder,enqueueOrderStatus,enqueueNewReview} from '@/server/push';
 import {handlePlatformGrowth} from '@/server/platform-growth';
+import {handlePlatformDiscoveryCampaigns} from '@/server/platform-discovery-campaigns';
 
 export const runtime='nodejs';
 export const dynamic='force-dynamic';
@@ -398,6 +399,8 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
   if(platformResponse)return platformResponse;
   const growthResponse=await handlePlatformGrowth(req,method,path,u);
   if(growthResponse)return growthResponse;
+  const discoveryResponse=await handlePlatformDiscoveryCampaigns(req,method,path,u);
+  if(discoveryResponse)return discoveryResponse;
   const insightsResponse=await handleSellerInsights(req,method,path,u);
   if(insightsResponse)return insightsResponse;
   const fairsResponse=await handleCommunityFairs(req,method,path,parts,u);
