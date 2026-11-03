@@ -693,6 +693,75 @@ try {
   assert.deepEqual(sellerAfterClear.notifications.map(n=>n.id),sellerBeforeClear.notifications.map(n=>n.id));
   assert.equal((await request("push/inbox",{token:activeBuyerToken,method:"DELETE"})).data.deleted,0);
   console.log("Scoped inbox clear-all and 10-item pagination PASS.");
+
+  // Marketing is opt-in only, controlled by the superadmin, and never
+  // crosses tenant boundaries. Clearing inbox must NOT reset frequency caps.
+  const defaultDiscovery=(await request("push/preferences",{token:activeBuyerToken})).data;
+  assert.equal(defaultDiscovery.preferences.discovery,false,"Existing residents must be opted out");
+  const rulesDefault=(await request("platform/discovery-campaigns",{cookie:admin})).data.campaigns;
+  assert.equal(rulesDefault.length,3);
+  assert.ok(rulesDefault.every(c=>c.enabled===false&&c.variants.length===2));
+  await request("platform/discovery-campaigns",{token:activeBuyerToken,expected:403});
+  await request("platform/discovery-campaigns",{
+    token:activeBuyerToken,method:"PATCH",
+    body:{campaign:"new_products",enabled:true},expected:403,
+  });
+  await request("push/devices",{
+    token:activeBuyerToken,method:"POST",body:{
+      installation_id:crypto.randomUUID(),
+      expo_token:"ExpoPushToken[discovery_"+tag.replaceAll("-","")+"]",
+      platform:"android",project_id:project,
+    },
+  });
+  // Explicit user consent, independently of operational messages.
+  await request("push/preferences",{
+    token:activeBuyerToken,method:"PATCH",
+    body:{condominium:false,orders:true,seller_orders:false,discovery:true},
+  });
+  assert.equal((await request("push/preferences",{token:activeBuyerToken})).data.preferences.discovery,true);
+  // Backwards-compatible old app PATCH should never reset a marketing opt-in.
+  await request("push/preferences",{
+    token:activeBuyerToken,method:"PATCH",
+    body:{condominium:false,orders:true,seller_orders:false},
+  });
+  assert.equal((await request("push/preferences",{token:activeBuyerToken})).data.preferences.discovery,true);
+  const {enqueueDueDiscoveryCampaigns}=await import("../src/server/discovery.ts");
+  const midday=new Date("2026-11-02T15:05:00Z");
+  assert.equal((await enqueueDueDiscoveryCampaigns(midday)).queued,0,"Disabled campaigns cannot notify");
+  await request("platform/discovery-campaigns",{
+    cookie:admin,method:"PATCH",body:{campaign:"new_products",enabled:true},
+  });
+  const marketingFirst=await enqueueDueDiscoveryCampaigns(midday);
+  assert.equal(marketingFirst.queued,1,"Only the opted-in buyer gets the discovery message");
+  const newNotice=(await request("push/inbox?limit=10",{token:activeBuyerToken})).data.notifications[0];
+  assert.equal(newNotice.kind,"discovery_products");
+  assert.match(newNotice.title,/novidade|nova/i);
+  assert.equal((await enqueueDueDiscoveryCampaigns(midday)).queued,0,"Replay cannot duplicate recipients");
+  assert.equal((await db.query(
+    "SELECT count(*)::int AS n FROM discovery_delivery_history WHERE user_id=$1",
+    [buyer.me.id],
+  )).rows[0].n,1);
+  await request("push/inbox",{token:activeBuyerToken,method:"DELETE"});
+  assert.equal((await enqueueDueDiscoveryCampaigns(midday)).queued,0,
+    "Inbox clearing cannot reset the promotional frequency cap");
+  await request("platform/discovery-campaigns",{
+    cookie:admin,method:"PATCH",body:{campaign:"sunday_food",enabled:true},
+  });
+  assert.equal((await enqueueDueDiscoveryCampaigns(new Date("2026-11-01T22:05:00Z"))).queued,0,
+    "48-hour cooldown blocks a different campaign in the same period");
+  await request("push/preferences",{
+    token:activeBuyerToken,method:"PATCH",
+    body:{condominium:false,orders:true,seller_orders:false,discovery:false},
+  });
+  assert.equal((await request("push/preferences",{token:activeBuyerToken})).data.preferences.discovery,false);
+  await request("platform/discovery-campaigns",{
+    cookie:admin,method:"PATCH",body:{campaign:"new_products",enabled:false},
+  });
+  await request("platform/discovery-campaigns",{
+    cookie:admin,method:"PATCH",body:{campaign:"sunday_food",enabled:false},
+  });
+  console.log("Opt-in discovery, three A/B previews, admin gating and durable caps PASS.");
+
   process.env.PUSH_ENABLED = "false";
   console.log(
     "Provider queue, receipts and invalid-device cleanup PASS (mock transport; no real push sent).",
