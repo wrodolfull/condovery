@@ -87,6 +87,8 @@ try {
   await client.query(sellerNotificationEvents);
   const instantPushWakeup=await readFile(new URL('../db/045_instant_push_wakeup.sql',import.meta.url),'utf8');
   await client.query(instantPushWakeup);
+  const orderCancellation=await readFile(new URL('../db/046_order_cancellation_reason.sql',import.meta.url),'utf8');
+  await client.query(orderCancellation);
   console.log('Elevadoor database schema applied successfully.');
 } finally {
   await client.end();
