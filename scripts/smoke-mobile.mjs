@@ -407,6 +407,42 @@ try {
   ));
 
 
+  // A cancellation reason must belong to the seller's order and be visible
+  // to the buyer on both API audiences, without creating a second status.
+  await request("orders/"+webPlaced.id,{
+    token:buyer.token,method:"PATCH",
+    body:{status:"cancelled",reason:"Produto indisponível"},expected:404,
+  });
+  await request("orders/"+webPlaced.id,{
+    token:seller.token,method:"PATCH",
+    body:{status:"cancelled",reason:"x"},expected:400,
+  });
+  await request("orders/"+webPlaced.id,{
+    token:seller.token,method:"PATCH",
+    body:{status:"confirmed",reason:"Motivo incorreto"},expected:400,
+  });
+  const cancelled=(await request("orders/"+webPlaced.id,{
+    token:seller.token,method:"PATCH",
+    body:{status:"cancelled",reason:"  Produto indisponível  "},
+  })).data.order;
+  assert.equal(cancelled.status,"cancelled");
+  assert.equal(cancelled.cancellation_reason,"Produto indisponível");
+  assert.ok(cancelled.updated_at);
+  const buyerCancelled=(await request("orders/"+webPlaced.id,{token:buyer.token})).data.order;
+  assert.equal(buyerCancelled.cancellation_reason,"Produto indisponível");
+  assert.equal(buyerCancelled.status,"cancelled");
+  assert.equal((await request("orders?scope=seller",{token:seller.token})).data.orders
+    .find(order=>order.id===webPlaced.id)?.cancellation_reason,"Produto indisponível");
+  await request("orders/"+webPlaced.id,{
+    token:seller.token,method:"PATCH",
+    body:{status:"cancelled",reason:"Novo motivo"},expected:400,
+  });
+  assert.equal((await db.query(
+    "SELECT count(*)::int AS n FROM push_notifications WHERE event_key=$1",
+    ["order-status:"+webPlaced.id+":cancelled"],
+  )).rows[0].n,1);
+
+
   // A seller can jump from a notification into an exact order page,
   // including old orders not present in the first paginated list.
   const ownerOrder=(await request("orders/"+placed.id,{token:seller.token})).data.order;

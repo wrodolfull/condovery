@@ -1496,3 +1496,22 @@ font-weight:750;padding:12px 20px;cursor:pointer}
   .seller-order-summary-top>strong{font-size:15px}
   .seller-order-summary-top .pill{font-size:10px}
 }
+
+/* Service conveniences on existing seller order cards; no extra order states. */
+.seller-order-tab-badge{display:inline-flex;align-items:center;justify-content:center;min-width:21px;height:21px;border-radius:50%;padding:2px 5px;background:var(--orange);color:#fff;font-size:11px;margin-left:4px}
+.seller-order-waiting{display:inline-flex;align-items:center;gap:6px;width:fit-content;color:#946026;background:#fff6e6;border:1px solid #f0d8b3;border-radius:10px;padding:6px 9px;font-weight:700;font-size:12px}
+.seller-order-status-time,.order-status-time{font-size:12px!important;color:var(--muted)!important;margin:5px 0}
+.order-cancel-reason{background:#fff4ed;border-radius:11px;padding:12px;margin:10px 0;font-size:13px;line-height:1.5}
+.seller-order-whatsapp{display:inline-flex;align-items:center;justify-content:center;gap:8px;width:fit-content;min-height:42px;padding:10px 13px;border-radius:13px;border:1px solid var(--line);background:#fffefa;color:var(--ink);text-decoration:none;font-size:13px;font-weight:800}
+.seller-order-whatsapp:hover{border-color:var(--orange)}
+.seller-cancel-overlay{position:fixed;inset:0;z-index:115;background:#0008;display:grid;place-items:center;padding:16px}
+.seller-cancel-dialog{display:grid;gap:13px;width:min(100%,450px);max-height:calc(100dvh - 32px);overflow:auto;background:#fffefa;border-radius:20px;padding:22px;box-shadow:0 15px 60px #0003}
+.seller-cancel-dialog h2{margin:0;font-size:22px}
+.seller-cancel-dialog p{font-size:13px;line-height:1.5;color:var(--muted);margin:0}
+.seller-cancel-dialog textarea{width:100%;max-width:100%}
+.seller-cancel-dialog>small{font-size:11px;color:var(--muted)}
+.seller-cancel-actions{display:flex;align-items:center;justify-content:flex-end;flex-wrap:wrap;gap:10px}
+.seller-cancel-actions button{min-height:42px}
+.seller-cancel-confirm{border:0;border-radius:12px;background:#b9402d;color:#fff;font-size:13px;font-weight:800;padding:10px 16px;cursor:pointer}
+.seller-cancel-confirm:disabled{opacity:.45;cursor:not-allowed}
+.seller-cancel-dialog :focus-visible{outline:2px solid var(--orange);outline-offset:2px}

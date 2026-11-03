@@ -28,6 +28,7 @@ import {towerLabels,currentTowerScheme,type TowerScheme} from '@/lib/towers';
 import {artwork,getCategoryArtwork} from '@/lib/artwork';
 import {unitsInCart,remainingToAdd,maxLineQuantity} from '@/lib/cart-stock';
 import {recommendStoreProducts} from '@/lib/cart-recommendations';
+import {sellerOrderNeedsAttention,sellerBuyerWhatsApp,SELLER_ORDER_WAIT_ALERT_MINUTES} from '@/lib/seller-order-service';
 import {sellerOrderSections,sellerOrderCounts,sellerOrdersInSection,type SellerOrderSection} from '@/lib/seller-order-sections';
 import {IMAGE_MIME_TYPES, imageSizeIsAllowed} from '@/lib/image-limits';
 import {selectedOptions, selectionBounds, changeOptionSelection, optionSelectionMax, previewExtrasTotal, arrivalInstructionOptions, toggleArrivalInstruction, type OptionGroup, type Selection} from '@/lib/orders';
@@ -43,7 +44,7 @@ type Viewer={id:string;condominium_id:string;name:string;email:string;phone:stri
 type Category={id:string;name:string;icon:string;is_active?:boolean};
 type Shop={id:string;slug:string;name:string;description:string;cover_image:string|null;logo_image:string|null;status?:string;is_open:boolean;delivery_enabled:boolean;delivery_fee_cents:number;pickup_enabled:boolean;lead_time:string;pickup_instructions?:string;whatsapp?:string;payment_methods:PaymentMethod[]};
 type Product={id:string;shop_id:string;shop_name?:string;is_open?:boolean;visibility:'available'|'unavailable'|'hidden';category_id:string;name:string;description:string;price_cents:number;promo_price_cents:number|null;image_url:string|null;stock:number|null;is_available?:boolean;lead_time?:string;is_featured?:boolean;option_groups?:OptionGroup[]};
-type Order={id:string;code:number;status:string;has_review?:boolean;can_review?:boolean;is_own_shop?:boolean;total_cents:number;shop_name:string;buyer_name:string;buyer_phone:string;tower:string;apartment:string;fulfillment:string;delivery_day:string|null;delivery_window:string;delivery_instructions:string[];note:string;subtotal_cents:number;delivery_fee_cents:number;payment_method?:PaymentMethod|null;items:{name:string;quantity:number;unit_price_cents:number;note:string;options?:{group:string;name:string;price_cents:number;quantity?:number}[]}[];created_at:string};
+type Order={id:string;code:number;status:string;updated_at?:string|null;cancellation_reason?:string|null;has_review?:boolean;can_review?:boolean;is_own_shop?:boolean;total_cents:number;shop_name:string;buyer_name:string;buyer_phone:string;tower:string;apartment:string;fulfillment:string;delivery_day:string|null;delivery_window:string;delivery_instructions:string[];note:string;subtotal_cents:number;delivery_fee_cents:number;payment_method?:PaymentMethod|null;items:{name:string;quantity:number;unit_price_cents:number;note:string;options?:{group:string;name:string;price_cents:number;quantity?:number}[]}[];created_at:string};
 type ReviewStatus='pending'|'approved'|'rejected';
 type PublicReview={id:string;rating:number;description:string;created_at:string};
 type ReviewSummary={average:number|null;count:number};
@@ -284,6 +285,8 @@ export default function Page(){
   const [sellerOrders,setSellerOrders]=useState<Order[]>([]);
   const [sellerOrderView,setSellerOrderView]=useState<SellerOrderSection>('new');
   const [expandedSellerOrder,setExpandedSellerOrder]=useState<string|null>(null);
+  const [cancelDialog,setCancelDialog]=useState<{id:string;code:number;reason:string}|null>(null);
+  const [sellerClock,setSellerClock]=useState(()=>Date.now());
   const [sellerOrdersCursor,setSellerOrdersCursor]=useState<string|null>(null);
   const [sellerOrdersLoadingMore,setSellerOrdersLoadingMore]=useState(false);
   const buyerOrdersRequest=useRef(0);
@@ -307,6 +310,11 @@ export default function Page(){
   const [tenantForm,setTenantForm]=useState({name:'',slug:'',invite_code:'',tower_scheme:'letters',tower_count:30,custom_domain:''});
   const [tenantAdmin,setTenantAdmin]=useState({condominium_id:'',name:'',email:'',password:''});
   const [sellerTab,setSellerTab]=useState<'orders'|'products'|'reviews'|'settings'|'insights'|'fairs'>('orders');
+  useEffect(()=>{
+    if(view!=='seller'||sellerTab!=='orders')return;
+    const tick=window.setInterval(()=>setSellerClock(Date.now()),60000);
+    return()=>window.clearInterval(tick);
+  },[view,sellerTab]);
   const [shopForm,setShopForm]=useState<ShopDraft>(blankShopDraft);
   const shopDraftScopeRef=useRef<string|null>(null);
   const shopDraftDirtyRef=useRef(false);
@@ -1088,9 +1096,10 @@ export default function Page(){
       setBusy(false);
     }
   }
-  async function updateStatus(id:string,status:string){
+  async function updateStatus(id:string,status:string,reason?:string){
     setBusy(true);try{
-      await api('orders/'+id,{method:'PATCH',body:payload({status})});
+      await api('orders/'+id,{method:'PATCH',body:payload({status,...(reason?{reason}:{})})});
+      if(status==='cancelled')setCancelDialog(null);
       await Promise.all([loadSellerOrders(),loadOrders(orderFilter),loadHome(),loadMine()]);
       notify('Pedido atualizado.');
     }catch(e){fail(e);}finally{setBusy(false);}
@@ -1754,6 +1763,8 @@ export default function Page(){
           <div className="order-top"><strong>#{o.code} · {o.shop_name}</strong>
             <Pill tone={o.status==='completed'?'green':o.status==='cancelled'?'neutral':'orange'}>{statusLabel[o.status]??o.status}</Pill></div>
           <p>{o.items.map(i=>i.quantity+'× '+i.name).join(' · ')}</p><OrderProgress status={o.status}/>
+          {o.updated_at&&<p className="order-status-time">Última atualização: {new Date(o.updated_at).toLocaleString('pt-BR')}</p>}
+          {o.status==='cancelled'&&o.cancellation_reason&&<p className="order-cancel-reason"><strong>Motivo do cancelamento:</strong> {o.cancellation_reason}</p>}
           <div className="order-bottom"><small>{new Date(o.created_at).toLocaleDateString('pt-BR')} · {o.fulfillment==='delivery'?'Entrega':'Retirada'}</small><strong>{money(o.total_cents)}</strong></div>
           {(o.status==='awaiting_confirmation'||o.status==='confirmed')&&
             <div className="order-contact"><p>{o.status==='awaiting_confirmation'?'Aguardando confirmação do vendedor.':'Confirmado pelo vendedor.'} Se precisar, reabra a conversa.</p>
@@ -1949,7 +1960,7 @@ export default function Page(){
           </div>}
           <div className="seller-metrics"><div><small>Aguardando (carregados)</small><strong>{sellerOrders.filter(o=>o.status==='awaiting_confirmation').length}</strong></div><div><small>Vendas concluídas (carregadas)</small><strong>{money(sellerOrders.filter(o=>o.status==='completed').reduce((n,o)=>n+o.total_cents,0))}</strong></div></div>
           <div className="seller-tabs">
-            <button className={sellerTab==='orders'?'active':''} onClick={()=>{setSellerTab('orders');loadSellerOrders().catch(fail);}}>Pedidos</button>
+            <button className={sellerTab==='orders'?'active':''} onClick={()=>{setSellerTab('orders');loadSellerOrders().catch(fail);}}>Pedidos {sellerOrders.some(o=>o.status==='awaiting_confirmation')&&<span className="seller-order-tab-badge" aria-label={sellerOrders.filter(o=>o.status==='awaiting_confirmation').length+' pedidos novos'}>{sellerOrders.filter(o=>o.status==='awaiting_confirmation').length}</span>}</button>
             <button className={sellerTab==='products'?'active':''} onClick={()=>setSellerTab('products')}>Produtos</button>
             <button className={sellerTab==='reviews'?'active':''} onClick={()=>{setSellerTab('reviews');loadSellerReviews().catch(fail);}}>
               Avaliações {sellerReviews.filter(r=>r.status==='pending').length>0&&
@@ -1979,12 +1990,15 @@ export default function Page(){
               {visible.length?<div className="order-list seller-compact-order-list">
                 {visible.map(o=>{
                   const expanded=expandedSellerOrder===o.id;
+                  const waiting=sellerOrderNeedsAttention(o,sellerClock);
+                  const buyerContact=sellerBuyerWhatsApp(o.buyer_phone,Number(o.code));
                   return <article className="order-card seller-compact-order" key={o.id}>
                     <button type="button" className="seller-order-summary"
                       aria-expanded={expanded} aria-label={(expanded?'Ocultar':'Ver')+' detalhes do pedido #'+o.code}
                       onClick={()=>setExpandedSellerOrder(old=>old===o.id?null:o.id)}>
                       <span className="seller-order-summary-top"><strong>Pedido #{o.code}</strong><Pill tone={o.status==='completed'?'green':'orange'}>{statusLabel[o.status]??o.status}</Pill></span>
                       <span className="seller-order-customer">{o.buyer_name} · {o.fulfillment==='delivery'?o.tower+' · Ap. '+o.apartment:'Retirada'}</span>
+                      {waiting&&<span className="seller-order-waiting" role="status"><Clock3 size={14}/> Aguardando confirmação há mais de {SELLER_ORDER_WAIT_ALERT_MINUTES} min</span>}
                       <span className="seller-order-preview">{o.items.slice(0,2).map(item=>item.quantity+'× '+item.name).join(' · ')}{o.items.length>2?' · +'+(o.items.length-2)+' item(ns)':''}</span>
                       <span className="seller-order-summary-bottom"><small>{new Date(o.created_at).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})}</small><strong>{money(o.total_cents)}</strong><span className="seller-order-detail-link">{expanded?'Ocultar detalhes':'Ver detalhes'}</span></span>
                     </button>
@@ -1996,6 +2010,11 @@ export default function Page(){
                         </button>
                       </div>}
                     {expanded&&<div className="seller-order-expanded">
+                      {o.updated_at&&<p className="seller-order-status-time">Status atualizado em {new Date(o.updated_at).toLocaleString('pt-BR')}</p>}
+                      {o.status==='cancelled'&&o.cancellation_reason&&<p><strong>Motivo do cancelamento:</strong> {o.cancellation_reason}</p>}
+                      {buyerContact&&<a className="seller-order-whatsapp" href={buyerContact} target="_blank" rel="noopener noreferrer">
+                        <MessageCircle size={17}/> Conversar com o comprador
+                      </a>}
                       <div className="seller-order-lines">{o.items.map((item,index)=><div key={index}>
                         <strong>{item.quantity}× {item.name} — {money(item.unit_price_cents*item.quantity)}</strong>
                         {item.options?.map((opt,i)=><small key={i}>{opt.group}: {opt.quantity&&opt.quantity>1?opt.quantity+'x ':''}{opt.name}{opt.price_cents>0?' (+'+money(opt.price_cents*(opt.quantity??1))+')':''}</small>)}
@@ -2011,7 +2030,7 @@ export default function Page(){
                         <strong>Subtotal {money(o.subtotal_cents??o.total_cents)} · Total {money(o.total_cents)}</strong>
                         {['awaiting_confirmation','confirmed'].includes(o.status)&&
                           <button type="button" className="danger-text" disabled={busy}
-                            onClick={()=>{if(window.confirm('Cancelar o pedido #'+o.code+'?'))void updateStatus(o.id,'cancelled');}}>Cancelar pedido</button>}
+                            onClick={()=>setCancelDialog({id:o.id,code:Number(o.code),reason:''})}>Cancelar pedido</button>}
                       </div>
                     </div>}
                   </article>;
@@ -2335,6 +2354,25 @@ export default function Page(){
 </section>}
         </>:<Empty title="Carregando administração" subtitle="Confira sua conexão e tente novamente." action="Recarregar" onAction={()=>loadAdmin().catch(fail)}/>}
       </>}
+      {cancelDialog&&<div className="seller-cancel-overlay" role="presentation">
+        <form className="seller-cancel-dialog" role="dialog" aria-modal="true" aria-labelledby="seller-cancel-title"
+          onSubmit={e=>{e.preventDefault();if(!busy&&cancelDialog.reason.trim().length>=3)void updateStatus(cancelDialog.id,'cancelled',cancelDialog.reason.trim());}}>
+          <h2 id="seller-cancel-title">Cancelar pedido #{cancelDialog.code}</h2>
+          <p>Informe o motivo para o comprador entender o cancelamento. Ele aparecerá no histórico do pedido.</p>
+          <label className="field-label">Motivo do cancelamento
+            <textarea required minLength={3} maxLength={200} rows={3} autoFocus
+              value={cancelDialog.reason} onChange={e=>setCancelDialog(old=>old?{...old,reason:e.target.value}:old)}
+              placeholder="Ex.: Produto indisponível"/>
+          </label>
+          <small>{cancelDialog.reason.length}/200 caracteres</small>
+          <div className="seller-cancel-actions">
+            <button type="button" className="outline-button" disabled={busy} onClick={()=>setCancelDialog(null)}>Voltar</button>
+            <button type="submit" className="seller-cancel-confirm" disabled={busy||cancelDialog.reason.trim().length<3}>
+              {busy?'Cancelando...':'Confirmar cancelamento'}
+            </button>
+          </div>
+        </form>
+      </div>}
       {reopenWhatsAppUrl&&<div className="share-fallback-overlay" role="presentation"
         onClick={()=>setReopenWhatsAppUrl(null)}>
         <section className="share-fallback-dialog" role="dialog" aria-modal="true"
