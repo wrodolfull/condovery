@@ -1574,3 +1574,22 @@ font-weight:750;padding:12px 20px;cursor:pointer}
   .platform-growth-meta span{font-size:11px}
   .platform-growth-periods button{padding:9px 12px}
 }
+
+
+/* The plus is a visual affordance inside the existing product-open button.
+   It intentionally navigates to product details instead of bypassing options
+   and inserting a product into the cart. */
+.product-card-media{display:block;position:relative;width:100%;flex:0 0 auto}
+.product-card-media .product-photo{width:100%}
+.product-card-add-hint{
+  position:absolute;right:10px;bottom:10px;
+  display:grid;place-items:center;width:40px;height:40px;
+  border-radius:12px;background:var(--yellow);color:var(--ink);
+  box-shadow:0 3px 12px rgba(36,27,13,.18),0 0 0 2px rgba(255,255,255,.92);
+  pointer-events:none;
+  transition:background .16s ease,transform .16s ease
+}
+.product-open:hover .product-card-add-hint{background:var(--yellow-hover)}
+.product-open:active .product-card-add-hint{transform:scale(.94)}
+@media(max-width:420px){.product-card-add-hint{width:38px;height:38px;right:9px;bottom:9px;border-radius:11px}}
+@media(prefers-reduced-motion:reduce){.product-card-add-hint{transition:none}}

@@ -82,6 +82,27 @@ try{
     const storeShortcut=page.getByRole('button',{name:'Minha loja / Quero vender',exact:true});
     await storeShortcut.waitFor({state:'visible'});
     await verify(page,'home',width);
+    // A decorated plus must live inside the existing product-open button, not
+    // introduce a nested button or bypass product customization on click.
+    const addHint=page.locator('.product-grid .product-card:not(.is-unavailable) .product-card-add-hint').first();
+    await addHint.waitFor({state:'visible'});
+    const affordance=await addHint.evaluate(el=>{
+      const style=getComputedStyle(el);
+      return {color:style.backgroundColor,radius:parseFloat(style.borderRadius),pointerEvents:style.pointerEvents,
+        parent:el.closest('button')?.className};
+    });
+    if(affordance.color!=='rgb(255, 207, 37)'||affordance.radius<8||
+       affordance.pointerEvents!=='none'||affordance.parent!=='product-open')
+      throw new Error('Product plus affordance inconsistent: '+JSON.stringify(affordance));
+    if(await page.getByText('Produtos adicionados nos últimos 3 dias',{exact:true}).count())
+      throw new Error('The Novidades por aqui subtitle should be removed');
+    await addHint.scrollIntoViewIfNeeded();
+    const hintBox=await addHint.boundingBox();
+    if(!hintBox)throw new Error('The plus overlay must be visible and tappable');
+    await page.mouse.click(hintBox.x+hintBox.width/2,hintBox.y+hintBox.height/2);
+    await page.locator('.product-detail').waitFor({state:'visible'});
+    await page.getByRole('button',{name:'Início Elevadoor'}).click();
+    await page.locator('.hero-banner').waitFor({state:'visible'});
     // Web inbox shares the same ten-at-a-time list and preferences as native.
     await page.getByRole('button',{name:'Notificações',exact:true}).click();
     await page.getByRole('heading',{name:'Notificações',exact:true}).waitFor({state:'visible'});
