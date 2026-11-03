@@ -1593,7 +1593,6 @@ font-weight:750;padding:12px 20px;cursor:pointer}
 .product-card-add-hint{
   display:grid;place-items:center;flex:0 0 auto;width:40px;height:40px;
   border-radius:12px;background:var(--yellow);color:var(--ink);
-  box-shadow:0 3px 12px rgba(36,27,13,.12);
   pointer-events:none;
   transition:background .16s ease,transform .16s ease
 }
