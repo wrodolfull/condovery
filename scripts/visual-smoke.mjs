@@ -98,7 +98,11 @@ try{
       throw new Error('The Novidades por aqui subtitle should be removed');
     await addHint.scrollIntoViewIfNeeded();
     const hintBox=await addHint.boundingBox();
-    if(!hintBox)throw new Error('The plus overlay must be visible and tappable');
+    const photoBox=await addHint.locator('xpath=ancestor::article[1]').locator('.product-card-media').boundingBox();
+    const priceBox=await addHint.locator('xpath=..').locator('.product-prices').boundingBox();
+    if(!hintBox||!photoBox||!priceBox)throw new Error('The price-footer plus must be visible and tappable');
+    if(hintBox.y<photoBox.y+photoBox.height-1||hintBox.x<priceBox.x+priceBox.width-1)
+      throw new Error('Product plus must sit below photo, to the right of the prices at '+width+'px');
     await page.mouse.click(hintBox.x+hintBox.width/2,hintBox.y+hintBox.height/2);
     await page.locator('.product-detail').waitFor({state:'visible'});
     await page.getByRole('button',{name:'Início Elevadoor'}).click();

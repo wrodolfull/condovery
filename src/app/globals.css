@@ -1576,20 +1576,28 @@ font-weight:750;padding:12px 20px;cursor:pointer}
 }
 
 
-/* The plus is a visual affordance inside the existing product-open button.
-   It intentionally navigates to product details instead of bypassing options
-   and inserting a product into the cart. */
+/* The plus sits in the card's white price footer, never over the product photo.
+   It remains part of the product-open button, preserving product customization. */
 .product-card-media{display:block;position:relative;width:100%;flex:0 0 auto}
 .product-card-media .product-photo{width:100%}
+.product-open .product-meta{flex:1}
+.product-card-footer{
+  display:flex;align-items:flex-end;justify-content:space-between;gap:8px;
+  margin-top:auto;padding-top:8px;width:100%
+}
+.product-card-footer .product-prices{
+  display:flex;flex:1 1 auto;min-width:0;flex-direction:column;
+  align-items:flex-start;justify-content:flex-end;gap:1px;margin-top:0
+}
+.product-card-footer .product-prices strong{line-height:1.3}
 .product-card-add-hint{
-  position:absolute;right:10px;bottom:10px;
-  display:grid;place-items:center;width:40px;height:40px;
+  display:grid;place-items:center;flex:0 0 auto;width:40px;height:40px;
   border-radius:12px;background:var(--yellow);color:var(--ink);
-  box-shadow:0 3px 12px rgba(36,27,13,.18),0 0 0 2px rgba(255,255,255,.92);
+  box-shadow:0 3px 12px rgba(36,27,13,.12);
   pointer-events:none;
   transition:background .16s ease,transform .16s ease
 }
 .product-open:hover .product-card-add-hint{background:var(--yellow-hover)}
 .product-open:active .product-card-add-hint{transform:scale(.94)}
-@media(max-width:420px){.product-card-add-hint{width:38px;height:38px;right:9px;bottom:9px;border-radius:11px}}
+@media(max-width:420px){.product-card-add-hint{width:38px;height:38px;border-radius:11px}}
 @media(prefers-reduced-motion:reduce){.product-card-add-hint{transition:none}}
