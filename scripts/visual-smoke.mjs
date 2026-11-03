@@ -98,7 +98,7 @@ try{
       throw new Error('The Novidades por aqui subtitle should be removed');
     await addHint.scrollIntoViewIfNeeded();
     const hintBox=await addHint.boundingBox();
-    const photoBox=await addHint.locator('xpath=ancestor::*[contains(@class,"product-card")][1]').locator('.product-card-media').boundingBox();
+    const photoBox=await addHint.locator('xpath=ancestor::article[1]').locator('.product-card-media').boundingBox();
     const priceBox=await addHint.locator('xpath=..').locator('.product-prices').boundingBox();
     if(!hintBox||!photoBox||!priceBox)throw new Error('The price-footer plus must be visible and tappable');
     if(hintBox.y<photoBox.y+photoBox.height-1||hintBox.x<priceBox.x+priceBox.width-1)
