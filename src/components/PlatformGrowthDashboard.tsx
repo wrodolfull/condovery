@@ -42,8 +42,7 @@ export function PlatformGrowthDashboard({api}:{api:Api}){
     let active=true;
     void api<PlatformGrowthReport>('platform/growth?period='+period)
       .then(result=>{if(active){setReports(old=>({...old,[period]:result}));setError('');}})
-      .catch(e=>{if(active)setError(e instanceof Error?e.message:'Não foi possível consultar os indicadores.');})
-);
+      .catch(e=>{if(active)setError(e instanceof Error?e.message:'Não foi possível consultar os indicadores.');});
     return()=>{active=false;};
   },[api,period,report]);
 
