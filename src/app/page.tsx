@@ -540,6 +540,11 @@ export default function Page(){
     setTenants(result.condominiums);
   },[]);
   useEffect(()=>{
+    // Administrators require the tenant selector; growth statistics do not.
+    if(view==='platform'&&platformTab==='administrators'&&viewer?.is_superadmin)
+      void loadTenants().catch(fail);
+  },[view,platformTab,viewer?.is_superadmin,loadTenants]);
+  useEffect(()=>{
     if(view!=='platform'||platformTab!=='condominiums'||!viewer?.is_superadmin)return;
     let active=true;
     const timer=setTimeout(()=>{
@@ -1819,7 +1824,7 @@ export default function Page(){
         <div className="account-shortcuts"><button onClick={()=>{loadMine();go('seller');}}><Store size={23}/><span><strong>{myShop?'Minha loja':'Quero vender'}</strong><small>{myShop?'Gerencie produtos e pedidos':'Crie sua loja e comece a vender'}</small></span><ChevronRight/></button><button onClick={()=>go('fairs')}><Gift size={23}/><span><strong>Feiras do condomínio</strong><small>Descubra ofertas temáticas dos vizinhos</small></span><ChevronRight/></button>
         <button onClick={()=>{loadOrders();go('orders');}}><Receipt size={23}/><span><strong>Meus pedidos</strong><small>Acompanhe suas compras</small></span><ChevronRight/></button>
         {viewer.role==='admin'&&<button onClick={()=>{loadAdmin();go('admin');}}><ShieldCheck size={23}/><span><strong>Administração</strong><small>Segurança e configurações</small></span><ChevronRight/></button>}
-        {viewer.is_superadmin&&<><button onClick={()=>{loadTenants();go('ads-admin');}}><Megaphone size={23}/><span><strong>Elevadoor ADS</strong><small>Campanhas e publicidade</small></span><ChevronRight/></button><button onClick={()=>{loadTenants();go('platform');}}><Building2 size={23}/><span><strong>Painel Superadmin</strong><small>Todos os condomínios</small></span><ChevronRight/></button></>}
+        {viewer.is_superadmin&&<><button onClick={()=>{loadTenants();go('ads-admin');}}><Megaphone size={23}/><span><strong>Elevadoor ADS</strong><small>Campanhas e publicidade</small></span><ChevronRight/></button><button onClick={()=>go('platform')}><Building2 size={23}/><span><strong>Painel Superadmin</strong><small>Todos os condomínios</small></span><ChevronRight/></button></>}
         <button onClick={()=>window.location.assign('/ajuda')}><CircleHelp size={23}/><span><strong>Central de Ajuda</strong><small>Tire dúvidas sobre compras, lojas e feiras</small></span><ChevronRight/></button>
         <button onClick={logout}><LogOut size={23}/><span><strong>Sair</strong><small>Encerrar sessão neste dispositivo</small></span><ChevronRight/></button>
         {viewer.role==='resident'&&<button className="delete-account-entry"
