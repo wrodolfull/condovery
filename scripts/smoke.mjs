@@ -82,6 +82,39 @@ const sellerLogin=await request('auth/login',{method:'POST',body:{email:sellerEm
 const buyerLogin=await request('auth/login',{method:'POST',body:{email:buyerEmail,password:pass}});
 const sellerCookie=sellerLogin.cookie, buyerCookie=buyerLogin.cookie;
 assert.ok(sellerCookie&&buyerCookie);
+// Discovery campaign settings are superadmin-only and follow the selected tenant.
+const campaignPath='platform/discovery-campaigns';
+const initialCampaigns=(await request(campaignPath,{cookie:adminCookie})).data.campaigns;
+assert.deepEqual(initialCampaigns.map(rule=>rule.key),['new_shop','new_products','sunday_food']);
+assert.ok(initialCampaigns.every(rule=>rule.enabled===false&&rule.variants.length===2));
+await request(campaignPath,{cookie:buyerCookie,expected:403});
+await request(campaignPath,{method:'PATCH',cookie:buyerCookie,expected:403,
+  body:{campaign:'new_shop',enabled:true}});
+await request(campaignPath,{method:'PATCH',cookie:adminCookie,expected:400,
+  body:{campaign:'not_a_campaign',enabled:true}});
+await request(campaignPath,{method:'PATCH',cookie:adminCookie,expected:400,
+  body:{campaign:'new_shop',enabled:'true'}});
+await request(campaignPath,{method:'PATCH',cookie:adminCookie,expected:400,
+  body:{campaign:'new_shop',enabled:true,condominium_id:newTenant.id}});
+await request(campaignPath,{method:'POST',cookie:adminCookie,expected:405,body:{}});
+await request(campaignPath,{method:'PATCH',cookie:adminCookie,
+  body:{campaign:'new_shop',enabled:true}});
+assert.equal((await request(campaignPath,{cookie:adminCookie})).data.campaigns[0].enabled,true);
+await request('platform/condominiums/switch',{method:'POST',cookie:adminCookie,
+  body:{condominium_id:newTenant.id}});
+assert.ok((await request(campaignPath,{cookie:adminCookie})).data.campaigns.every(rule=>!rule.enabled));
+await request(campaignPath,{method:'PATCH',cookie:adminCookie,
+  body:{campaign:'new_products',enabled:true}});
+assert.equal((await request(campaignPath,{cookie:adminCookie})).data.campaigns[1].enabled,true);
+await request('platform/condominiums/switch',{method:'POST',cookie:adminCookie,
+  body:{condominium_id:originalTenant}});
+const originalCampaigns=(await request(campaignPath,{cookie:adminCookie})).data.campaigns;
+assert.equal(originalCampaigns[0].enabled,true);
+assert.equal(originalCampaigns[1].enabled,false);
+await request(campaignPath,{method:'PATCH',cookie:adminCookie,
+  body:{campaign:'new_shop',enabled:false}});
+assert.ok((await request(campaignPath,{cookie:adminCookie})).data.campaigns.every(rule=>!rule.enabled));
+console.log('Platform discovery settings PASS: permissions, validation, defaults, persistence and tenant isolation.');
 // Hardened tenant directory: exact filtering, pagination, CSV and permissions.
 const buyerLookup=(await request('admin/directory?kind=users&search='+encodeURIComponent(buyerEmail),{cookie:adminCookie})).data;
 assert.equal(buyerLookup.total,1);
