@@ -28,6 +28,7 @@ import {towerLabels,currentTowerScheme,type TowerScheme} from '@/lib/towers';
 import {artwork,getCategoryArtwork} from '@/lib/artwork';
 import {unitsInCart,remainingToAdd,maxLineQuantity} from '@/lib/cart-stock';
 import {recommendStoreProducts} from '@/lib/cart-recommendations';
+import {sellerOrderSections,sellerOrderCounts,sellerOrdersInSection,type SellerOrderSection} from '@/lib/seller-order-sections';
 import {IMAGE_MIME_TYPES, imageSizeIsAllowed} from '@/lib/image-limits';
 import {selectedOptions, selectionBounds, changeOptionSelection, optionSelectionMax, previewExtrasTotal, arrivalInstructionOptions, toggleArrivalInstruction, type OptionGroup, type Selection} from '@/lib/orders';
 import {
@@ -281,6 +282,8 @@ export default function Page(){
   const buyerHistoryExpanded=useRef(false);
   const lastBuyerRefreshAt=useRef(0);
   const [sellerOrders,setSellerOrders]=useState<Order[]>([]);
+  const [sellerOrderView,setSellerOrderView]=useState<SellerOrderSection>('new');
+  const [expandedSellerOrder,setExpandedSellerOrder]=useState<string|null>(null);
   const [sellerOrdersCursor,setSellerOrdersCursor]=useState<string|null>(null);
   const [sellerOrdersLoadingMore,setSellerOrdersLoadingMore]=useState(false);
   const buyerOrdersRequest=useRef(0);
@@ -1959,26 +1962,71 @@ export default function Page(){
 
           {sellerTab==='insights'&&<SellerInsights condominiumId={viewer.condominium_id}/>}
           {sellerTab==='fairs'&&<SellerFairs condominiumId={viewer.condominium_id}/>}
-          {sellerTab==='orders'&&<>{sellerOrders.length?<div className="order-list">{sellerOrders.map(o=><article className="order-card" key={o.id}>
-            <div className="order-top"><strong>Pedido #{o.code}</strong><Pill tone={o.status==='completed'?'green':'orange'}>{statusLabel[o.status]??o.status}</Pill></div>
-            <p><strong>{o.buyer_name}</strong> · {o.fulfillment==='delivery'?o.tower+' · Ap. '+o.apartment:'Retirada'}</p>
-            <div className="seller-order-lines">{o.items.map((item,index)=><div key={index}>
-              <strong>{item.quantity}× {item.name} — {money(item.unit_price_cents*item.quantity)}</strong>
-              {item.options?.map((opt,i)=><small key={i}>{opt.group}: {opt.quantity&&opt.quantity>1?opt.quantity+'x ':''}{opt.name}{opt.price_cents>0?' (+'+money(opt.price_cents*(opt.quantity??1))+')':''}</small>)}
-              {item.note&&<small>Obs. do produto: {item.note}</small>}
-            </div>)}</div>
-            {o.payment_method&&<p>Pagamento: {PAYMENT_LABELS[o.payment_method]}</p>}
-             {o.fulfillment==='delivery'&&<p>Entrega: {o.tower} · Ap. {o.apartment} · Taxa: {money(o.delivery_fee_cents??0)}</p>}
-            {o.delivery_day&&<p>Data: {String(o.delivery_day).slice(0,10)}</p>}{o.delivery_window&&<p>Preferência: {o.delivery_window}</p>}
-            {o.note&&<p>Observação: {o.note}</p>}{o.delivery_instructions?.length>0&&<p>Instruções: {o.delivery_instructions.join(', ')}</p>}
-            <div className="order-bottom"><strong>Subtotal {money(o.subtotal_cents??o.total_cents)} · Total {money(o.total_cents)}</strong><div className="inline-actions">{o.status==='awaiting_confirmation'&&<><button disabled={busy} onClick={()=>updateStatus(o.id,'confirmed')}>Confirmar</button><button className="danger-text" disabled={busy} onClick={()=>updateStatus(o.id,'cancelled')}>Cancelar</button></>}
-              {o.status==='confirmed'&&<><button disabled={busy} onClick={()=>updateStatus(o.id,'completed')}>Concluir</button><button className="danger-text" disabled={busy} onClick={()=>updateStatus(o.id,'cancelled')}>Cancelar</button></>}</div></div>
-          </article>)}</div>:<Empty title="Sem pedidos ainda" subtitle="Quando moradores comprarem na sua loja, os pedidos aparecerão aqui."/>}
-          {!!sellerOrdersCursor&&<div className="orders-pagination"><button className="outline-button" type="button" disabled={sellerOrdersLoadingMore||busy} onClick={async()=>{
-            setSellerOrdersLoadingMore(true);
-            try{await loadSellerOrders(sellerOrdersCursor);}catch(e){fail(e);}finally{setSellerOrdersLoadingMore(false);}
-          }}>{sellerOrdersLoadingMore?'Carregando pedidos...':'Ver pedidos anteriores'}</button></div>}
-          </>}
+          {sellerTab==='orders'&&(()=>{
+            const counts=sellerOrderCounts(sellerOrders);
+            const visible=sellerOrdersInSection(sellerOrders,sellerOrderView);
+            return <>
+              <div className="seller-order-sections" role="tablist" aria-label="Etapa dos pedidos">
+                {sellerOrderSections.map(section=>
+                  <button key={section.key} type="button" role="tab"
+                    aria-selected={sellerOrderView===section.key}
+                    className={sellerOrderView===section.key?'active':''}
+                    onClick={()=>{setSellerOrderView(section.key);setExpandedSellerOrder(null);}}>
+                    {section.label} <span className="seller-order-count">{counts[section.key]}</span>
+                  </button>)}
+              </div>
+              <p className="seller-orders-count-note">Quantidades dos pedidos carregados.</p>
+              {visible.length?<div className="order-list seller-compact-order-list">
+                {visible.map(o=>{
+                  const expanded=expandedSellerOrder===o.id;
+                  return <article className="order-card seller-compact-order" key={o.id}>
+                    <button type="button" className="seller-order-summary"
+                      aria-expanded={expanded} aria-label={(expanded?'Ocultar':'Ver')+' detalhes do pedido #'+o.code}
+                      onClick={()=>setExpandedSellerOrder(old=>old===o.id?null:o.id)}>
+                      <span className="seller-order-summary-top"><strong>Pedido #{o.code}</strong><Pill tone={o.status==='completed'?'green':'orange'}>{statusLabel[o.status]??o.status}</Pill></span>
+                      <span className="seller-order-customer">{o.buyer_name} · {o.fulfillment==='delivery'?o.tower+' · Ap. '+o.apartment:'Retirada'}</span>
+                      <span className="seller-order-preview">{o.items.slice(0,2).map(item=>item.quantity+'× '+item.name).join(' · ')}{o.items.length>2?' · +'+(o.items.length-2)+' item(ns)':''}</span>
+                      <span className="seller-order-summary-bottom"><small>{new Date(o.created_at).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})}</small><strong>{money(o.total_cents)}</strong><span className="seller-order-detail-link">{expanded?'Ocultar detalhes':'Ver detalhes'}</span></span>
+                    </button>
+                    {['awaiting_confirmation','confirmed'].includes(o.status)&&
+                      <div className="seller-order-quick-actions">
+                        <button type="button" disabled={busy} className="mini-primary"
+                          onClick={()=>void updateStatus(o.id,o.status==='awaiting_confirmation'?'confirmed':'completed')}>
+                          {o.status==='awaiting_confirmation'?'Confirmar pedido':'Concluir pedido'}
+                        </button>
+                      </div>}
+                    {expanded&&<div className="seller-order-expanded">
+                      <div className="seller-order-lines">{o.items.map((item,index)=><div key={index}>
+                        <strong>{item.quantity}× {item.name} — {money(item.unit_price_cents*item.quantity)}</strong>
+                        {item.options?.map((opt,i)=><small key={i}>{opt.group}: {opt.quantity&&opt.quantity>1?opt.quantity+'x ':''}{opt.name}{opt.price_cents>0?' (+'+money(opt.price_cents*(opt.quantity??1))+')':''}</small>)}
+                        {item.note&&<small>Obs. do produto: {item.note}</small>}
+                      </div>)}</div>
+                      {o.payment_method&&<p>Pagamento: {PAYMENT_LABELS[o.payment_method]}</p>}
+                      {o.fulfillment==='delivery'&&<p>Entrega: {o.tower} · Ap. {o.apartment} · Taxa: {money(o.delivery_fee_cents??0)}</p>}
+                      {o.delivery_day&&<p>Data: {String(o.delivery_day).slice(0,10)}</p>}
+                      {o.delivery_window&&<p>Preferência: {o.delivery_window}</p>}
+                      {o.note&&<p>Observação: {o.note}</p>}
+                      {o.delivery_instructions?.length>0&&<p>Instruções: {o.delivery_instructions.join(', ')}</p>}
+                      <div className="seller-order-expanded-footer">
+                        <strong>Subtotal {money(o.subtotal_cents??o.total_cents)} · Total {money(o.total_cents)}</strong>
+                        {['awaiting_confirmation','confirmed'].includes(o.status)&&
+                          <button type="button" className="danger-text" disabled={busy}
+                            onClick={()=>{if(window.confirm('Cancelar o pedido #'+o.code+'?'))void updateStatus(o.id,'cancelled');}}>Cancelar pedido</button>}
+                      </div>
+                    </div>}
+                  </article>;
+                })}
+              </div>:<Empty title="Nenhum pedido nesta etapa"
+                subtitle={sellerOrderView==='new'?'Os novos pedidos aparecerão aqui.':sellerOrderView==='ongoing'?'Pedidos confirmados aparecerão aqui.':'Pedidos concluídos e cancelados aparecerão aqui.'}/>}
+              {!!sellerOrdersCursor&&<div className="orders-pagination">
+                <button className="outline-button" type="button" disabled={sellerOrdersLoadingMore||busy}
+                  onClick={async()=>{
+                    setSellerOrdersLoadingMore(true);
+                    try{await loadSellerOrders(sellerOrdersCursor);}catch(e){fail(e);}finally{setSellerOrdersLoadingMore(false);}
+                  }}>{sellerOrdersLoadingMore?'Carregando pedidos...':'Ver pedidos anteriores'}</button>
+              </div>}
+            </>;
+          })()}
           {sellerTab==='reviews'&&<>
             <div className="section-heading"><h2>Moderar avaliações</h2></div>
             <p className="muted moderation-help">Somente avaliações de compras concluídas entram nesta lista. Apenas as aprovadas aparecem publicamente e contam para a média da loja.</p>
