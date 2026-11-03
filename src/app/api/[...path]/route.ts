@@ -33,6 +33,7 @@ import {availableForNewOrders,buyerAvailableStockSQL} from '@/lib/pending-stock'
 import {isCommercialProductCategory,EXCLUSIVE_DESAPEGO_MESSAGE} from '@/lib/category-purpose';
 import {handleMobileAuth,passwordMember} from '@/server/mobile-auth';
 import {handlePushApi,enqueueNewOrder,enqueueOrderStatus,enqueueNewReview} from '@/server/push';
+import {handlePlatformGrowth} from '@/server/platform-growth';
 
 export const runtime='nodejs';
 export const dynamic='force-dynamic';
@@ -395,6 +396,8 @@ async function processApi({req,method,parts}:Args):Promise<NextResponse> {
   if(adminDirectory)return adminDirectory;
   const platformResponse=await handlePlatformCondominiums(req,method,path,u);
   if(platformResponse)return platformResponse;
+  const growthResponse=await handlePlatformGrowth(req,method,path,u);
+  if(growthResponse)return growthResponse;
   const insightsResponse=await handleSellerInsights(req,method,path,u);
   if(insightsResponse)return insightsResponse;
   const fairsResponse=await handleCommunityFairs(req,method,path,parts,u);
