@@ -6,6 +6,7 @@ import {AdsCarousel,type AdCampaign} from '@/components/AdsCarousel';
 import {PushComposer} from '@/components/PushComposer';
 import {NotificationsPanel,NotificationPreferencesPanel,type InboxNotice} from '@/components/NotificationsPanel';
 import {DiscoveryCampaignsAdmin} from '@/components/DiscoveryCampaignsAdmin';
+import {PlatformGrowthDashboard} from '@/components/PlatformGrowthDashboard';
 import {AdsAdmin} from '@/components/AdsAdmin';
 import {SellerInsights} from '@/components/SellerInsights';
 import {FairHomeTeaser,FairMarketplace,SellerFairs,AdminFairs} from '@/components/CommunityFairs';
@@ -295,7 +296,7 @@ export default function Page(){
   const [cropRequest,setCropRequest]=useState<{file:File;kind:ImageKind}|null>(null);
   const [myProducts,setMyProducts]=useState<Product[]>([]);
   const [adminTab,setAdminTab]=useState<'overview'|'residents'|'shops'|'fairs'|'categories'|'settings'|'reports'>('overview');
-  const [platformTab,setPlatformTab]=useState<'condominiums'|'administrators'>('condominiums');
+  const [platformTab,setPlatformTab]=useState<'growth'|'condominiums'|'administrators'|'campaigns'>('growth');
   const [tenantPage,setTenantPage]=useState(0);
   const [tenantSearch,setTenantSearch]=useState('');
   const [tenantList,setTenantList]=useState<Tenant[]>([]);
@@ -538,6 +539,11 @@ export default function Page(){
     const result=await api<{condominiums:Tenant[]}>('platform/condominiums?mode=options');
     setTenants(result.condominiums);
   },[]);
+  useEffect(()=>{
+    // Administrators require the tenant selector; growth statistics do not.
+    if(view==='platform'&&platformTab==='administrators'&&viewer?.is_superadmin)
+      void loadTenants().catch(fail);
+  },[view,platformTab,viewer?.is_superadmin,loadTenants]);
   useEffect(()=>{
     if(view!=='platform'||platformTab!=='condominiums'||!viewer?.is_superadmin)return;
     let active=true;
@@ -1818,7 +1824,7 @@ export default function Page(){
         <div className="account-shortcuts"><button onClick={()=>{loadMine();go('seller');}}><Store size={23}/><span><strong>{myShop?'Minha loja':'Quero vender'}</strong><small>{myShop?'Gerencie produtos e pedidos':'Crie sua loja e comece a vender'}</small></span><ChevronRight/></button><button onClick={()=>go('fairs')}><Gift size={23}/><span><strong>Feiras do condomínio</strong><small>Descubra ofertas temáticas dos vizinhos</small></span><ChevronRight/></button>
         <button onClick={()=>{loadOrders();go('orders');}}><Receipt size={23}/><span><strong>Meus pedidos</strong><small>Acompanhe suas compras</small></span><ChevronRight/></button>
         {viewer.role==='admin'&&<button onClick={()=>{loadAdmin();go('admin');}}><ShieldCheck size={23}/><span><strong>Administração</strong><small>Segurança e configurações</small></span><ChevronRight/></button>}
-        {viewer.is_superadmin&&<><button onClick={()=>{loadTenants();go('ads-admin');}}><Megaphone size={23}/><span><strong>Elevadoor ADS</strong><small>Campanhas e publicidade</small></span><ChevronRight/></button><button onClick={()=>{loadTenants();go('platform');}}><Building2 size={23}/><span><strong>Painel Superadmin</strong><small>Todos os condomínios</small></span><ChevronRight/></button></>}
+        {viewer.is_superadmin&&<><button onClick={()=>{loadTenants();go('ads-admin');}}><Megaphone size={23}/><span><strong>Elevadoor ADS</strong><small>Campanhas e publicidade</small></span><ChevronRight/></button><button onClick={()=>go('platform')}><Building2 size={23}/><span><strong>Painel Superadmin</strong><small>Todos os condomínios</small></span><ChevronRight/></button></>}
         <button onClick={()=>window.location.assign('/ajuda')}><CircleHelp size={23}/><span><strong>Central de Ajuda</strong><small>Tire dúvidas sobre compras, lojas e feiras</small></span><ChevronRight/></button>
         <button onClick={logout}><LogOut size={23}/><span><strong>Sair</strong><small>Encerrar sessão neste dispositivo</small></span><ChevronRight/></button>
         {viewer.role==='resident'&&<button className="delete-account-entry"
@@ -2195,8 +2201,10 @@ export default function Page(){
       {view==='platform'&&viewer.is_superadmin&&<>
         <button className="back-link" onClick={()=>go('account')}><ArrowLeft size={18}/> Minha conta</button>
         <div className="page-title"><h1>Superadmin Elevadoor</h1><p>Gerencie os condomínios e alterne o ambiente administrado.</p></div>
-        <DiscoveryCampaignsAdmin key={viewer.condominium_id} tenantId={viewer.condominium_id} api={api}/>
-        <nav className="management-tabs" aria-label="Seções do Superadmin">{([['condominiums','Condomínios'],['administrators','Administradores']] as const).map(([key,label])=><button type="button" key={key} className={platformTab===key?'selected':''} onClick={()=>setPlatformTab(key)}>{label}</button>)}</nav>
+        <nav className="management-tabs platform-growth-tabs" aria-label="Seções do Superadmin">{([['growth','Crescimento'],['condominiums','Condomínios'],['administrators','Administradores'],['campaigns','Campanhas']] as const).map(([key,label])=><button type="button" key={key} className={platformTab===key?'selected':''} onClick={()=>setPlatformTab(key)}>{label}</button>)}</nav>
+        {platformTab==='growth'&&<PlatformGrowthDashboard api={api}/>}
+        {platformTab==='campaigns'&&<DiscoveryCampaignsAdmin key={viewer.condominium_id} tenantId={viewer.condominium_id} api={api}/>}
+
         {platformTab==='condominiums'&&<section className="admin-section white-panel"><h2>Criar condomínio</h2>
           <form className="form-stack" onSubmit={createTenant}>
             <label>Nome<input required minLength={3} maxLength={100} value={tenantForm.name}

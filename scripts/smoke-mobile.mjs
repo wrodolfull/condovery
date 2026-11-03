@@ -762,6 +762,50 @@ try {
   });
   console.log("Opt-in discovery, three A/B previews, admin gating and durable caps PASS.");
 
+
+  // Global ranking is exclusively superadmin and based on completed orders,
+  // never a computed number for each tenant through repeated HTTP requests.
+  await request("platform/growth",{token:seller.token,expected:403});
+  await request("platform/growth",{cookie:seller.cookie,expected:403});
+  await request("platform/growth?period=42",{cookie:admin,expected:400});
+  await request("platform/growth?period=7&refresh=0",{cookie:admin,expected:400});
+  const growth=(await request("platform/growth?period=all",{cookie:admin})).data;
+  assert.equal(growth.period,"all");
+  assert.ok(growth.ranking.length<=30);
+  assert.ok(growth.ranking.every((row,index)=>row.rank===index+1));
+  assert.ok(growth.ranking.every((row,index)=>
+    index===0||BigInt(growth.ranking[index-1].completed_cents)>=BigInt(row.completed_cents)
+  ));
+  const totals=(await db.query(
+    "SELECT (SELECT count(*)::int FROM condominiums) AS condos, " +
+    "(SELECT coalesce(sum(total_cents),0)::bigint FROM orders WHERE status='completed') AS completed_cents"
+  )).rows[0];
+  assert.equal(growth.summary.condominiums,totals.condos);
+  assert.equal(growth.summary.completed_cents,String(totals.completed_cents));
+  assert.equal(growth.summary.new_residents>=2,true);
+  assert.ok(growth.note.includes("não pagamentos confirmados"));
+  const fixtureRank=growth.ranking.find(row=>row.id===fixture.id);
+  assert.ok(fixtureRank,"New condominium must appear in the global rank");
+  const fixtureTotal=(await db.query(
+    "SELECT coalesce(sum(total_cents),0)::bigint AS cents,count(*)::int AS n FROM orders "+
+    "WHERE condominium_id=$1 AND status='completed'",[fixture.id]
+  )).rows[0];
+  assert.equal(fixtureRank.completed_cents,String(fixtureTotal.cents));
+  assert.equal(fixtureRank.completed_orders,fixtureTotal.n);
+  const cachedGrowth=(await request("platform/growth?period=all",{cookie:admin})).data;
+  assert.equal(cachedGrowth.generated_at,growth.generated_at,
+    "Repeated consultation must use the same two-minute server cache");
+  const tooSoon=(await request("platform/growth?period=all&refresh=1",{cookie:admin})).data;
+  assert.equal(tooSoon.generated_at,growth.generated_at,
+    "Manual refresh cannot trigger a second expensive aggregate inside 60 seconds");
+  for(const period of ["7","30","90"]){
+    const result=(await request("platform/growth?period="+period,{cookie:admin})).data;
+    assert.equal(String(result.period),period);
+    assert.ok(result.summary.completed_orders>=0);
+    assert.ok(result.summary.new_residents>=0);
+  }
+  console.log("Superadmin-only growth KPIs, ranked historical values and cache cooldown PASS.");
+
   process.env.PUSH_ENABLED = "false";
   console.log(
     "Provider queue, receipts and invalid-device cleanup PASS (mock transport; no real push sent).",
