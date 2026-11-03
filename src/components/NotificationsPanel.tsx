@@ -10,7 +10,7 @@ export type InboxNotice={
 type Api=<T>(path:string,options?:RequestInit)=>Promise<T>;
 type InboxResult={notifications:InboxNotice[];hasMore:boolean};
 type PreferencesResult={preferences:{
-  condominium:boolean;orders:boolean;seller_orders:boolean;
+  condominium:boolean;orders:boolean;seller_orders:boolean;discovery:boolean;
 };is_seller:boolean};
 
 export function NotificationsPanel({api,scope,onUnreadChange,onOpen,onPreferences}:{
@@ -129,6 +129,7 @@ export function NotificationPreferencesPanel({api,scope}:{
     {key:'condominium',label:'Avisos do condomínio'},
     {key:'orders',label:'Atualizações dos meus pedidos'},
     {key:'seller_orders',label:'Pedidos, avaliações e pendências da minha loja'},
+    {key:'discovery',label:'Novidades e descobertas da vizinhança (opcional)'},
   ];
   return <section className="notification-page">
     <h1>Fique por dentro da vizinhança</h1>
@@ -138,7 +139,7 @@ export function NotificationPreferencesPanel({api,scope}:{
     {data&&<div className="notification-preference-list">
       {options.filter(o=>o.key!=='seller_orders'||data.is_seller).map(option=>
         <button key={option.key} type="button" className="notification-preference"
-          role="switch" aria-checked={data.preferences[option.key]}
+          role="switch" aria-checked={data.preferences[option.key]??false}
           aria-label={option.label} disabled={saving}
           onClick={()=>void change(option.key)}>
           <span>{option.label}</span>
