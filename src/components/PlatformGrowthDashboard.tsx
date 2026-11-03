@@ -14,8 +14,8 @@ const dateTime=(value:string)=>new Intl.DateTimeFormat('pt-BR',{
 }).format(new Date(value));
 function money(cents:string):string{
   const value=BigInt(cents||'0');
-  const integer=new Intl.NumberFormat('pt-BR').format(value/100n);
-  return 'R$ '+integer+','+(value%100n).toString().padStart(2,'0');
+  const integer=new Intl.NumberFormat('pt-BR').format(value/BigInt(100));
+  return 'R$ '+integer+','+(value%BigInt(100)).toString().padStart(2,'0');
 }
 function change(current:number,previous:number,period:GrowthPeriod){
   if(period==='all')return 'Acumulado histórico';
@@ -25,13 +25,12 @@ function change(current:number,previous:number,period:GrowthPeriod){
 }
 function ratio(cents:string,maximum:string):number{
   const max=BigInt(maximum||'0');
-  return max>0n?Number(BigInt(cents||'0')*1000n/max)/10:0;
+  return max>BigInt(0)?Number(BigInt(cents||'0')*BigInt(1000)/max)/10:0;
 }
 
 export function PlatformGrowthDashboard({api}:{api:Api}){
   const [period,setPeriod]=useState<GrowthPeriod>(30);
   const [reports,setReports]=useState<Partial<Record<GrowthPeriod,PlatformGrowthReport>>>({});
-  const [loading,setLoading]=useState(false);
   const [refreshing,setRefreshing]=useState(false);
   const [error,setError]=useState('');
   const report=reports[period];
@@ -44,12 +43,12 @@ export function PlatformGrowthDashboard({api}:{api:Api}){
     void api<PlatformGrowthReport>('platform/growth?period='+period)
       .then(result=>{if(active){setReports(old=>({...old,[period]:result}));setError('');}})
       .catch(e=>{if(active)setError(e instanceof Error?e.message:'Não foi possível consultar os indicadores.');})
-      .finally(()=>{if(active)setLoading(false);});
+);
     return()=>{active=false;};
   },[api,period,report]);
 
   async function refresh(){
-    if(refreshing||loading)return;
+    if(refreshing||!report)return;
     setRefreshing(true);setError('');
     try{
       const result=await api<PlatformGrowthReport>('platform/growth?period='+period+'&refresh=1');
@@ -74,7 +73,7 @@ export function PlatformGrowthDashboard({api}:{api:Api}){
     <div className="platform-growth-heading">
       <div><h2><BarChart3 size={22}/> Evolução do Elevadoor</h2>
         <p>Indicadores de todos os condomínios, com ranking por valor dos pedidos concluídos.</p></div>
-      <button type="button" className="outline-button" disabled={refreshing||loading||!report}
+      <button type="button" className="outline-button" disabled={refreshing||!report}
         aria-label="Atualizar indicadores de crescimento"
         onClick={()=>void refresh()}>
         <RefreshCw size={16}/> {refreshing?'Consultando...':'Atualizar'}
