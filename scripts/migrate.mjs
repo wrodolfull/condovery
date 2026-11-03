@@ -89,6 +89,8 @@ try {
   await client.query(instantPushWakeup);
   const discovery=await readFile(new URL('../db/047_discovery_notifications.sql',import.meta.url),'utf8');
   await client.query(discovery);
+  const growth=await readFile(new URL('../db/048_platform_growth_indexes.sql',import.meta.url),'utf8');
+  await client.query(growth);
   console.log('Elevadoor database schema applied successfully.');
 } finally {
   await client.end();
