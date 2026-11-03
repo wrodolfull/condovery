@@ -184,6 +184,29 @@ try{
       await adminPage.locator('.header-inner.admin-header .location').waitFor({state:'visible',timeout:15000});
       await adminPage.getByText('Você está em',{exact:true}).waitFor({state:'visible'});
       await verify(adminPage,'admin-header',width);
+      // Growth dashboard has no background polling and does not load unrelated
+      // tenant-selection or campaign APIs unless those sections are opened.
+      const adminRequests=[];
+      adminPage.on('request',req=>{
+        const pathname=new URL(req.url()).pathname;
+        if(pathname.startsWith('/api/platform/'))adminRequests.push(pathname);
+      });
+      await adminPage.locator('.bottom-nav').getByRole('button',{name:'Conta'}).click();
+      await adminPage.locator('.account-shortcuts button').filter({hasText:'Painel Superadmin'}).click();
+      await adminPage.getByRole('heading',{name:'Evolução do Elevadoor'}).waitFor({state:'visible'});
+      await adminPage.locator('.platform-growth-kpi').first().waitFor({state:'visible'});
+      if(!await adminPage.locator('.platform-growth-ranking table').count())
+        throw new Error('Global condominium ranking is missing');
+      if(adminRequests.some(path=>path==='/api/platform/discovery-campaigns'))
+        throw new Error('Unopened campaigns panel must not fetch its data');
+      if(adminRequests.some(path=>path==='/api/platform/condominiums'))
+        throw new Error('Growth tab must not load unrelated condominium lists');
+      await verify(adminPage,'platform-growth',width);
+      await adminPage.getByRole('button',{name:'7 dias'}).click();
+      await adminPage.locator('.platform-growth-kpi').first().waitFor({state:'visible'});
+      await verify(adminPage,'platform-growth-week',width);
+      await adminPage.getByRole('button',{name:'Condomínios',exact:true}).click();
+      await adminPage.getByRole('heading',{name:'Criar condomínio'}).waitFor({state:'visible'});
       await adminContext.close();
     }
   }
